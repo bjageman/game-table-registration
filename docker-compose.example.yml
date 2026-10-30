@@ -1,0 +1,21 @@
+name: botc-companion-prod
+
+services:
+  botc-companion:
+    container_name: botc-companion
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - VITE_NTFY_SERVER_URL=ntfy.${DOMAIN}
+    environment:
+      - VIRTUAL_HOST=grimoire.${DOMAIN},grim.${DOMAIN},botc.${DOMAIN},tinygrim.com,www.tinygrim.com
+      - LETSENCRYPT_HOST=grimoire.${DOMAIN},grim.${DOMAIN},botc.${DOMAIN},tinygrim.com,www.tinygrim.com
+      - LETSENCRYPT_EMAIL=${EMAIL}
+    volumes:
+      - ./local-overrides/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+networks:
+  default:
+    name: nginx-proxy
+    external: true
