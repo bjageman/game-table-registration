@@ -19,7 +19,7 @@ Install the bot with `bot` and `applications.commands` scopes and View Channels,
 - Direct local development: `http://localhost:5180/api/auth/callback`
 - Local Compose: `http://localhost:8080/api/auth/callback`
 
-The redirect must match `PUBLIC_URL` exactly. Use `localhost`, not `127.0.0.1`, in your browser. Production will require HTTPS. The initial implementation sends polls using Discord's REST API; a Gateway bot process is not needed yet and the bot may appear offline.
+The redirect must match `PUBLIC_URL` exactly. Open the same origin configured in `PUBLIC_URL` in your browser. Production will require HTTPS. The initial implementation sends polls using Discord's REST API; a Gateway bot process is not needed yet and the bot may appear offline.
 
 ## Run directly without Docker
 
@@ -40,6 +40,25 @@ npm run dev
 ```
 
 Open http://localhost:5180. The direct-development default uses an ignored SQLite database (`local.db`); PostgreSQL is used by Compose and CI. Set `DATABASE_URL` to use PostgreSQL directly. The API must be restarted after `.env` changes. Schema changes require Alembic migrations; the API does not create tables at startup.
+
+## Access from another computer (headless development)
+
+Set these values in the root `.env`, using the IP or hostname your browser can reach:
+
+```dotenv
+DEV_HOST=0.0.0.0
+PUBLIC_URL=http://your-server-hostname:5180
+```
+
+Restart the API and frontend, then open that exact URL from your computer. Register `http://your-server-hostname:5180/api/auth/callback` in Discord's OAuth2 redirect settings (substitute your actual hostname/IP). Only the configured hostname is added to Vite's host allowlist; the API stays bound to loopback behind Vite's proxy. Credentials remain server-side. IP and hostname URLs are different origins, so use one consistently for login.
+
+Alternatively, keep the localhost defaults and create a tunnel from your computer:
+
+```sh
+ssh -L 5180:127.0.0.1:5180 your-user@your-server-hostname
+```
+
+Then browse to http://localhost:5180 and use the localhost OAuth callback. This also works when the remote host has no desktop/browser.
 
 ## Run with Compose
 
