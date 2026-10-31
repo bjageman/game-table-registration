@@ -237,10 +237,8 @@ dd {
 .date-time-fields {
   min-width: 0;
 }
-.time-picker-style {
-  width: 100%;
-  max-width: 280px;
-  margin-top: 16px;
+.tables-heading {
+  margin-top: 28px;
 }
 .mobile-date-time-fields {
   display: grid;
