@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tables
+      POSTGRES_USER: tables
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U tables -d tables']
+      interval: 5s
+      timeout: 5s
+      retries: 15
+  migrate:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:-local-development-only}@db/tables
+    command: [alembic, upgrade, head]
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    ports:
+      - "127.0.0.1:8000:8000"
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:-local-development-only}@db/tables
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+volumes:
+  database:
