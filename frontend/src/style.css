@@ -301,3 +301,13 @@ dialog::backdrop {
 dialog h2 {
   overflow-wrap: anywhere;
 }
+input[aria-invalid="true"] {
+  border-color: #9a302c;
+}
+.field-error {
+  margin-top: -8px;
+  font-size: 0.875rem;
+}
+.table-summary li {
+  overflow-wrap: anywhere;
+}

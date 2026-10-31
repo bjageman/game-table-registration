@@ -1,5 +1,13 @@
 import { useId, useRef, useState, type FormEvent } from "react";
-import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
+import {
+  api,
+  ApiError,
+  errorMessage,
+  mutationOptions,
+  type EventRecord,
+} from "./api";
+
+import { validateEvent } from "./eventValidation";
 
 interface Props {
   csrf: string;
@@ -23,6 +31,7 @@ export default function EventForm({
   const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   function updateTable(
@@ -38,33 +47,17 @@ export default function EventForm({
     event.preventDefault();
     if (inFlight.current) return;
     setError("");
-    const start = new Date(startsAt);
-    const hours = Number(duration);
-    if (!title.trim()) {
-      setError("Enter an event title.");
-      return;
-    }
-    if (Number.isNaN(start.getTime())) {
-      setError("Enter a valid event date and time.");
-      return;
-    }
-    if (start.getTime() <= Date.now() + hours * 3600000) {
-      setError(
-        "The event must start after the signup window ends. Choose a later time or a shorter signup duration.",
+    const errors = validateEvent({ title, startsAt, duration, tables });
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      setError([...new Set(Object.values(errors))].join(" "));
+      requestAnimationFrame(() =>
+        document.getElementById(`${prefix}-${Object.keys(errors)[0]}`)?.focus(),
       );
       return;
     }
-    if (tables.some((table) => !table.name.trim())) {
-      setError("Enter a name for every table.");
-      return;
-    }
-    if (
-      new Set(tables.map((table) => table.name.trim().toLowerCase())).size !==
-      tables.length
-    ) {
-      setError("Table names must be unique.");
-      return;
-    }
+    const start = new Date(startsAt);
+    const hours = Number(duration);
     inFlight.current = true;
     setSaving(true);
     try {
@@ -82,40 +75,82 @@ export default function EventForm({
       );
       onCreated(result);
     } catch (failure) {
-      if (!onAccessError(failure)) setError(errorMessage(failure));
+      if (!onAccessError(failure)) {
+        setError(errorMessage(failure));
+        if (failure instanceof ApiError && failure.issues.length) {
+          const fields: Record<string, string> = {};
+          for (const issue of failure.issues) {
+            const path = issue.loc.filter((part) => part !== "body");
+            const key =
+              path[0] === "tables" &&
+              typeof path[1] === "number" &&
+              tables[path[1]]
+                ? `${path[2]}-${tables[path[1]].id}`
+                : ({ starts_at: "start", duration_hours: "duration" }[
+                    String(path[0])
+                  ] ?? String(path[0]));
+            fields[key] = issue.msg;
+          }
+          setFieldErrors(fields);
+        }
+      }
     } finally {
       inFlight.current = false;
       setSaving(false);
     }
   }
 
+  function attributes(key: string, description?: string) {
+    return {
+      "aria-invalid": Boolean(fieldErrors[key]),
+      "aria-describedby":
+        [description, fieldErrors[key] ? `${prefix}-${key}-error` : undefined]
+          .filter(Boolean)
+          .join(" ") || undefined,
+    };
+  }
+  function fieldError(key: string) {
+    return fieldErrors[key] ? (
+      <p className="error field-error" id={`${prefix}-${key}-error`}>
+        {fieldErrors[key]}
+      </p>
+    ) : null;
+  }
+
   return (
     <section className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
       <h3 id={`${prefix}-heading`}>Create event draft</h3>
       <p>Save the details first. Creating a draft does not post to Discord.</p>
-      <form onSubmit={(event) => void submit(event)} aria-label="Create event">
+      <form
+        noValidate
+        onSubmit={(event) => void submit(event)}
+        aria-label="Create event"
+      >
         <fieldset disabled={saving}>
           <legend className="sr-only">Event details</legend>
           <label htmlFor={`${prefix}-title`}>Event title</label>
           <input
             id={`${prefix}-title`}
+            {...attributes("title")}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             required
             maxLength={100}
             autoFocus
           />
+          {fieldError("title")}
           <div className="form-grid">
             <div>
               <label htmlFor={`${prefix}-start`}>Event date and time</label>
               <input
                 type="datetime-local"
                 id={`${prefix}-start`}
+                {...attributes("start", `${prefix}-timezone`)}
                 value={startsAt}
                 onChange={(event) => setStartsAt(event.target.value)}
                 required
-                aria-describedby={`${prefix}-timezone`}
               />
+              {fieldError("start")}
               <p id={`${prefix}-timezone`} className="help">
                 Your timezone: {timezone}. Times are saved with a UTC offset.
               </p>
@@ -127,6 +162,7 @@ export default function EventForm({
               <input
                 type="number"
                 id={`${prefix}-duration`}
+                {...attributes("duration")}
                 min={1}
                 max={768}
                 step={1}
@@ -134,6 +170,7 @@ export default function EventForm({
                 onChange={(event) => setDuration(event.target.value)}
                 required
               />
+              {fieldError("duration")}
               <p className="help">
                 Starts when you publish. Signups must close before the event.
               </p>
@@ -151,6 +188,7 @@ export default function EventForm({
                 </label>
                 <input
                   id={`${prefix}-name-${table.id}`}
+                  {...attributes(`name-${table.id}`)}
                   value={table.name}
                   onChange={(event) =>
                     updateTable(table.id, { name: event.target.value })
@@ -158,6 +196,7 @@ export default function EventForm({
                   required
                   maxLength={35}
                 />
+                {fieldError(`name-${table.id}`)}
               </div>
               <div>
                 <label htmlFor={`${prefix}-capacity-${table.id}`}>
@@ -165,6 +204,7 @@ export default function EventForm({
                 </label>
                 <input
                   id={`${prefix}-capacity-${table.id}`}
+                  {...attributes(`capacity-${table.id}`)}
                   type="number"
                   min={1}
                   max={999}
@@ -175,6 +215,7 @@ export default function EventForm({
                   }
                   required
                 />
+                {fieldError(`capacity-${table.id}`)}
               </div>
               <button
                 type="button"
@@ -191,12 +232,10 @@ export default function EventForm({
           <button
             type="button"
             disabled={tables.length >= 10}
-            onClick={() =>
-              setTables((rows) => [
-                ...rows,
-                { id: nextId.current++, name: "", capacity: "15" },
-              ])
-            }
+            onClick={() => {
+              const row = { id: nextId.current++, name: "", capacity: "15" };
+              setTables((rows) => [...rows, row]);
+            }}
           >
             Add table
           </button>

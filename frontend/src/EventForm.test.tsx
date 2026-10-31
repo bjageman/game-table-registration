@@ -79,3 +79,16 @@ it("retains the form when saving fails", async () => {
   expect(screen.getByLabelText("Event title")).toHaveValue("Friday games");
   expect(props.onCreated).not.toHaveBeenCalled();
 });
+
+it("limits the editor to ten tables and preserves remaining rows after removal", () => {
+  render(<EventForm {...props} />);
+  fill();
+  for (let i = 1; i < 10; i++)
+    fireEvent.click(screen.getByRole("button", { name: "Add table" }));
+  expect(screen.getByRole("button", { name: "Add table" })).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove table 2" }),
+  );
+  expect(screen.getByRole("button", { name: "Add table" })).not.toBeDisabled();
+  expect(screen.getByLabelText("Table 1 name")).toHaveValue("Clocktower");
+});
