@@ -301,3 +301,9 @@ dd {
     min-width: 0;
   }
 }
+
+.draft-actions > .help {
+  flex-basis: 100%;
+  order: 1;
+  margin: 0;
+}

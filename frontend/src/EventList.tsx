@@ -79,7 +79,7 @@ export default function EventList({
               </p>
             )}
             {event.status === "draft" && (
-              <>
+              <div className="form-actions draft-actions">
                 <PublishEvent event={event} {...actions} />
                 <DraftActions
                   event={event}
@@ -88,7 +88,7 @@ export default function EventList({
                   onDeleted={onDeleted}
                   onAccessError={actions.onAccessError}
                 />
-              </>
+              </div>
             )}
             {event.discord_url && (
               <a

@@ -49,21 +49,19 @@ export default function DraftActions({
   }
   return (
     <>
-      <div className="form-actions">
-        <button type="button" onClick={() => onEdit(event)}>
-          Edit draft
-        </button>
-        <button
-          type="button"
-          ref={trigger}
-          onClick={() => {
-            setError("");
-            setConfirming(true);
-          }}
-        >
-          Delete draft
-        </button>
-      </div>
+      <button type="button" onClick={() => onEdit(event)}>
+        Edit draft
+      </button>
+      <button
+        type="button"
+        ref={trigger}
+        onClick={() => {
+          setError("");
+          setConfirming(true);
+        }}
+      >
+        Delete draft
+      </button>
       {confirming && (
         <dialog
           ref={dialog}
