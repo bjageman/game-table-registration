@@ -22,6 +22,6 @@ compose=(docker compose --env-file "$env_file" --project-directory "$build_dir" 
 "${compose[@]}" config --quiet
 "${compose[@]}" build --pull
 "${compose[@]}" up -d --wait db
-"${compose[@]}" run --rm migrate
+"${compose[@]}" run --rm -T --interactive=false migrate
 "${compose[@]}" up -d --no-deps --wait --wait-timeout 180 api web
 printf 'Deployed %s (%s)\n' "$environment" "$revision"

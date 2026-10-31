@@ -23,4 +23,7 @@ jobs:
             set -eu
             cd /tank/apps/docker/vibes/game-table-registration
             git fetch origin main:refs/remotes/origin/main
-            git show origin/main:scripts/deploy.sh | DEPLOY_REPO="$PWD" bash -s -- prod
+            deploy_script=$(mktemp)
+            trap 'rm -f "$deploy_script"' EXIT
+            git show origin/main:scripts/deploy.sh > "$deploy_script"
+            DEPLOY_REPO="$PWD" bash "$deploy_script" prod
