@@ -37,5 +37,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:-local-development-only}@db/tables
+    command: [python, -m, app.worker]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 volumes:
   database:

@@ -29,8 +29,10 @@ export default function PublishEvent({
   const trigger = useRef<HTMLButtonElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(Date.now);
-  const expired =
-    event.starts_at * 1000 <= now + event.duration_hours * 3600000;
+  const scheduled = Boolean(event.opens_at);
+  const expired = scheduled
+    ? (event.opens_at ?? 0) * 1000 <= now
+    : event.starts_at * 1000 <= now + event.duration_hours * 3600000;
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
@@ -56,7 +58,7 @@ export default function PublishEvent({
     setError("");
     try {
       const result = await api<EventRecord>(
-        `/events/${encodeURIComponent(event.id)}/publish`,
+        `/events/${encodeURIComponent(event.id)}/${scheduled ? "schedule" : "publish"}`,
         mutationOptions(csrf),
       );
       setConfirming(false);
@@ -89,7 +91,7 @@ export default function PublishEvent({
           setConfirming(true);
         }}
       >
-        Publish to Discord
+        {scheduled ? "Schedule signups" : "Publish to Discord"}
       </button>
       {expired && (
         <p className="help">
@@ -107,11 +109,14 @@ export default function PublishEvent({
             else setConfirming(false);
           }}
         >
-          <h2 id={`publish-title-${event.id}`}>Publish {event.title}?</h2>
+          <h2 id={`publish-title-${event.id}`}>
+            {scheduled ? "Schedule" : "Publish"} {event.title}?
+          </h2>
           <p id={`publish-description-${event.id}`}>
-            This posts a signup poll to your configured Discord channel. Signups
-            open immediately for {event.duration_hours} hours. Table options and
-            capacities cannot be edited after publication.
+            {scheduled
+              ? `The worker will publish the poll at ${new Date((event.opens_at ?? 0) * 1000).toLocaleString()} and close signups at ${new Date((event.signup_closes_at ?? 0) * 1000).toLocaleString()}.`
+              : `This posts a signup poll to your configured Discord channel. Signups open immediately for ${event.duration_hours} hours.`}{" "}
+            Table options and capacities freeze when publication begins.
           </p>
           <ul className="table-summary">
             {event.tables.map((table) => (
@@ -143,7 +148,13 @@ export default function PublishEvent({
               disabled={busy}
               onClick={() => void publish()}
             >
-              {busy ? "Publishing…" : "Confirm publication"}
+              {busy
+                ? scheduled
+                  ? "Scheduling…"
+                  : "Publishing…"
+                : scheduled
+                  ? "Confirm schedule"
+                  : "Confirm publication"}
             </button>
           </div>
         </dialog>

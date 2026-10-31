@@ -2,7 +2,6 @@ import hashlib
 import secrets
 import time
 import uuid
-from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
 
@@ -14,6 +13,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.config import Settings
 from app.discord_api import DiscordAPI
 from app.models import Event, LoginState, Session
+from app.publication import publish_event
 from app.schemas import EventInput
 
 
@@ -66,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "tables": event.tables,
             "status": event.status,
             "closes_at": event.closes_at,
+            "last_error": event.last_error,
             "discord_url": (
                 f"https://discord.com/channels/{config.discord_guild_id}/"
                 f"{config.discord_channel_id}/{event.message_id}"
@@ -263,73 +264,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/events/{event_id}/publish")
     def publish(event_id: str, request: Request) -> dict[str, Any]:
         authenticated(request, True)
+        publish_event(engine, app.state.discord, config, event_id)
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
-            if not event or event.guild_id != config.discord_guild_id:
-                raise HTTPException(404, "Event not found")
-            if event.opens_at is not None:
-                raise HTTPException(
-                    409, "Use Schedule signups for events with explicit signup times"
-                )
-            if event.starts_at <= time.time() + event.duration_hours * 3600:
-                raise HTTPException(
-                    400, "Signup window would end after the event starts"
-                )
+            assert event is not None
+            return serialize(event)
+
+    @app.post("/api/events/{event_id}/schedule")
+    def schedule_event(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        now = time.time()
+        with DBSession(engine) as db:
             claimed = db.execute(
                 update(Event)
-                .where(Event.id == event_id, Event.status == "draft")
-                .values(status="publishing")
+                .where(
+                    Event.id == event_id,
+                    Event.guild_id == config.discord_guild_id,
+                    Event.status == "draft",
+                    Event.opens_at > now,
+                    Event.signup_closes_at > Event.opens_at,
+                    Event.starts_at > Event.signup_closes_at,
+                )
+                .values(status="scheduled")
                 .returning(Event.id)
             ).scalar_one_or_none()
-            db.commit()
             if not claimed:
-                raise HTTPException(409, "Already published or awaiting publish review")
-            db.refresh(event)
-            try:
-                message = app.state.discord.publish(
-                    {
-                        "content": (
-                            f"**{event.title}**\nEvent: <t:{int(event.starts_at)}:F>\n"
-                            f"Signups open for {event.duration_hours} hours. "
-                            "Select every table you would attend. "
-                            "This is a lottery entry, not a guaranteed seat."
-                        ),
-                        "allowed_mentions": {"parse": []},
-                        "poll": {
-                            "question": {"text": "Which tables would you attend?"},
-                            "answers": [
-                                {
-                                    "poll_media": {
-                                        "text": f"{t['name']} · {t['capacity']} seats"
-                                    }
-                                }
-                                for t in event.tables
-                            ],
-                            "duration": event.duration_hours,
-                            "allow_multiselect": True,
-                        },
-                    }
-                )
-                event.message_id = str(message["id"])
-                event.answers = message["poll"]["answers"]
-                event.closes_at = datetime.fromisoformat(
-                    message["poll"]["expiry"]
-                ).timestamp()
-                event.status = "open"
-                db.commit()
-            except Exception:
-                db.rollback()
-                db.execute(
-                    update(Event)
-                    .where(Event.id == event_id)
-                    .values(status="needs_review")
-                )
-                db.commit()
                 raise HTTPException(
-                    502,
-                    "Publish could not be confirmed. Check Discord "
-                    "before retrying; this event is held for review.",
-                ) from None
+                    409, "Only future drafts with valid signup times can be scheduled"
+                )
+            db.commit()
+            event = db.get(Event, event_id)
+            assert event is not None
             return serialize(event)
 
     return app

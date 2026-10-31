@@ -38,4 +38,6 @@ class Event(Base):
     created_by: Mapped[str] = mapped_column(String(32))
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     closes_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    operation_started_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
