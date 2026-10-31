@@ -109,12 +109,12 @@ export default function PublishEvent({
             else setConfirming(false);
           }}
         >
-          <h2 id={`publish-title-${event.id}`}>Publish {event.title}?</h2>
+          <h2 id={`publish-title-${event.id}`}>Schedule sign-up for {event.title}?</h2>
           <p id={`publish-description-${event.id}`}>
             {scheduled
-              ? `The poll will be published at ${new Date((event.opens_at ?? 0) * 1000).toLocaleString()}. Signups stay open for ${event.duration_hours} hours.`
-              : `This posts a signup poll immediately for ${event.duration_hours} hours.`}{" "}
-            Table options and capacities freeze when publication begins.
+              ? `Signups open on ${new Date((event.opens_at ?? 0) * 1000).toLocaleString()} and close on ${new Date((event.signup_closes_at ?? 0) * 1000).toLocaleString()}. The signup poll will be posted to Discord when signups open.`
+              : `This draft has no scheduled signup times. Confirming posts its poll to Discord and opens signups for ${event.duration_hours} hours.`}{" "}
+            Table options and capacities cannot be edited after you confirm.
           </p>
           <ul className="table-summary">
             {event.tables.map((table) => (
@@ -146,7 +146,7 @@ export default function PublishEvent({
               disabled={busy}
               onClick={() => void publish()}
             >
-              {busy ? "Publishing…" : "Confirm publication"}
+              {busy ? "Publishing…" : "Confirm"}
             </button>
           </div>
         </dialog>

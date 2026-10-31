@@ -47,7 +47,7 @@ test("requires confirmation and replaces the publish action with a Discord link"
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(publications).toBe(0);
   await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
     page.getByRole("link", { name: /View Discord poll/ }),
   ).toHaveAttribute(
@@ -73,7 +73,7 @@ test("holds uncertain publication instead of offering a duplicate request", asyn
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("unconfirmed", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Schedule a Sign-up" }),

@@ -124,7 +124,7 @@ test("completes login, timed draft creation, scheduling, refresh, and logout", a
   await expect(page.getByRole("status")).toBeFocused();
   expect(publications).toBe(0);
   await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Refresh events" }).click();
   await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
@@ -259,7 +259,7 @@ for (const outcome of ["network", "conflict"] as const) {
     });
     await page.goto("/");
     await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
-    await page.getByRole("button", { name: "Confirm publication" }).click();
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page.getByText("unconfirmed", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Schedule a Sign-up" }),
@@ -293,7 +293,7 @@ test("blocks repeat confirmation and Escape while a publication is pending", asy
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Publishing…", exact: true }),
   ).toBeDisabled();
