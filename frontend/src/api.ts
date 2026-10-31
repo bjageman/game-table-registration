@@ -49,6 +49,17 @@ export interface ModeratorSession {
   csrf: string;
 }
 
+export interface EventRecord {
+  id: string;
+  title: string;
+  starts_at: number;
+  duration_hours: number;
+  tables: { name: string; capacity: number }[];
+  status: string;
+  closes_at: number | null;
+  discord_url: string | null;
+}
+
 export function mutationOptions(csrf: string, body?: unknown): RequestInit {
   return {
     method: "POST",
