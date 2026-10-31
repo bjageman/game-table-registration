@@ -18,6 +18,14 @@ export default function EventTables({ event }: { event: EventRecord }) {
               </li>
             ))}
           </ul>
+          <div className="table-waitlist">
+            <h5>Waitlist</h5>
+            <ol>
+              <li>Pat</li>
+              <li>Drew</li>
+              <li>Lee</li>
+            </ol>
+          </div>
         </li>
       ))}
     </ul>
