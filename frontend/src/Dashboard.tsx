@@ -101,6 +101,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             Create event
           </button>
           <button
+            className="refresh-events-button"
             onClick={refresh}
             disabled={loading || creating}
             aria-label={loading ? "Refreshing…" : "Refresh events"}

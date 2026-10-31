@@ -277,6 +277,9 @@ dd {
 .section-heading .form-actions {
   margin-top: 0;
 }
+.refresh-events-button {
+  align-self: stretch;
+}
 .form-panel .error {
   margin-top: 16px;
 }
