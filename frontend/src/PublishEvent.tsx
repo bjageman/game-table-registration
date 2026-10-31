@@ -103,19 +103,12 @@ export default function PublishEvent({
         <dialog
           ref={dialog}
           aria-labelledby={`publish-title-${event.id}`}
-          aria-describedby={`publish-description-${event.id}`}
           onCancel={(escape) => {
             if (inFlight.current) escape.preventDefault();
             else setConfirming(false);
           }}
         >
           <h2 id={`publish-title-${event.id}`}>Schedule sign-up for {event.title}?</h2>
-          <p id={`publish-description-${event.id}`}>
-            {scheduled
-              ? `Signups open on ${new Date((event.opens_at ?? 0) * 1000).toLocaleString()} and close on ${new Date((event.signup_closes_at ?? 0) * 1000).toLocaleString()}. The signup poll will be posted to Discord when signups open.`
-              : `This draft has no scheduled signup times. Confirming posts its poll to Discord and opens signups for ${event.duration_hours} hours.`}{" "}
-            Table options and capacities cannot be edited after you confirm.
-          </p>
           <ul className="table-summary">
             {event.tables.map((table) => (
               <li key={table.name}>
@@ -133,7 +126,7 @@ export default function PublishEvent({
               Publishing… Keep this page open while the request completes.
             </p>
           )}
-          <div className="form-actions">
+          <div className="form-actions signup-confirmation-actions">
             <button
               ref={cancel}
               onClick={() => setConfirming(false)}
