@@ -18,6 +18,7 @@ class Session(Base):
     __tablename__ = "sessions"
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(32))
+    guilds: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     username: Mapped[str] = mapped_column(String(100))
     csrf: Mapped[str] = mapped_column(String(100))
     expires: Mapped[float] = mapped_column(Float)
@@ -28,6 +29,7 @@ class Event(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     guild_id: Mapped[str] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(100))
+    channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     starts_at: Mapped[float] = mapped_column(Float)
     duration_hours: Mapped[int]
     tables: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
@@ -45,3 +47,12 @@ class PlayerProfile(Base):
     discord_name: Mapped[str] = mapped_column(String(100), default="")
     real_name: Mapped[str] = mapped_column(String(100), default="")
     weighting: Mapped[float] = mapped_column(Float, default=1.0)
+
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+    user_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    guild_id: Mapped[str] = mapped_column(String(32))
+    guild_name: Mapped[str] = mapped_column(String(100))
+    channel_id: Mapped[str] = mapped_column(String(32))
+    channel_name: Mapped[str] = mapped_column(String(100))

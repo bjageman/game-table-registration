@@ -421,3 +421,7 @@ dd {
 
 .player-discord-name { margin-bottom: 24px; }
 .player-weighting { margin-top: 24px; margin-bottom: 8px; }
+
+.settings-panel { max-width: 800px; margin-inline: auto; }
+.settings-connections { margin-bottom: 24px; }
+.settings-panel .form-grid { margin-bottom: 16px; }

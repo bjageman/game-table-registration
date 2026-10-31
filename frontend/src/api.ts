@@ -72,6 +72,8 @@ export function errorMessage(error: unknown): string {
 }
 
 export interface ModeratorSession {
+  needs_setup?: boolean;
+  destination?: string;
   username: string;
   csrf: string;
 }

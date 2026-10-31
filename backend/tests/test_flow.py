@@ -367,3 +367,196 @@ def test_player_profiles_are_scoped_to_guild_and_weighting_is_read_only(client):
     assert saved.json()["weighting"] == 1.0
     with DBSession(client.app.state.engine) as db:
         assert db.get(PlayerProfile, ("other", "123")).real_name == "Private"
+
+
+def test_settings_switch_channels_without_retargeting_existing_events(client):
+    headers = login(client)
+    base = client.app.state.discord
+    scoped = {}
+
+    def at(guild_id, channel_id):
+        if (guild_id, channel_id) not in scoped:
+            scoped[guild_id, channel_id] = Mock()
+            scoped[
+                guild_id, channel_id
+            ].publish.return_value = base.publish.return_value
+        return scoped[guild_id, channel_id]
+
+    base.at.side_effect = at
+    base.destination_channels.return_value = (
+        "Server A",
+        [{"id": "101", "name": "first"}, {"id": "102", "name": "second"}],
+    )
+    body = {"guild_id": "100", "channel_id": "101"}
+    assert client.put("/api/settings", json=body).status_code == 403
+    assert (
+        client.put(
+            "/api/settings",
+            headers={**headers, "Origin": "https://evil.test"},
+            json=body,
+        ).status_code
+        == 403
+    )
+    assert client.put("/api/settings", headers=headers, json=body).status_code == 200
+    assert client.get("/api/me").json()["destination"] == "100:101"
+    first = client.post("/api/events", headers=headers, json=event_body()).json()
+    body["channel_id"] = "102"
+    assert client.put("/api/settings", headers=headers, json=body).status_code == 200
+    assert client.get("/api/events").json() == []
+    path = f"/api/events/{first['id']}"
+    assert client.get(path + "/signups").status_code == 404
+    assert client.post(path + "/publish", headers=headers).status_code == 404
+    assert client.put(path, headers=headers, json=event_body()).status_code == 409
+    assert client.delete(path, headers=headers).status_code == 409
+    body["channel_id"] = "101"
+    client.put("/api/settings", headers=headers, json=body)
+    published = client.post(path + "/publish", headers=headers)
+    assert published.status_code == 200
+    assert (
+        published.json()["discord_url"]
+        == "https://discord.com/channels/100/101/message"
+    )
+    scoped["100", "101"].publish.assert_called_once()
+    assert ("100", "102") in scoped
+    base.publish.assert_not_called()
+
+
+def test_settings_are_per_user_and_recheck_permissions(client):
+    first_headers = login(client)
+    base = client.app.state.discord
+    base.destination_channels.return_value = ("A", [{"id": "101", "name": "signups"}])
+    client.put(
+        "/api/settings",
+        headers=first_headers,
+        json={"guild_id": "100", "channel_id": "101"},
+    )
+    base.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+        "guilds": [{"id": "200", "name": "B", "owner": True}],
+    }
+    second_headers = login(client)
+    base.destination_channels.return_value = ("B", [{"id": "201", "name": "other"}])
+    client.put(
+        "/api/settings",
+        headers=second_headers,
+        json={"guild_id": "200", "channel_id": "201"},
+    )
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "201"
+    event = client.post("/api/events", headers=second_headers, json=event_body()).json()
+    base.identity.return_value = {"id": "owner", "username": "organizer"}
+    first_headers = login(client)
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "101"
+    assert client.get("/api/events").json() == []
+    assert client.get(f"/api/events/{event['id']}/signups").status_code == 404
+    base.at.return_value.authorize_destination.side_effect = HTTPException(
+        403, "Permission removed"
+    )
+    assert client.get("/api/events").status_code == 403
+    assert client.get("/api/settings").status_code == 200
+    assert client.get("/api/me").status_code == 200
+    assert client.post("/api/auth/logout", headers=first_headers).status_code == 204
+
+
+def test_settings_reject_ineligible_channels_and_do_not_accept_credentials(client):
+    headers = login(client)
+    client.app.state.discord.destination_channels.return_value = (
+        "A",
+        [{"id": "101", "name": "signups"}],
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "999"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "101", "bot_token": "secret"},
+        ).status_code
+        == 422
+    )
+    client.app.state.discord.destination_channels.side_effect = HTTPException(
+        403, "Not a manager"
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 403
+    )
+
+
+def test_login_requests_guild_scope_and_retains_only_manageable_servers(client):
+    response = client.get("/api/auth/login", follow_redirects=False)
+    assert parse_qs(urlparse(response.headers["location"]).query)["scope"] == [
+        "identify guilds"
+    ]
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "Organizer",
+        "guilds": [
+            {"id": "100", "name": "Owner", "owner": True},
+            {"id": "200", "name": "Manager", "permissions": "32"},
+            {"id": "300", "name": "Member", "permissions": "1024"},
+        ],
+    }
+    login(client)
+    data = client.get("/api/settings").json()
+    assert {g["id"] for g in data["guilds"]} == {"100", "200", "guild"}
+    params = parse_qs(urlparse(data["install_url"]).query)
+    assert params["scope"] == ["bot"]
+    assert "bot_token" not in data
+
+
+def test_new_users_can_sign_in_to_setup_without_legacy_moderator_access(client):
+    base = client.app.state.discord
+    base.authorize.side_effect = HTTPException(403, "Not a moderator here")
+    base.identity.return_value = {
+        "id": "new-user",
+        "username": "New",
+        "guilds": [{"id": "100", "name": "Own server", "owner": True}],
+    }
+    headers = login(client)
+    assert client.get("/api/me").json()["needs_setup"] is True
+    setup = client.get("/api/settings").json()
+    assert setup["selection"] is None
+    assert setup["guilds"] == [{"id": "100", "name": "Own server"}]
+    assert client.get("/api/events").status_code == 403
+    base.destination_channels.return_value = (
+        "Own server",
+        [{"id": "101", "name": "games"}],
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/me").json()["needs_setup"] is False
+    assert client.get("/api/events").json() == []
+
+
+def test_refresh_server_list_returns_to_settings_without_open_redirect(client):
+    response = client.get("/api/auth/login?return_to=settings", follow_redirects=False)
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    callback = client.get(
+        f"/api/auth/callback?code=ok&state={state}", follow_redirects=False
+    )
+    assert callback.headers["location"].endswith("/#/settings")
+    response = client.get(
+        "/api/auth/login?return_to=https://evil.test", follow_redirects=False
+    )
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    callback = client.get(
+        f"/api/auth/callback?code=ok&state={state}", follow_redirects=False
+    )
+    assert callback.headers["location"] == "http://localhost:5180"
