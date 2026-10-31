@@ -29,3 +29,68 @@ def test_wrong_channel_guild_cannot_post():
     with pytest.raises(HTTPException):
         api.publish({})
     assert api.bot.call_count == 1
+
+
+def test_signup_lookup_matches_answer_ids_and_replaces_removed_votes():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    message = {
+        "poll": {
+            "answers": [
+                {"answer_id": 42, "poll_media": {"text": "Table A · 8 seats"}},
+                {"answer_id": 9, "poll_media": {"text": "Table B · 12 seats"}},
+            ]
+        }
+    }
+    api.bot = Mock(
+        side_effect=[
+            message,
+            {"users": [{"id": "1", "username": "mary", "global_name": "Mary"}]},
+            {"users": [{"id": "2", "username": "Dan"}]},
+            message,
+            {"users": []},
+            {"users": [{"id": "2", "username": "Dan"}]},
+        ]
+    )
+    tables = [{"name": "Table A", "capacity": 8}, {"name": "Table B", "capacity": 12}]
+    first = api.table_signups("message", tables)
+    assert first[0]["players"] == [{"id": "1", "name": "Mary"}]
+    assert first[1]["players"] == [{"id": "2", "name": "Dan"}]
+    assert api.bot.call_args_list[1].args[1].endswith("/message/answers/42")
+    second = api.table_signups("message", tables)
+    assert second[0]["players"] == []
+    assert second[1]["players"] == first[1]["players"]
+
+
+def test_signup_pagination_deduplicates_and_excludes_bots():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(
+        side_effect=[
+            {
+                "users": [
+                    {"id": str(i), "username": f"player{i}"} for i in range(1, 101)
+                ]
+            },
+            {
+                "users": [
+                    {"id": "100", "username": "player100"},
+                    {"id": "101", "username": "bot", "bot": True},
+                    {"id": "102", "username": "last"},
+                ]
+            },
+        ]
+    )
+    players = api.voters("message", 42)
+    assert len(players) == 101
+    assert api.bot.call_args.kwargs["params"] == {"limit": 100, "after": "100"}
+
+
+def test_signup_page_failure_does_not_return_partial_players():
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(
+        side_effect=[
+            {"users": [{"id": str(i), "username": "player"} for i in range(1, 101)]},
+            HTTPException(502, "Discord unavailable"),
+        ]
+    )
+    with pytest.raises(HTTPException):
+        api.voters("message", 9)

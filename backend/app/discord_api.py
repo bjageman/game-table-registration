@@ -68,3 +68,61 @@ class DiscordAPI:
             f"/channels/{self.settings.discord_channel_id}/messages",
             json=payload,
         )
+
+    def table_signups(
+        self, message_id: str, tables: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        message = self.bot(
+            "GET", f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+        )
+        answers = message.get("poll", {}).get("answers", [])
+        answer_ids = {
+            a.get("poll_media", {}).get("text"): a.get("answer_id") for a in answers
+        }
+        rows = []
+        for table in tables:
+            label = f"{table['name']} · {table['capacity']} seats"
+            answer_id = answer_ids.get(label)
+            if not isinstance(answer_id, int):
+                raise HTTPException(
+                    502, "Could not match Discord poll answers to tables"
+                )
+            rows.append(
+                {"name": table["name"], "players": self.voters(message_id, answer_id)}
+            )
+        return rows
+
+    def voters(self, message_id: str, answer_id: int) -> list[dict[str, str]]:
+        players: dict[str, dict[str, str]] = {}
+        after = 0
+        while True:
+            response = self.bot(
+                "GET",
+                f"/channels/{self.settings.discord_channel_id}/polls/"
+                f"{message_id}/answers/{answer_id}",
+                params={"limit": 100, **({"after": str(after)} if after else {})},
+            )
+            users = response.get("users")
+            if not isinstance(users, list):
+                raise HTTPException(502, "Discord returned an invalid signup list")
+            if not users:
+                break
+            try:
+                for user in users:
+                    if not user.get("bot"):
+                        player_id = str(user["id"])
+                        players[player_id] = {
+                            "id": player_id,
+                            "name": user.get("global_name") or user["username"],
+                        }
+                cursor = max(int(user["id"]) for user in users)
+            except (KeyError, ValueError, TypeError):
+                raise HTTPException(
+                    502, "Discord returned invalid voter data"
+                ) from None
+            if cursor <= after:
+                raise HTTPException(502, "Discord signup pagination did not advance")
+            after = cursor
+            if len(users) < 100:
+                break
+        return sorted(players.values(), key=lambda player: player["name"].casefold())

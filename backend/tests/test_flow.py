@@ -224,3 +224,27 @@ def test_published_events_cannot_be_edited_or_deleted(client, status):
     assert client.put(path, headers=headers, json=event_body()).status_code == 409
     assert client.delete(path, headers=headers).status_code == 409
     assert client.get("/api/events").json()[0]["status"] == status
+
+
+def test_signup_endpoint_is_authorized_and_scoped_to_guild(client):
+    from app.models import Event
+
+    assert client.get("/api/events/missing/signups").status_code == 401
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}/signups"
+    result = client.get(path)
+    assert result.status_code == 200
+    assert all(t["players"] == [] for t in result.json())
+    client.app.state.discord.table_signups.assert_not_called()
+    with DBSession(client.app.state.engine) as db:
+        row = db.get(Event, event["id"])
+        row.message_id = "message"
+        db.commit()
+    players = [{"name": "A", "players": [{"id": "1", "name": "Mary"}]}]
+    client.app.state.discord.table_signups.return_value = players
+    assert client.get(path).json() == players
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).guild_id = "other-guild"
+        db.commit()
+    assert client.get(path).status_code == 404

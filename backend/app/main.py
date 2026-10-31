@@ -216,6 +216,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             ]
 
+    @app.get("/api/events/{event_id}/signups")
+    def event_signups(event_id: str, request: Request) -> list[dict[str, Any]]:
+        authenticated(request)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or event.guild_id != config.discord_guild_id:
+                raise HTTPException(404, "Event not found")
+            message_id = event.message_id
+            tables = event.tables
+        if not message_id:
+            return [{"name": table["name"], "players": []} for table in tables]
+        discord: DiscordAPI = app.state.discord
+        return discord.table_signups(message_id, tables)
+
     @app.post("/api/events", status_code=201)
     def create_event(body: EventInput, request: Request) -> dict[str, Any]:
         session = authenticated(request, True)
