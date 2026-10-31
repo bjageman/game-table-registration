@@ -30,12 +30,12 @@ it("opens event details from a compact event listing", async () => {
     vi.fn(async () => new Response(JSON.stringify([draft]))),
   );
   render(<Dashboard {...props} />);
-  const item = await screen.findByRole("button", { name: "Friday games 1 table" });
+  const item = await screen.findByRole("button", { name: /Friday games draft 1 table/ });
   expect(item).toBeVisible();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   fireEvent.click(item);
   expect(screen.getByRole("dialog", { name: "Friday games" })).toBeVisible();
-  expect(screen.getByText("draft")).toBeVisible();
+  expect(screen.getAllByText("draft")).toHaveLength(2);
   expect(screen.getByText(/15 seats/)).toBeVisible();
   expect(screen.getByText(/24 hours from publication/)).toBeVisible();
   expect(screen.getAllByRole("listitem").filter((li) => li.parentElement?.className === "table-players")).toHaveLength(15);

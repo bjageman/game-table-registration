@@ -358,12 +358,21 @@ dd {
 
 .event-list-item {
   width: 100%;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding: 20px 24px;
   text-align: left;
 }
 .event-list-title { min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
-.event-list-item > .help { flex-shrink: 0; }
+.event-list-top { display: flex; align-items: center; gap: 12px; }
+.event-list-top > .badge { flex-shrink: 0; }
+.event-table-count { margin-left: auto; flex-shrink: 0; font-size: 0.875rem; }
+.event-list-dates { display: flex; flex-wrap: wrap; gap: 4px 24px; font-weight: 400; }
+@media (max-width: 600px) {
+  .event-list-item { padding: 16px; }
+  .event-list-top { gap: 8px; }
+  .event-list-dates { flex-direction: column; }
+}
 .event-modal { max-width: 1000px; max-height: calc(100dvh - 32px); overflow-y: auto; }
 .event-modal-close { display: flex; justify-content: flex-end; margin-bottom: 12px; }

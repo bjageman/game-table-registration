@@ -35,8 +35,20 @@ export default function EventList({
               aria-haspopup="dialog"
               onClick={() => setSelectedId(event.id)}
             >
-              <span className="event-list-title">{event.title}</span>
-              <span className="help">{event.tables.length} {event.tables.length === 1 ? "table" : "tables"}</span>
+              <span className="event-list-top">
+                <span className="event-list-title">{event.title}</span>
+                <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
+                  {event.status.replaceAll("_", " ")}
+                </span>
+                <span className="event-table-count">{event.tables.length} {event.tables.length === 1 ? "table" : "tables"}</span>
+              </span>
+              <span className="event-list-dates help">
+                <span>Event: <ListTime timestamp={event.starts_at} /></span>
+                <span>Signups: {event.closes_at !== null ? <>
+                  <ListTime timestamp={event.closes_at - event.duration_hours * 3600} />
+                  {" – "}<ListTime timestamp={event.closes_at} />
+                </> : "Not scheduled"}</span>
+              </span>
             </button>
           </li>
         ))}
@@ -149,4 +161,10 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
             )}
     </dialog>
   );
+}
+
+function ListTime({ timestamp }: { timestamp: number }) {
+  return <time dateTime={new Date(timestamp * 1000).toISOString()}>
+    {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp * 1000))}
+  </time>;
 }
