@@ -1,8 +1,28 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import dayjs, { type Dayjs } from "dayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import EventForm from "./EventForm";
+
+vi.mock("@mui/x-date-pickers/DateTimePicker", () => ({
+  DateTimePicker: ({
+    label,
+    value,
+    onChange,
+  }: {
+    label: string;
+    value: Dayjs | null;
+    onChange: (value: Dayjs | null) => void;
+  }) =>
+    createElement("input", {
+      "aria-label": label,
+      value: value?.format("MMMM D, YYYY h:mm A") ?? "",
+      onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+        onChange(dayjs(event.currentTarget.value)),
+    }),
+}));
 
 const props = {
   csrf: "csrf",
@@ -23,13 +43,13 @@ function renderForm() {
   );
 }
 function fill() {
-  fireEvent.change(screen.getByLabelText("Event title"), {
+  fireEvent.change(screen.getByLabelText(/^Event title/), {
     target: { value: "Friday games" },
   });
-  fireEvent.change(screen.getByLabelText("Event starts"), {
+  fireEvent.change(screen.getByLabelText(/^Event starts/), {
     target: { value: "June 14, 2090 7:00 PM" },
   });
-  fireEvent.change(screen.getByLabelText("Table 1 name"), {
+  fireEvent.change(screen.getByLabelText(/^Table 1 name/), {
     target: { value: "Clocktower" },
   });
 }
@@ -60,7 +80,7 @@ it("rejects duplicate table names before making a request", async () => {
   renderForm();
   fill();
   fireEvent.click(screen.getByRole("button", { name: "Add table" }));
-  fireEvent.change(screen.getByLabelText("Table 2 name"), {
+  fireEvent.change(screen.getByLabelText(/^Table 2 name/), {
     target: { value: "clocktower" },
   });
   fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
@@ -85,6 +105,6 @@ it("retains the form when saving fails", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Please check the event",
   );
-  expect(screen.getByLabelText("Event title")).toHaveValue("Friday games");
+  expect(screen.getByLabelText(/^Event title/)).toHaveValue("Friday games");
   expect(props.onCreated).not.toHaveBeenCalled();
 });
