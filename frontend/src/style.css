@@ -98,14 +98,23 @@ p {
   gap: 16px;
   flex-wrap: nowrap;
 }
-.account > span {
+.profile-button {
+  max-width: 100%;
+  min-width: 0;
+  gap: 8px;
+}
+.profile-button > svg {
+  flex-shrink: 0;
+}
+.profile-button > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .account > button {
-  flex-shrink: 0;
+  min-width: 0;
+  flex-shrink: 1;
   white-space: nowrap;
 }
 main {

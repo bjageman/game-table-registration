@@ -124,7 +124,8 @@ test("completes login, draft creation, publication, refresh, and logout", async 
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("button", { name: "organizer" }).click();
+  await page.getByRole("menuitem", { name: "Log Out" }).click();
   await expect(
     page.getByRole("link", { name: "Log in with Discord" }),
   ).toBeVisible();

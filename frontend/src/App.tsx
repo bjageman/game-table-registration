@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { LogOut } from "lucide-react";
+import { ChevronDown } from "lucide-react";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 import {
   api,
   ApiError,
@@ -18,6 +20,7 @@ type AuthState =
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
 
@@ -94,17 +97,34 @@ export default function App() {
         </div>
         {auth.kind === "ready" && (
           <div className="account">
-            <span>
-              <strong>{auth.session.username}</strong>
-            </span>
             <button
-              onClick={() => void logout()}
-              disabled={loggingOut}
-              aria-label={loggingOut ? "Signing out…" : "Log out"}
-              title={loggingOut ? "Signing out…" : "Log out"}
+              className="profile-button"
+              aria-haspopup="menu"
+              aria-expanded={Boolean(accountAnchor)}
+              aria-controls={accountAnchor ? "account-menu" : undefined}
+              onClick={(event) => setAccountAnchor(event.currentTarget)}
             >
-              <LogOut size={18} aria-hidden="true" />
+              <span><strong>{auth.session.username}</strong></span>
+              <ChevronDown size={16} aria-hidden="true" />
             </button>
+            <Menu
+              id="account-menu"
+              anchorEl={accountAnchor}
+              open={Boolean(accountAnchor)}
+              onClose={() => setAccountAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+            >
+              <MenuItem
+                disabled={loggingOut}
+                onClick={() => {
+                  setAccountAnchor(null);
+                  void logout();
+                }}
+              >
+                {loggingOut ? "Signing Out…" : "Log Out"}
+              </MenuItem>
+            </Menu>
           </div>
         )}
       </header>
