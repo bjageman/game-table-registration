@@ -196,7 +196,6 @@ export default function EventForm({
       <h3 id={`${prefix}-heading`}>
         {draft ? "Edit Event Draft" : "Create Event Draft"}
       </h3>
-      <p>Save the details first. Creating a draft does not post to Discord.</p>
       <form
         noValidate
         onSubmit={(event) => void submit(event)}
