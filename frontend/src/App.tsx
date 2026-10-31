@@ -116,7 +116,7 @@ export default function App() {
           <section className="panel sign-in" aria-labelledby="sign-in-heading">
             <p className="eyebrow">Moderator dashboard</p>
             <h2 id="sign-in-heading">Bring everyone to the table.</h2>
-            <p>Sign in with Discord to manage your community’s game events.</p>
+            <p>Sign in with Discord to manage game events.</p>
             {auth.configured ? (
               <a className="button primary" href="/api/auth/login">
                 Log in with Discord

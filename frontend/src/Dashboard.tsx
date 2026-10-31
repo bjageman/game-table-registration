@@ -95,7 +95,6 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
       )}
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Your community</p>
           <h2 id="events-heading">Game events</h2>
         </div>
         <div className="form-actions">
