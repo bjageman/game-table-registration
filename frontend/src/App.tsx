@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { LogOut } from "lucide-react";
 import {
   api,
   ApiError,
@@ -96,8 +97,13 @@ export default function App() {
             <span>
               <strong>{auth.session.username}</strong>
             </span>
-            <button onClick={() => void logout()} disabled={loggingOut}>
-              {loggingOut ? "Signing out…" : "Log out"}
+            <button
+              onClick={() => void logout()}
+              disabled={loggingOut}
+              aria-label={loggingOut ? "Signing out…" : "Log out"}
+              title={loggingOut ? "Signing out…" : "Log out"}
+            >
+              <LogOut size={18} aria-hidden="true" />
             </button>
           </div>
         )}
