@@ -1,3 +1,4 @@
+import DraftActions from "./DraftActions";
 import type { EventRecord } from "./api";
 import PublishEvent, { type PublicationActions } from "./PublishEvent";
 
@@ -10,8 +11,14 @@ export function formatTime(timestamp: number): string {
 
 export default function EventList({
   events,
+  onEdit,
+  onDeleted,
   ...actions
-}: { events: EventRecord[] } & PublicationActions) {
+}: {
+  events: EventRecord[];
+  onEdit: (event: EventRecord) => void;
+  onDeleted: (event: EventRecord) => void;
+} & PublicationActions) {
   return (
     <ul className="event-list">
       {events.map((event) => (
@@ -72,7 +79,16 @@ export default function EventList({
               </p>
             )}
             {event.status === "draft" && (
-              <PublishEvent event={event} {...actions} />
+              <>
+                <PublishEvent event={event} {...actions} />
+                <DraftActions
+                  event={event}
+                  csrf={actions.csrf}
+                  onEdit={onEdit}
+                  onDeleted={onDeleted}
+                  onAccessError={actions.onAccessError}
+                />
+              </>
             )}
             {event.discord_url && (
               <a

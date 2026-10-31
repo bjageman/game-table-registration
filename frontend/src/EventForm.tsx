@@ -18,6 +18,7 @@ import { validateEvent } from "./eventValidation";
 
 interface Props {
   csrf: string;
+  event?: EventRecord;
   onCreated: (event: EventRecord) => void;
   onCancel: () => void;
   onAccessError: (error: unknown) => boolean;
@@ -26,25 +27,50 @@ interface Props {
 function initialTime(): Dayjs {
   const current = dayjs();
   const minute =
-    current.minute() + Number(current.second() > 0 || current.millisecond() > 0);
-  return current.minute(Math.ceil(minute / 15) * 15).second(0).millisecond(0);
+    current.minute() +
+    Number(current.second() > 0 || current.millisecond() > 0);
+  return current
+    .minute(Math.ceil(minute / 15) * 15)
+    .second(0)
+    .millisecond(0);
 }
 
 export default function EventForm({
   csrf,
+  event: draft,
   onCreated,
   onCancel,
   onAccessError,
 }: Props) {
   const prefix = useId();
-  const [title, setTitle] = useState("");
-  const [startsAt, setStartsAt] = useState<Dayjs | null>(null);
-  const [startsAtLocal, setStartsAtLocal] = useState("");
-  const [mobileDate, setMobileDate] = useState<Dayjs | null>(null);
-  const [mobileTime, setMobileTime] = useState(initialTime);
-  const [duration, setDuration] = useState("24");
-  const [tables, setTables] = useState([{ id: 0, name: "", capacity: "15" }]);
-  const nextId = useRef(1);
+  const [title, setTitle] = useState(draft?.title ?? "");
+  const [startsAt, setStartsAt] = useState<Dayjs | null>(
+    draft ? dayjs.unix(draft.starts_at) : null,
+  );
+  const [startsAtLocal, setStartsAtLocal] = useState(
+    draft ? dayjs.unix(draft.starts_at).format("YYYY-MM-DDTHH:mm") : "",
+  );
+  const [mobileDate, setMobileDate] = useState<Dayjs | null>(
+    draft ? dayjs.unix(draft.starts_at) : null,
+  );
+  const [mobileTime, setMobileTime] = useState(() =>
+    draft
+      ? dayjs()
+          .hour(dayjs.unix(draft.starts_at).hour())
+          .minute(dayjs.unix(draft.starts_at).minute())
+      : initialTime(),
+  );
+  const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
+  const [tables, setTables] = useState(
+    draft
+      ? draft.tables.map((table, id) => ({
+          id,
+          name: table.name,
+          capacity: String(table.capacity),
+        }))
+      : [{ id: 0, name: "", capacity: "15" }],
+  );
+  const nextId = useRef(tables.length);
   const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -69,11 +95,7 @@ export default function EventForm({
     );
     const time = mobileTime;
     setStartsAt(
-      value
-        .hour(time.hour())
-        .minute(time.minute())
-        .second(0)
-        .millisecond(0),
+      value.hour(time.hour()).minute(time.minute()).second(0).millisecond(0),
     );
   }
 
@@ -85,12 +107,13 @@ export default function EventForm({
         `${mobileDate.format("YYYY-MM-DD")}T${value.format("HH:mm")}`,
       );
     }
-    setStartsAt((current) =>
-      current
-        ?.hour(value.hour())
-        .minute(value.minute())
-        .second(0)
-        .millisecond(0) ?? null,
+    setStartsAt(
+      (current) =>
+        current
+          ?.hour(value.hour())
+          .minute(value.minute())
+          .second(0)
+          .millisecond(0) ?? null,
     );
   }
 
@@ -127,16 +150,19 @@ export default function EventForm({
     setSaving(true);
     try {
       const result = await api<EventRecord>(
-        "/events",
-        mutationOptions(csrf, {
-          title: title.trim(),
-          starts_at: start.toISOString(),
-          duration_hours: hours,
-          tables: tables.map((table) => ({
-            name: table.name.trim(),
-            capacity: Number(table.capacity),
-          })),
-        }),
+        draft ? `/events/${draft.id}` : "/events",
+        {
+          ...mutationOptions(csrf, {
+            title: title.trim(),
+            starts_at: start.toISOString(),
+            duration_hours: hours,
+            tables: tables.map((table) => ({
+              name: table.name.trim(),
+              capacity: Number(table.capacity),
+            })),
+          }),
+          method: draft ? "PUT" : "POST",
+        },
       );
       onCreated(result);
     } catch (failure) {
@@ -167,12 +193,14 @@ export default function EventForm({
 
   return (
     <section className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
-      <h3 id={`${prefix}-heading`}>Create event draft</h3>
+      <h3 id={`${prefix}-heading`}>
+        {draft ? "Edit event draft" : "Create event draft"}
+      </h3>
       <p>Save the details first. Creating a draft does not post to Discord.</p>
       <form
         noValidate
         onSubmit={(event) => void submit(event)}
-        aria-label="Create event"
+        aria-label={draft ? "Edit event" : "Create event"}
       >
         <fieldset disabled={saving}>
           <legend className="sr-only">Event details</legend>

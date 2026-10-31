@@ -19,6 +19,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<EventRecord | undefined>();
   const [notice, setNotice] = useState("");
   const noticeElement = useRef<HTMLParagraphElement>(null);
   const createButton = useRef<HTMLButtonElement>(null);
@@ -29,9 +30,12 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
 
   function created(event: EventRecord) {
     setEvents((rows) =>
-      [...rows, event].sort((a, b) => a.starts_at - b.starts_at),
+      [...rows.filter((row) => row.id !== event.id), event].sort(
+        (a, b) => a.starts_at - b.starts_at,
+      ),
     );
     setCreating(false);
+    setEditing(undefined);
     setNotice(
       `Draft saved: ${event.title}. Nothing has been posted to Discord.`,
     );
@@ -88,6 +92,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             ref={createButton}
             className="primary"
             onClick={() => {
+              setEditing(undefined);
               setCreating(true);
               setNotice("");
             }}
@@ -107,10 +112,13 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
       )}
       {creating && (
         <EventForm
+          key={editing?.id ?? "new"}
+          event={editing}
           csrf={session.csrf}
           onCreated={created}
           onCancel={() => {
             setCreating(false);
+            setEditing(undefined);
             requestAnimationFrame(() => createButton.current?.focus());
           }}
           onAccessError={onAccessError}
@@ -130,6 +138,19 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         (events.length ? (
           <EventList
             events={events}
+            onEdit={(event) => {
+              setEditing(event);
+              setCreating(true);
+              setNotice("");
+            }}
+            onDeleted={(event) => {
+              setEvents((rows) => rows.filter((row) => row.id !== event.id));
+              if (editing?.id === event.id) {
+                setEditing(undefined);
+                setCreating(false);
+              }
+              setNotice(`Draft deleted: ${event.title}.`);
+            }}
             csrf={session.csrf}
             onUpdated={updated}
             onUncertain={uncertain}
