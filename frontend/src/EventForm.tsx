@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from "react";
+import { Plus } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
@@ -107,9 +108,9 @@ export default function EventForm({
             maxLength={100}
             autoFocus
           />
-          <div className="form-grid">
+          <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
-              <label id={`${prefix}-starts-at-label`}>Event date and time</label>
+              <label id={`${prefix}-starts-at-label`}>Event starts</label>
               <DatePicker
                 selected={startsAt}
                 onChange={setStartsAt}
@@ -126,6 +127,13 @@ export default function EventForm({
               <p id={`${prefix}-timezone`} className="help">
                 Timezone: {timezone}. Times are saved with the correct UTC offset.
               </p>
+            </div>
+            <div>
+              <label htmlFor={`${prefix}-signup-start`}>Signup starts</label>
+              <output id={`${prefix}-signup-start`} className="schedule-value">
+                When the event is published
+              </output>
+              <p className="help">Signups open as soon as you publish.</p>
             </div>
             <div>
               <label htmlFor={`${prefix}-duration`}>
@@ -196,6 +204,7 @@ export default function EventForm({
             </div>
           ))}
           <button
+            className="add-table-button"
             type="button"
             disabled={tables.length >= 10}
             onClick={() =>
@@ -205,7 +214,8 @@ export default function EventForm({
               ])
             }
           >
-            Add table
+            <Plus size={18} aria-hidden="true" />
+            Add Table
           </button>
         </fieldset>
         {error && (

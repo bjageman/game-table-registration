@@ -247,12 +247,28 @@ input {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
+.event-schedule-fields {
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
 .date-time-fields {
-  grid-column: 1 / -1;
   min-width: 0;
 }
 .date-time-picker-input {
   box-sizing: border-box;
+}
+.schedule-value {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  margin: 0 0 8px;
+  padding: 9px 12px;
+  border: 1px solid #dce3d9;
+  border-radius: 6px;
+  background: #f7f7f2;
+}
+.add-table-button {
+  gap: 8px;
 }
 .table-fields {
   display: grid;
