@@ -1,0 +1,15 @@
+name: Enforce dev → main
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require PR source to be dev in this repository
+        if: github.head_ref != 'dev' || github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "PRs to main must come from this repository's dev branch."
+          exit 1

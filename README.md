@@ -26,3 +26,6 @@ register `PUBLIC_URL` plus `/api/auth/callback` in Discord's OAuth2 settings.
 
 See [backend setup](docs/backend.md) and [frontend setup](docs/frontend.md) for
 configuration details and alternative startup methods.
+
+See [deployment and promotion](docs/deployment.md) for hosted dev/prod setup,
+GitHub secrets, and the feature → dev → main review process.

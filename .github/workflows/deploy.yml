@@ -1,0 +1,26 @@
+name: Deploy to Production
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          command_timeout: 30m
+          script_stop: true
+          script: |
+            set -eu
+            cd /tank/apps/docker/vibes/game-table-registration
+            git fetch origin main:refs/remotes/origin/main
+            git show origin/main:scripts/deploy.sh | DEPLOY_REPO="$PWD" bash -s -- prod
