@@ -15,6 +15,7 @@ afterEach(() => {
 
 function mockApi(meStatus = 200, configured = true) {
   const fetchMock = vi.fn(async (path: string) => {
+    if (path === "/api/events") return new Response("[]");
     if (path === "/api/me")
       return new Response(
         JSON.stringify(

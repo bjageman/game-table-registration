@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   api,
   ApiError,
@@ -19,6 +19,18 @@ export default function App() {
   const [attempt, setAttempt] = useState(0);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+
+  const onAccessError = useCallback((error: unknown) => {
+    if (error instanceof ApiError && error.status === 401) {
+      setAuth({ kind: "signed-out", configured: true });
+      return true;
+    }
+    if (error instanceof ApiError && error.status === 403) {
+      setAuth({ kind: "forbidden", message: errorMessage(error) });
+      return true;
+    }
+    return false;
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -137,7 +149,9 @@ export default function App() {
             <button onClick={retry}>Check again</button>
           </section>
         )}
-        {auth.kind === "ready" && <Dashboard />}
+        {auth.kind === "ready" && (
+          <Dashboard session={auth.session} onAccessError={onAccessError} />
+        )}
       </main>
       <footer>Made for your next game night.</footer>
     </div>
