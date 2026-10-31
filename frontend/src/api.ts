@@ -86,6 +86,8 @@ export interface EventRecord {
   tables: { name: string; capacity: number }[];
   status: string;
   closes_at: number | null;
+  published_at?: number | null;
+  close_error?: string | null;
   discord_url: string | null;
 }
 

@@ -2,6 +2,7 @@ import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
 import { Eye, RefreshCw, X } from "lucide-react";
 import EventTables from "./EventTables";
+import CloseSignups from "./CloseSignups";
 import EventActions from "./EventActions";
 import type { EventRecord } from "./api";
 import PublishEvent, { type PublicationActions } from "./PublishEvent";
@@ -46,7 +47,7 @@ export default function EventList({
               <span className="event-list-dates help">
                 <span>Event: <ListTime timestamp={event.starts_at} /></span>
                 <span>Signups: {event.closes_at !== null ? <>
-                  <ListTime timestamp={event.closes_at - event.duration_hours * 3600} />
+                  <ListTime timestamp={event.published_at ?? event.closes_at - event.duration_hours * 3600} />
                   {" – "}<ListTime timestamp={event.closes_at} />
                 </> : "Not scheduled"}</span>
               </span>
@@ -152,7 +153,13 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
                 </div>
               )}
             </dl>
-            <EventTables key={`${event.id}:${event.discord_url}`} event={event} csrf={actions.csrf} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}`} event={event} csrf={actions.csrf} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
+            {event.status === "closing" && <p role="status" className="notice">
+              {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
+            </p>}
+            {(event.status === "open" || event.status === "closing") && <div className="form-actions">
+              <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />
+            </div>}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (

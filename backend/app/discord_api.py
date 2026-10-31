@@ -122,14 +122,13 @@ class DiscordAPI:
             )
         return rows
 
-    def voters(self, message_id: str, answer_id: int) -> list[dict[str, str]]:
-        players: dict[str, dict[str, str]] = {}
+    def voter_users(self, message_id: str, answer_id: int) -> list[dict[str, Any]]:
+        users_by_id: dict[str, dict[str, Any]] = {}
         after = 0
         while True:
             response = self.bot(
                 "GET",
-                f"/channels/{self.settings.discord_channel_id}/polls/"
-                f"{message_id}/answers/{answer_id}",
+                f"/channels/{self.settings.discord_channel_id}/polls/{message_id}/answers/{answer_id}",
                 params={"limit": 100, **({"after": str(after)} if after else {})},
             )
             users = response.get("users")
@@ -139,12 +138,12 @@ class DiscordAPI:
                 break
             try:
                 for user in users:
-                    if not user.get("bot"):
-                        player_id = str(user["id"])
-                        players[player_id] = {
-                            "id": player_id,
-                            "name": user.get("global_name") or user["username"],
-                        }
+                    user_id = str(user["id"])
+                    if not isinstance(
+                        user.get("global_name") or user.get("username"), str
+                    ):
+                        raise ValueError("Missing user name")
+                    users_by_id[user_id] = user
                 cursor = max(int(user["id"]) for user in users)
             except (KeyError, ValueError, TypeError):
                 raise HTTPException(
@@ -155,7 +154,29 @@ class DiscordAPI:
             after = cursor
             if len(users) < 100:
                 break
-        return sorted(players.values(), key=lambda player: player["name"].casefold())
+        return list(users_by_id.values())
+
+    def voters(self, message_id: str, answer_id: int) -> list[dict[str, str]]:
+        players = [
+            {
+                "id": str(user["id"]),
+                "name": str(user.get("global_name") or user["username"]),
+            }
+            for user in self.voter_users(message_id, answer_id)
+            if not user.get("bot")
+        ]
+        return sorted(players, key=lambda player: player["name"].casefold())
+
+    def poll_message(self, message_id: str) -> dict[str, Any]:
+        return self.bot(
+            "GET", f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+        )
+
+    def end_poll(self, message_id: str) -> None:
+        self.bot(
+            "POST",
+            f"/channels/{self.settings.discord_channel_id}/polls/{message_id}/expire",
+        )
 
     def delete_poll(self, message_id: str) -> None:
         self.bot(

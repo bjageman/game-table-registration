@@ -44,7 +44,8 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
 
   function updated(event: EventRecord) {
     setEvents((rows) => rows.map((row) => (row.id === event.id ? event : row)));
-    setNotice(`Poll published: ${event.title}.`);
+    const message = event.status === "assigned" ? "Placements determined" : event.status === "closing" ? "Signups closing" : "Poll published";
+    setNotice(`${message}: ${event.title}.`);
   }
 
   function uncertain(event: EventRecord, message: string) {
