@@ -14,12 +14,12 @@ it("focuses Cancel, blocks dismissal while busy, and restores trigger focus", ()
   const onConfirm = vi.fn();
   const props = { title: "Delete event?", error: "", onCancel, onConfirm };
   const view = render(<ConfirmationDialog {...props} busy={false}>Details</ConfirmationDialog>);
-  expect(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
-  fireEvent.click(screen.getByRole("button", { name: "Confirm", exact: true }));
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
   expect(onConfirm).toHaveBeenCalledOnce();
   view.rerender(<ConfirmationDialog {...props} busy={true}>Details</ConfirmationDialog>);
-  expect(screen.getByRole("button", { name: "Confirm", exact: true })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
   expect(onCancel).not.toHaveBeenCalled();
   view.rerender(<ConfirmationDialog {...props} busy={false}>Details</ConfirmationDialog>);
