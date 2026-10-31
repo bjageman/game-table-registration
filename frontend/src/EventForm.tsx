@@ -287,16 +287,19 @@ export default function EventForm({
                     }}
                   />
                 </div>
-                <button
-                  type="button"
-                  disabled={tables.length === 1}
-                  aria-label={`Remove table ${index + 1}`}
-                  onClick={() =>
-                    setTables((rows) => rows.filter((row) => row.id !== table.id))
-                  }
-                >
-                  −
-                </button>
+                {tables.length > 1 && (
+                  <button
+                    type="button"
+                    aria-label={`Remove table ${index + 1}`}
+                    onClick={() =>
+                      setTables((rows) =>
+                        rows.filter((row) => row.id !== table.id),
+                      )
+                    }
+                  >
+                    −
+                  </button>
+                )}
               </div>
             ))}
           </div>
