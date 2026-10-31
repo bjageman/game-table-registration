@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tables
+      POSTGRES_USER: tables
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U tables -d tables']
+      interval: 5s
+      timeout: 5s
+      retries: 15
+  migrate:
+    image: game-table-registration-api:${DEPLOY_ENV:?Set DEPLOY_ENV}
+    build: .
+    env_file: ${APP_ENV_FILE:?Set APP_ENV_FILE}
+    environment:
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db/tables
+    command: [alembic, upgrade, head]
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    restart: unless-stopped
+    image: game-table-registration-api:${DEPLOY_ENV:?Set DEPLOY_ENV}
+    build: .
+    env_file: ${APP_ENV_FILE:?Set APP_ENV_FILE}
+    environment:
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db/tables
+      PUBLIC_URL: https://${SIGNUPS_HOST:?Set SIGNUPS_HOST}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  web:
+    image: game-table-registration-web:${DEPLOY_ENV}
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      VIRTUAL_HOST: ${SIGNUPS_HOST}
+      VIRTUAL_PORT: '80'
+      LETSENCRYPT_HOST: ${SIGNUPS_HOST}
+      LETSENCRYPT_EMAIL: ${EMAIL:?Set EMAIL}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [default, proxy]
+networks:
+  proxy:
+    name: nginx-proxy
+    external: true
+volumes:
+  database:
