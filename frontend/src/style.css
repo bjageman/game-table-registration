@@ -359,7 +359,9 @@ dd {
   border-radius: 8px;
   padding: 16px;
 }
-.event-table h3 { font-weight: 650; margin-bottom: 8px; }
+.table-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.event-table h3 { font-weight: 650; margin: 0; min-width: 0; }
+.table-player-count { margin-left: auto; flex-shrink: 0; color: #52665a; }
 .table-players { list-style: disc; padding-left: 20px; }
 .table-waitlist { margin-top: 20px; }
 .table-waitlist h5 { font-weight: 650; margin-bottom: 8px; }
@@ -399,3 +401,20 @@ dd {
 .confirmation-actions {
   justify-content: center;
 }
+
+.delete-poll-option { display: flex; align-items: center; gap: 8px; }
+
+.player-name {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #285841;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.player-name:hover { background: transparent; color: #19432f; }

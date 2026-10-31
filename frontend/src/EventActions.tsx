@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
-export default function DraftActions({
+export default function EventActions({
   event,
   csrf,
   onEdit,
@@ -16,6 +16,8 @@ export default function DraftActions({
   onDeleted: (event: EventRecord) => void;
   onAccessError: (error: unknown) => boolean;
 }) {
+  const [deletePoll, setDeletePoll] = useState(false);
+  const isDraft = event.status === "draft";
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -26,7 +28,7 @@ export default function DraftActions({
     setBusy(true);
     setError("");
     try {
-      await api(`/events/${event.id}`, {
+      await api(`/events/${encodeURIComponent(event.id)}${deletePoll ? "?delete_poll=true" : ""}`, {
         ...mutationOptions(csrf),
         method: "DELETE",
       });
@@ -40,16 +42,17 @@ export default function DraftActions({
   }
   return (
     <>
-      <button type="button" className="event-icon-action" aria-label="Edit draft" title="Edit Draft" onClick={() => onEdit(event)}>
+      {isDraft && <button type="button" className="event-icon-action" aria-label="Edit draft" title="Edit Draft" onClick={() => onEdit(event)}>
         <Pencil size={18} aria-hidden="true" />
-      </button>
+      </button>}
       <button
         type="button"
         className="event-icon-action"
-        aria-label="Delete draft"
-        title="Delete Draft"
+        aria-label={isDraft ? "Delete draft" : "Delete signup"}
+        title={isDraft ? "Delete Draft" : "Delete Sign-up"}
         onClick={() => {
           setError("");
+          setDeletePoll(false);
           setConfirming(true);
         }}
       >
@@ -64,7 +67,12 @@ export default function DraftActions({
           onCancel={() => setConfirming(false)}
           onConfirm={() => void remove()}
         >
-          <p>This permanently deletes the unpublished draft and its tables.</p>
+          <p>{isDraft ? "This permanently deletes the unpublished draft and its tables." : "This permanently removes the signup from Gather."}</p>
+          {event.discord_url && <label className="delete-poll-option">
+            <input type="checkbox" checked={deletePoll} disabled={busy}
+              onChange={(event) => setDeletePoll(event.target.checked)} />
+            Also delete the poll on Discord
+          </label>}
         </ConfirmationDialog>
       )}
     </>

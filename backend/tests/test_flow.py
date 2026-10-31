@@ -210,7 +210,7 @@ def test_edit_and_delete_unpublished_draft(client):
     assert client.post(path + "/publish", headers=headers).status_code == 404
 
 
-@pytest.mark.parametrize("status", ["publishing", "open", "needs_review", "cancelled"])
+@pytest.mark.parametrize("status", ["publishing", "needs_review", "cancelled"])
 def test_published_events_cannot_be_edited_or_deleted(client, status):
     from app.models import Event
 
@@ -224,3 +224,77 @@ def test_published_events_cannot_be_edited_or_deleted(client, status):
     assert client.put(path, headers=headers, json=event_body()).status_code == 409
     assert client.delete(path, headers=headers).status_code == 409
     assert client.get("/api/events").json()[0]["status"] == status
+
+
+def test_signup_endpoint_is_authorized_and_scoped_to_guild(client):
+    from app.models import Event
+
+    assert client.get("/api/events/missing/signups").status_code == 401
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}/signups"
+    result = client.get(path)
+    assert result.status_code == 200
+    assert all(t["players"] == [] for t in result.json())
+    client.app.state.discord.table_signups.assert_not_called()
+    with DBSession(client.app.state.engine) as db:
+        row = db.get(Event, event["id"])
+        row.message_id = "message"
+        db.commit()
+    players = [{"name": "A", "players": [{"id": "1", "name": "Mary"}]}]
+    client.app.state.discord.table_signups.return_value = players
+    assert client.get(path).json() == players
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).guild_id = "other-guild"
+        db.commit()
+    assert client.get(path).status_code == 404
+
+
+@pytest.mark.parametrize("delete_poll", [False, True])
+def test_delete_open_signup_with_optional_discord_poll(client, delete_poll):
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    assert client.post(path + "/publish", headers=headers).status_code == 200
+    query = "?delete_poll=true" if delete_poll else ""
+    assert client.delete(path + query).status_code == 403
+    assert client.delete(path + query, headers=headers).status_code == 204
+    assert client.get("/api/events").json() == []
+    if delete_poll:
+        client.app.state.discord.delete_poll.assert_called_once_with("message")
+    else:
+        client.app.state.discord.delete_poll.assert_not_called()
+
+
+def test_failed_discord_deletion_preserves_signup_for_retry(client):
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    client.post(path + "/publish", headers=headers)
+    client.app.state.discord.delete_poll.side_effect = HTTPException(
+        502, "Discord failed"
+    )
+    assert client.delete(path + "?delete_poll=true", headers=headers).status_code == 502
+    assert client.get("/api/events").json()[0]["status"] == "open"
+    client.app.state.discord.delete_poll.side_effect = None
+    assert client.delete(path + "?delete_poll=true", headers=headers).status_code == 204
+
+
+def test_cross_guild_signup_cannot_be_deleted(client):
+    from app.models import Event
+
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    with DBSession(client.app.state.engine) as db:
+        row = db.get(Event, event["id"])
+        row.guild_id = "other-guild"
+        row.status = "open"
+        row.message_id = "message"
+        db.commit()
+    assert (
+        client.delete(
+            f"/api/events/{event['id']}?delete_poll=true", headers=headers
+        ).status_code
+        == 409
+    )
+    client.app.state.discord.delete_poll.assert_not_called()

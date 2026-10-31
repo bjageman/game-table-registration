@@ -1,3 +1,4 @@
+import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
 export default function ConfirmationDialog({
@@ -25,7 +26,7 @@ export default function ConfirmationDialog({
     };
   }, []);
   return (
-    <dialog ref={dialog} aria-labelledby={heading} aria-busy={busy}
+    <dialog onClick={(event) => { if (!busy && isBackdropClick(event)) onCancel(); }} ref={dialog} aria-labelledby={heading} aria-busy={busy}
       onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
       <h2 id={heading}>{title}</h2>
       {children}

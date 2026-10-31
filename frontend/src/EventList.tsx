@@ -1,7 +1,8 @@
+import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
-import { Eye, X } from "lucide-react";
+import { Eye, RefreshCw, X } from "lucide-react";
 import EventTables from "./EventTables";
-import DraftActions from "./DraftActions";
+import EventActions from "./EventActions";
 import type { EventRecord } from "./api";
 import PublishEvent, { type PublicationActions } from "./PublishEvent";
 
@@ -71,6 +72,8 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const modal = dialog.current;
     const trigger = document.activeElement;
@@ -81,7 +84,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
     };
   }, []);
   return (
-    <dialog ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
+    <dialog onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <div className="event-modal-header">
         <h2 id={`event-${event.id}`}>{event.title}</h2>
@@ -89,16 +92,23 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
           {event.status.replaceAll("_", " ")}
         </span>
         <div className="event-header-actions">
+          <button type="button" className="event-icon-action"
+            aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
+            title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
+            disabled={refreshing || !event.discord_url}
+            onClick={() => setRefreshToken((value) => value + 1)}>
+            <RefreshCw size={18} aria-hidden="true" />
+          </button>
           {event.discord_url && (
             <a className="button event-icon-action" href={event.discord_url} target="_blank" rel="noreferrer"
               aria-label={`View Discord poll for ${event.title} (opens in a new tab)`} title="View Discord Poll">
               <Eye size={18} aria-hidden="true" />
             </a>
           )}
-          {event.status === "draft" && (
+          {event.status === "draft" && <PublishEvent event={event} {...actions} />}
+          {(event.status === "draft" || event.status === "open") && (
             <>
-                <PublishEvent event={event} {...actions} />
-                <DraftActions
+                <EventActions
                   event={event}
                   csrf={actions.csrf}
                   onEdit={(edited) => { onClose(); onEdit(edited); }}
@@ -140,7 +150,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
                 </div>
               )}
             </dl>
-            <EventTables event={event} />
+            <EventTables key={`${event.id}:${event.discord_url}`} event={event} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (
