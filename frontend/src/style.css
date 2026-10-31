@@ -322,6 +322,8 @@ dd {
 
 .schedule-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; }
 
-.signup-confirmation-actions {
-  justify-content: center;
-}
+
+
+.schedule-section { margin-bottom: 32px; }
+.schedule-fields { border: 0; padding: 0; margin: 24px 0; min-width: 0; }
+.schedule-preview { margin-top: 24px; display: grid; gap: 12px; }
