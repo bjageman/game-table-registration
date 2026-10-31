@@ -140,12 +140,12 @@ footer {
     padding: 0 16px;
   }
   .site-header {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
     gap: 16px;
   }
   .account {
-    width: 100%;
+    gap: 8px;
   }
   main {
     padding: 24px 0;
