@@ -2,10 +2,11 @@ import DraftActions from "./DraftActions";
 import type { EventRecord } from "./api";
 import PublishEvent, { type PublicationActions } from "./PublishEvent";
 
-export function formatTime(timestamp: number): string {
+export function formatTime(timestamp: number, timezone?: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "long",
+    timeZone: timezone,
   }).format(new Date(timestamp * 1000));
 }
 
@@ -37,39 +38,57 @@ export default function EventList({
             </div>
             <dl className="event-details">
               <div>
+                <dt>Timezone</dt>
+                <dd>
+                  {event.timezone ??
+                    Intl.DateTimeFormat().resolvedOptions().timeZone}
+                </dd>
+              </div>
+              {event.schedule_id && (
+                <div>
+                  <dt>Occurrence</dt>
+                  <dd>
+                    {event.occurrence_date}
+                    {event.overridden ? " · overridden" : ""}
+                  </dd>
+                </div>
+              )}
+              <div>
                 <dt>Event starts</dt>
                 <dd>
                   <time
                     dateTime={new Date(event.starts_at * 1000).toISOString()}
                   >
-                    {formatTime(event.starts_at)}
+                    {formatTime(event.starts_at, event.timezone)}
                   </time>
                 </dd>
               </div>
               {event.opens_at && (
                 <div>
                   <dt>Signups open</dt>
-                  <dd>{formatTime(event.opens_at)}</dd>
+                  <dd>{formatTime(event.opens_at, event.timezone)}</dd>
                 </div>
               )}
               {event.signup_closes_at && (
                 <div>
                   <dt>Signups close</dt>
-                  <dd>{formatTime(event.signup_closes_at)}</dd>
+                  <dd>{formatTime(event.signup_closes_at, event.timezone)}</dd>
                 </div>
               )}
-              <div>
-                <dt>Signup duration</dt>
-                <dd>{event.duration_hours} hours from publication</dd>
-              </div>
-              {event.closes_at !== null && (
+              {!event.opens_at && (
+                <div>
+                  <dt>Signup duration</dt>
+                  <dd>{event.duration_hours} hours from publication</dd>
+                </div>
+              )}
+              {event.closes_at !== null && !event.signup_closes_at && (
                 <div>
                   <dt>Signups close</dt>
                   <dd>
                     <time
                       dateTime={new Date(event.closes_at * 1000).toISOString()}
                     >
-                      {formatTime(event.closes_at)}
+                      {formatTime(event.closes_at, event.timezone)}
                     </time>
                   </dd>
                 </div>
@@ -106,6 +125,7 @@ export default function EventList({
                 />
               </div>
             )}
+            {event.last_error && <p className="notice">{event.last_error}</p>}
             {event.discord_url && (
               <a
                 className="button"

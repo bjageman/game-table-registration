@@ -81,3 +81,28 @@ def test_missed_custom_close_is_held(tmp_path):
     discord.bot.assert_not_called()
     with Session(engine) as db:
         assert db.get(Event, "event").status == "needs_review"
+
+
+def test_close_is_claimed_once_and_interrupted_jobs_are_held(tmp_path):
+    engine, config = setup(tmp_path)
+    with Session(engine) as db:
+        event = db.get(Event, "event")
+        event.status = "open"
+        event.message_id = "message"
+        event.signup_closes_at = time.time() - 5
+        event.closes_at = time.time() + 3600
+        db.commit()
+    discord = Mock()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: tick(engine, discord, config), range(2)))
+    assert discord.bot.call_count == 1
+    with Session(engine) as db:
+        event = db.get(Event, "event")
+        assert event.status == "closed"
+        event.status = "publishing"
+        event.operation_started_at = time.time() - 300
+        db.commit()
+    tick(engine, discord, config)
+    with Session(engine) as db:
+        assert db.get(Event, "event").status == "needs_review"
+    discord.publish.assert_not_called()

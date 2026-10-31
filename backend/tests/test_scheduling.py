@@ -71,3 +71,17 @@ def test_preview_reports_dst_and_explicit_skips():
     assert preview(
         rule(first_date="2090-03-12", event_time="02:30", skip_dates=["2090-03-12"])
     )[0]["skipped"]
+
+
+def test_weekly_wall_times_follow_dst_offset_change():
+    rows = preview(
+        rule(
+            first_date="2090-03-05",
+            opening_days_before=0,
+            opening_time="12:00",
+            closing_days_before=0,
+            closing_time="18:00",
+        )
+    )
+    assert rows[1]["starts_at"] - rows[0]["starts_at"] == 167 * 3600
+    assert all(not row.get("error") for row in rows)

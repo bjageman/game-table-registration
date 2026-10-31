@@ -359,3 +359,71 @@ test("edits a draft and requires confirmation before deleting it", async ({
   ).toBeVisible();
   expect(deletions).toBe(1);
 });
+
+test("saves explicit signup times and requires confirmation to schedule them", async ({
+  page,
+}) => {
+  await signIn(page);
+  let events: Record<string, unknown>[] = [];
+  let activations = 0;
+  await page.route("**/api/events", async (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: events });
+    const body = route.request().postDataJSON();
+    expect(Date.parse(body.opens_at)).toBeLessThan(
+      Date.parse(body.signup_closes_at),
+    );
+    expect(Date.parse(body.signup_closes_at)).toBeLessThan(
+      Date.parse(body.starts_at),
+    );
+    expect(body.timezone).toBe("America/New_York");
+    events = [
+      {
+        ...draft,
+        ...body,
+        id: "timed",
+        starts_at: Date.parse(body.starts_at) / 1000,
+        opens_at: Date.parse(body.opens_at) / 1000,
+        signup_closes_at: Date.parse(body.signup_closes_at) / 1000,
+      },
+    ];
+    return route.fulfill({ status: 201, json: events[0] });
+  });
+  await page.route("**/api/events/timed/schedule", (route) => {
+    activations++;
+    events = [{ ...events[0], status: "scheduled" }];
+    return route.fulfill({ json: events[0] });
+  });
+  await page.goto("/");
+  await fillDraft(page);
+  await page.getByLabel("Schedule signup opening and closing").check();
+  for (const [label, day] of [
+    ["Signup opens", "9"],
+    ["Signup closes", "13"],
+  ]) {
+    const field = page.getByRole("group", { name: label, exact: true });
+    for (const [name, value] of [
+      ["Month", "June"],
+      ["Day", day],
+      ["Year", "2090"],
+      ["Hours", "12"],
+      ["Minutes", "00"],
+      ["Meridiem", "PM"],
+    ]) {
+      await field.getByRole("spinbutton", { name, exact: true }).fill(value);
+    }
+  }
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Schedule signups", exact: true }),
+  ).toBeVisible();
+  expect(activations).toBe(0);
+  await page
+    .getByRole("button", { name: "Schedule signups", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm schedule", exact: true })
+    .click();
+  await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
+  expect(activations).toBe(1);
+});

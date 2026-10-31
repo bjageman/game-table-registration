@@ -1,6 +1,6 @@
 # Game table registration: development plan
 
-Status: proposed architecture; no application or deployment has been implemented. Scope is one Discord community initially, with all records scoped to a guild so another community can be supported later.
+Status: foundation, moderator authentication, draft management, and poll publication are implemented in dev. The issue #3 scheduling stack adds durable signup jobs, weekly recurrence, and occurrence controls; production delivery and lottery work remain. Scope is one Discord community initially, with all records scoped to a guild so another community can be supported later.
 
 ## Product behavior
 

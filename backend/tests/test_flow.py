@@ -340,3 +340,21 @@ def test_schedule_edits_preserve_published_and_overridden_occurrences(client):
         "paused",
         "cancelled",
     }
+
+
+def test_schedule_creation_request_key(client):
+    import uuid
+
+    headers = {**login(client), "Idempotency-Key": str(uuid.uuid4())}
+    body = schedule_body()
+    first = client.post("/api/schedules", headers=headers, json=body)
+    second = client.post("/api/schedules", headers=headers, json=body)
+    assert first.status_code == second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+    assert len(client.get("/api/events").json()) == 8
+    assert (
+        client.post(
+            "/api/schedules", headers=headers, json={**body, "title": "Other"}
+        ).status_code
+        == 409
+    )

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import TextField from "@mui/material/TextField";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
@@ -40,6 +40,8 @@ export default function ScheduleForm({
       skip_dates: [],
     },
   );
+  const requestKey = useRef(crypto.randomUUID());
+  const inFlight = useRef(false);
   const [rows, setRows] = useState<OccurrencePreview[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -48,7 +50,8 @@ export default function ScheduleForm({
     setRows([]);
   }
   async function act(save: boolean) {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -62,6 +65,10 @@ export default function ScheduleForm({
                 ...(initial ? { revision: initial.revision } : {}),
               }),
               method: initial ? "PUT" : "POST",
+              headers: {
+                ...mutationOptions(csrf).headers,
+                "Idempotency-Key": requestKey.current,
+              },
             },
           ),
         );
@@ -78,6 +85,7 @@ export default function ScheduleForm({
     } catch (failure) {
       if (!onAccessError(failure)) setError(errorMessage(failure));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -268,7 +276,9 @@ export default function ScheduleForm({
                 <input
                   type="checkbox"
                   checked={r.skipped}
-                  disabled={busy || ["preserved", "cancel"].includes(r.action ?? "")}
+                  disabled={
+                    busy || ["preserved", "cancel"].includes(r.action ?? "")
+                  }
                   onChange={(e) => {
                     const skipped = e.target.checked;
                     setDraft((d) => ({

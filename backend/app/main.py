@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import create_engine, delete, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import Settings
@@ -340,14 +341,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/schedules", status_code=201)
     def create_schedule(body: ScheduleInput, request: Request) -> dict[str, Any]:
         session = authenticated(request, True)
+        key = request.headers.get("idempotency-key")
+        try:
+            schedule_id = str(uuid.UUID(key)) if key else str(uuid.uuid4())
+        except ValueError:
+            raise HTTPException(422, "Invalid request key") from None
         rows = preview(body)
         if any(row.get("error") and not row["skipped"] for row in rows):
             raise HTTPException(
                 422, "Correct or explicitly skip the invalid dates shown in the preview"
             )
         with DBSession(engine) as db:
+            previous = db.get(Schedule, schedule_id)
+            if previous:
+                if (
+                    previous.guild_id != config.discord_guild_id
+                    or ScheduleInput.model_validate(schedule_data(previous)) != body
+                ):
+                    raise HTTPException(
+                        409, "This request key was used; refresh schedules"
+                    )
+                return schedule_data(previous)
             schedule = Schedule(
-                id=str(uuid.uuid4()),
+                id=schedule_id,
                 guild_id=config.discord_guild_id,
                 title=body.title.strip(),
                 timezone=body.timezone,
@@ -359,9 +375,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 active=True,
             )
             db.add(schedule)
-            db.flush()
-            materialize(db, schedule)
-            db.commit()
+            try:
+                db.flush()
+                materialize(db, schedule)
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                raise HTTPException(
+                    409, "Schedule already created; refresh schedules"
+                ) from None
             return schedule_data(schedule)
 
     @app.post("/api/schedules/{schedule_id}/preview")
@@ -441,13 +463,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for row in preview(body)
             ):
                 raise HTTPException(422, "Correct or skip invalid preview dates")
+            claimed = db.execute(
+                update(Schedule)
+                .where(Schedule.id == schedule_id, Schedule.revision == body.revision)
+                .values(revision=Schedule.revision + 1)
+                .returning(Schedule.id)
+            ).scalar_one_or_none()
+            if not claimed:
+                raise HTTPException(409, "Schedule changed; refresh before editing")
             schedule.title = body.title.strip()
             schedule.timezone = body.timezone
             schedule.rule = body.model_dump(
                 mode="json", exclude={"title", "timezone", "tables", "revision"}
             )
             schedule.tables = [t.model_dump() for t in body.tables]
-            schedule.revision += 1
             update_occurrences(db, schedule)
             db.commit()
             return schedule_data(schedule)
@@ -470,8 +499,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(404, "Schedule not found")
             if schedule.revision != body.revision:
                 raise HTTPException(409, "Schedule changed; refresh before editing")
+            claimed = db.execute(
+                update(Schedule)
+                .where(Schedule.id == schedule_id, Schedule.revision == body.revision)
+                .values(revision=Schedule.revision + 1)
+                .returning(Schedule.id)
+            ).scalar_one_or_none()
+            if not claimed:
+                raise HTTPException(409, "Schedule changed; refresh before editing")
             schedule.active = body.active
-            schedule.revision += 1
             db.execute(
                 update(Event)
                 .where(
