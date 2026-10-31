@@ -39,7 +39,6 @@ export default function EventForm({
   const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const isMobile = useMediaQuery("(max-width: 600px)");
   function updateDesktopStart(value: Dayjs | null) {
     setStartsAt(value);
@@ -172,7 +171,6 @@ export default function EventForm({
                       textField: {
                         fullWidth: true,
                         required: true,
-                        helperText: `Timezone: ${timezone}`,
                         slotProps: { inputLabel: { shrink: true } },
                       },
                     }}
@@ -187,7 +185,6 @@ export default function EventForm({
                       textField: {
                         fullWidth: true,
                         required: true,
-                        helperText: "Defaults to the current time.",
                         slotProps: { inputLabel: { shrink: true } },
                       },
                     }}
@@ -206,7 +203,6 @@ export default function EventForm({
                     textField: {
                       fullWidth: true,
                       required: true,
-                      helperText: `Timezone: ${timezone}. Times are saved with the correct UTC offset.`,
                       slotProps: { inputLabel: { shrink: true } },
                     },
                   }}
@@ -220,7 +216,6 @@ export default function EventForm({
                 value="When the event is published"
                 fullWidth
                 variant="outlined"
-                helperText="Signups open as soon as you publish."
                 slotProps={{
                   input: { readOnly: true },
                   inputLabel: { shrink: true },
@@ -237,7 +232,6 @@ export default function EventForm({
                 required
                 fullWidth
                 variant="outlined"
-                helperText="Starts when you publish. Signups must close before the event."
                 slotProps={{
                   inputLabel: { shrink: true },
                   htmlInput: { min: 1, max: 768, step: 1 },
