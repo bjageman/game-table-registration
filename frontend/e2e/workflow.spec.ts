@@ -123,7 +123,7 @@ test("completes login, timed draft creation, scheduling, refresh, and logout", a
   await expect(page.getByText("draft", { exact: true })).toBeVisible();
   await expect(page.getByRole("status")).toBeFocused();
   expect(publications).toBe(0);
-  await page.getByRole("button", { name: "Publish to Discord" }).click();
+  await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
   await page.getByRole("button", { name: "Confirm publication" }).click();
   await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Refresh events" }).click();
@@ -258,11 +258,11 @@ for (const outcome of ["network", "conflict"] as const) {
       });
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Publish to Discord" }).click();
+    await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
     await page.getByRole("button", { name: "Confirm publication" }).click();
     await expect(page.getByText("unconfirmed", { exact: true })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Publish to Discord" }),
+      page.getByRole("button", { name: "Schedule a Sign-up" }),
     ).toHaveCount(0);
     expect(calls).toBe(1);
   });
@@ -292,7 +292,7 @@ test("blocks repeat confirmation and Escape while a publication is pending", asy
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Publish to Discord" }).click();
+  await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
   await page.getByRole("button", { name: "Confirm publication" }).click();
   await expect(
     page.getByRole("button", { name: "Publishing…", exact: true }),

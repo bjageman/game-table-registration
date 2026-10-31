@@ -91,7 +91,7 @@ export default function PublishEvent({
           setConfirming(true);
         }}
       >
-        Publish to Discord
+        Schedule a Sign-up
       </button>
       {expired && (
         <p className="help">
