@@ -26,7 +26,16 @@ fi
 if [[ ! -f frontend/node_modules/vite/bin/vite.js ]]; then
   (cd frontend && npm ci)
 fi
-.venv/bin/python -m alembic upgrade head
+if ! .venv/bin/python -m alembic upgrade head; then
+  cat >&2 <<'EOF'
+Database migration failed; servers were not started.
+If Alembic says "Can't locate revision", the database may belong to a different
+branch. Use the branch containing that migration, or use a separate local database:
+  DATABASE_URL=sqlite:///./launcher-local.db ./run.sh
+Keep the existing database intact; do not reset or stamp it to bypass this error.
+EOF
+  exit 1
+fi
 
 pids=()
 cleanup() {
