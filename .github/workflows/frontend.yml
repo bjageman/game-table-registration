@@ -1,8 +1,8 @@
 name: Frontend CI
+# Temporarily pause automatic runs while browser tests are updated.
+# Keep the workflow available for manual runs.
 on:
-  pull_request:
-  push:
-    branches: [dev, main]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
