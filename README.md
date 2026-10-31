@@ -2,11 +2,11 @@
 
 Discord signup polls and a moderator dashboard for in-person games. Built with Python/FastAPI, SQLAlchemy, PostgreSQL, and React/TypeScript/Vite/Tailwind.
 
-## First milestone
+## Current status
 
-Discord moderator login → create an event draft → publish one native multi-answer poll with up to 10 tables. Per-table capacity defaults to 15. Publication opens signups immediately for a whole-number duration in hours. Saved drafts and published message/answer IDs survive restarts.
+The UI is a plain placeholder page with **Register** and **Login** buttons. Both are intentionally inactive for now.
 
-**Early preview:** recurring schedules, editing drafts, voter reconciliation, lottery allocation, waitlists, and notifications are not implemented yet. Discord closes the poll itself at expiry; the dashboard does not yet transition expired polls to a closed status. Test in a private test server, not a real signup event.
+The backend API supports Discord moderator login, saving event drafts, and publishing native multi-answer polls for up to 10 tables. Those endpoints are not connected to the placeholder UI. Recurring schedules, editing drafts, voter reconciliation, lottery allocation, waitlists, and notifications remain future work.
 
 ## Discord configuration
 
@@ -86,15 +86,11 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Backend tests use a temporary SQLite database by default. CI sets `TEST_DATABASE_URL` to a disposable PostgreSQL database; **never point this variable at real data**, because tests reset its schema. CI checks migrations, lint/types, backend tests, frontend build/tests, desktop/mobile browser flows, dependency audits, and Compose health. Browser tests mock Discord; real OAuth and poll publication require the dev-guild acceptance check below.
+Backend tests use a temporary SQLite database by default. CI sets `TEST_DATABASE_URL` to a disposable PostgreSQL database; **never point this variable at real data**, because tests reset its schema. CI checks migrations, lint/types, backend tests, frontend build/tests, desktop/mobile placeholder rendering, dependency audits, and Compose health. Browser tests mock Discord; real OAuth and poll publication require the dev-guild acceptance check below.
 
 ## Dev-guild acceptance
 
-1. Configure `.env` and the OAuth redirect, then start both services.
-2. Sign in as the configured owner. Verify an unrelated Discord user is denied.
-3. Create a future event with two tables and a one-hour signup duration. Review the draft.
-4. Publish once. Confirm exactly one multi-select poll appears in the configured channel, capacities are correct, and the dashboard links to that poll.
-5. Restart the API and confirm the event remains and cannot be published twice. Sign out.
+Real Discord acceptance remains pending. The placeholder buttons do not start login or publish polls; backend behavior is covered by automated tests until the UI is connected again.
 
 An ambiguous network failure leaves the event in `needs_review`; a process crash while sending can leave `publishing`. Neither is automatically retried. Check Discord before repairing the record; administrative reconciliation tools are a later milestone. No live Discord messages are sent by automated tests.
 
