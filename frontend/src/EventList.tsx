@@ -1,3 +1,4 @@
+import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
 import { Eye, X } from "lucide-react";
 import EventTables from "./EventTables";
@@ -81,7 +82,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
     };
   }, []);
   return (
-    <dialog ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
+    <dialog onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <div className="event-modal-header">
         <h2 id={`event-${event.id}`}>{event.title}</h2>
