@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Eye, X } from "lucide-react";
 import EventTables from "./EventTables";
 import DraftActions from "./DraftActions";
 import type { EventRecord } from "./api";
@@ -88,6 +88,23 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
         <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
           {event.status.replaceAll("_", " ")}
         </span>
+        <div className="event-header-actions">
+          {event.discord_url && (
+            <a className="button event-icon-action" href={event.discord_url} target="_blank" rel="noreferrer"
+              aria-label={`View Discord poll for ${event.title} (opens in a new tab)`} title="View Discord Poll">
+              <Eye size={18} aria-hidden="true" />
+            </a>
+          )}
+          {event.status === "draft" && (
+                <DraftActions
+                  event={event}
+                  csrf={actions.csrf}
+                  onEdit={(edited) => { onClose(); onEdit(edited); }}
+                  onDeleted={onDeleted}
+                  onAccessError={actions.onAccessError}
+                />
+          )}
+        </div>
         <button type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
           <X size={18} aria-hidden="true" />
         </button>
@@ -132,28 +149,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
             {event.status === "draft" && (
               <div className="form-actions draft-actions">
                 <PublishEvent event={event} {...actions} />
-                <DraftActions
-                  event={event}
-                  csrf={actions.csrf}
-                  onEdit={(edited) => { onClose(); onEdit(edited); }}
-                  onDeleted={onDeleted}
-                  onAccessError={actions.onAccessError}
-                />
               </div>
-            )}
-            {event.discord_url && (
-              <a
-                className="button"
-                href={event.discord_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View Discord poll
-                <span className="sr-only">
-                  {" "}
-                  for {event.title} (opens in a new tab)
-                </span>
-              </a>
             )}
     </dialog>
   );

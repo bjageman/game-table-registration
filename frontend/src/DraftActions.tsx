@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
 export default function DraftActions({
@@ -49,18 +50,21 @@ export default function DraftActions({
   }
   return (
     <>
-      <button type="button" onClick={() => onEdit(event)}>
-        Edit draft
+      <button type="button" className="event-icon-action" aria-label="Edit draft" title="Edit Draft" onClick={() => onEdit(event)}>
+        <Pencil size={18} aria-hidden="true" />
       </button>
       <button
         type="button"
         ref={trigger}
+        className="event-icon-action"
+        aria-label="Delete draft"
+        title="Delete Draft"
         onClick={() => {
           setError("");
           setConfirming(true);
         }}
       >
-        Delete draft
+        <Trash2 size={18} aria-hidden="true" />
       </button>
       {confirming && (
         <dialog

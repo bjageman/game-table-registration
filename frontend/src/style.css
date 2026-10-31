@@ -379,3 +379,10 @@ dd {
 .event-modal-header h2 { margin: 0; min-width: 0; }
 .event-modal-header > .badge { flex-shrink: 0; }
 .event-modal-header > button { margin-left: auto; flex-shrink: 0; }
+
+.event-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.event-icon-action { padding: 8px; }
+@media (max-width: 600px) {
+  .event-modal-header { gap: 8px; }
+  .event-header-actions { gap: 4px; }
+}
