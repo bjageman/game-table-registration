@@ -46,7 +46,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   function updated(event: EventRecord) {
     setEvents((rows) => rows.map((row) => (row.id === event.id ? event : row)));
     setNotice(
-      `${event.status === "scheduled" ? "Signups scheduled" : "Poll published"}: ${event.title}.`,
+      `${event.status === "scheduled" ? "Signups scheduled" : event.status === "open" ? "Poll published" : "Event updated"}: ${event.title}.`,
     );
   }
 

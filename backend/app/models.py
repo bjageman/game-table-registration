@@ -44,6 +44,13 @@ class Event(Base):
     created_by: Mapped[str] = mapped_column(String(32))
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     closes_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    voter_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    reconciled_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reconciliation_attempts: Mapped[int] = mapped_column(default=0)
+    reconcile_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recovery_audit: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     operation_started_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
@@ -61,3 +68,23 @@ class Schedule(Base):
     revision: Mapped[int] = mapped_column(default=1)
     created_by: Mapped[str] = mapped_column(String(32))
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class Withdrawal(Base):
+    __tablename__ = "withdrawals"
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class LiveVote(Base):
+    __tablename__ = "live_votes"
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    answer_id: Mapped[int] = mapped_column(primary_key=True)
+
+
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+    name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    last_seen: Mapped[float] = mapped_column(Float)

@@ -4,12 +4,13 @@ import logging
 import time
 
 from fastapi import HTTPException
-from sqlalchemy import Engine, create_engine, select, update
+from sqlalchemy import Engine, and_, create_engine, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.discord_api import DiscordAPI
-from app.models import Event
+from app.models import Event, WorkerHeartbeat
 from app.publication import publish_event
 from app.scheduling import replenish
 
@@ -20,11 +21,23 @@ def tick(engine: Engine, discord: DiscordAPI, config: Settings) -> None:
     replenish(engine, config.discord_guild_id)
     now = time.time()
     with Session(engine) as db:
+        heartbeat_key = f"signup:{config.discord_guild_id}"
+        heartbeat = db.get(WorkerHeartbeat, heartbeat_key)
+        previous_tick = heartbeat.last_seen if heartbeat else None
+        if heartbeat:
+            heartbeat.last_seen = now
+        else:
+            db.add(WorkerHeartbeat(name=heartbeat_key, last_seen=now))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            return
         db.execute(
             update(Event)
             .where(
                 Event.guild_id == config.discord_guild_id,
-                Event.status.in_(["publishing", "closing", "cancelling"]),
+                Event.status.in_(["publishing", "closing", "cancelling", "recovering"]),
                 Event.operation_started_at < now - 120,
             )
             .values(
@@ -37,7 +50,10 @@ def tick(engine: Engine, discord: DiscordAPI, config: Settings) -> None:
             .where(
                 Event.guild_id == config.discord_guild_id,
                 Event.status == "scheduled",
-                Event.signup_closes_at <= now,
+                or_(
+                    Event.signup_closes_at <= now,
+                    and_(Event.signup_closes_at.is_(None), Event.closes_at <= now),
+                ),
             )
             .values(
                 status="needs_review",
@@ -60,7 +76,10 @@ def tick(engine: Engine, discord: DiscordAPI, config: Settings) -> None:
                 select(Event.id).where(
                     Event.guild_id == config.discord_guild_id,
                     Event.status == "open",
-                    Event.signup_closes_at <= now,
+                    or_(
+                        Event.signup_closes_at <= now,
+                        and_(Event.signup_closes_at.is_(None), Event.closes_at <= now),
+                    ),
                 )
             )
         )
@@ -70,11 +89,15 @@ def tick(engine: Engine, discord: DiscordAPI, config: Settings) -> None:
         except HTTPException as failure:
             log.warning("Opening %s: %s", event_id, failure.detail)
     for event_id in closing:
-        close_event(engine, discord, config, event_id)
+        close_event(engine, discord, config, event_id, previous_tick)
 
 
 def close_event(
-    engine: Engine, discord: DiscordAPI, config: Settings, event_id: str
+    engine: Engine,
+    discord: DiscordAPI,
+    config: Settings,
+    event_id: str,
+    previous_tick: float | None = None,
 ) -> None:
     now = time.time()
     with Session(engine) as db:
@@ -84,7 +107,10 @@ def close_event(
                 Event.id == event_id,
                 Event.guild_id == config.discord_guild_id,
                 Event.status == "open",
-                Event.signup_closes_at <= now,
+                or_(
+                    Event.signup_closes_at <= now,
+                    and_(Event.signup_closes_at.is_(None), Event.closes_at <= now),
+                ),
             )
             .values(status="closing", operation_started_at=now)
             .returning(Event.id)
@@ -95,10 +121,15 @@ def close_event(
         event = db.get(Event, event_id)
         assert event is not None
         try:
-            deadline = event.signup_closes_at
+            deadline = event.signup_closes_at or event.closes_at
             if deadline is None or not event.message_id or event.closes_at is None:
                 raise ValueError("Poll identifiers or deadlines are missing")
-            if now > deadline + 60 and event.closes_at > deadline + 60:
+            healthy = (
+                previous_tick is not None
+                and previous_tick >= deadline - 15
+                and now - previous_tick <= 15
+            )
+            if now > deadline and event.closes_at > deadline and not healthy:
                 raise ValueError(
                     "Custom closing deadline was missed; later votes may be present"
                 )

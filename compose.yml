@@ -47,5 +47,26 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+  reconciler:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:-local-development-only}@db/tables
+    command: [python, -m, app.reconciliation]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  bot:
+    profiles: [discord]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:-local-development-only}@db/tables
+    command: [python, -m, app.bot]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 volumes:
   database:

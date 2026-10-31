@@ -6,6 +6,12 @@ from fastapi import HTTPException
 from app.config import Settings
 
 
+class DiscordRateLimit(HTTPException):
+    def __init__(self, retry_after: float) -> None:
+        super().__init__(502, "Discord rate limit; retry after the indicated delay")
+        self.retry_after = retry_after
+
+
 class DiscordAPI:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -18,6 +24,18 @@ class DiscordAPI:
                 )
             response.raise_for_status()
             return dict(response.json())
+        except httpx.HTTPStatusError as failure:
+            if failure.response.status_code == 429:
+                try:
+                    retry_after = max(
+                        1.0, float(failure.response.json()["retry_after"])
+                    )
+                except (ValueError, TypeError, KeyError):
+                    retry_after = 30.0
+                raise DiscordRateLimit(retry_after) from None
+            raise HTTPException(
+                502, "Discord request failed. Please try again."
+            ) from None
         except (httpx.HTTPError, ValueError):
             raise HTTPException(
                 502, "Discord request failed. Please try again."

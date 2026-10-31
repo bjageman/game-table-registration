@@ -85,7 +85,10 @@ def test_missed_custom_close_is_held(tmp_path):
 
 def test_close_is_claimed_once_and_interrupted_jobs_are_held(tmp_path):
     engine, config = setup(tmp_path)
+    from app.models import WorkerHeartbeat
+
     with Session(engine) as db:
+        db.add(WorkerHeartbeat(name="signup:guild", last_seen=time.time() - 10))
         event = db.get(Event, "event")
         event.status = "open"
         event.message_id = "message"

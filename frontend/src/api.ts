@@ -83,6 +83,16 @@ export interface EventRecord {
   schedule_id?: string | null;
   occurrence_date?: string | null;
   overridden?: boolean;
+  message_id?: string | null;
+  signup_count?: number | null;
+  live_signup_count?: number;
+  reconciled_at?: number | null;
+  recovery_audit?: {
+    actor: string;
+    at: number;
+    reason: string;
+    accepted_late_votes: boolean;
+  }[];
   last_error?: string | null;
   timezone?: string;
   opens_at?: number | null;

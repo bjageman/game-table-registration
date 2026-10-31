@@ -7,14 +7,15 @@ from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy import create_engine, delete, select, text, update
+from sqlalchemy import create_engine, delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import Settings
 from app.discord_api import DiscordAPI
-from app.models import Event, LoginState, Schedule, Session
+from app.models import Event, LiveVote, LoginState, Schedule, Session
 from app.publication import publish_event
+from app.recovery import RecoveryInput, recover_event
 from app.scheduling import (
     ScheduleActivation,
     ScheduleEditInput,
@@ -65,7 +66,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return session
 
     def serialize(event: Event) -> dict[str, Any]:
+        with DBSession(engine) as db:
+            live_count = db.scalar(
+                select(func.count(func.distinct(LiveVote.user_id))).where(
+                    LiveVote.event_id == event.id
+                )
+            )
         return {
+            "live_signup_count": live_count,
             "id": event.id,
             "title": event.title,
             "starts_at": event.starts_at,
@@ -80,6 +88,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "schedule_id": event.schedule_id,
             "occurrence_date": event.occurrence_date,
             "overridden": event.overridden,
+            "message_id": event.message_id,
+            "signup_count": len(event.voter_snapshot)
+            if event.voter_snapshot is not None
+            else None,
+            "reconciled_at": event.reconciled_at,
+            "recovery_audit": event.recovery_audit,
             "discord_url": (
                 f"https://discord.com/channels/{config.discord_guild_id}/"
                 f"{config.discord_channel_id}/{event.message_id}"
@@ -575,6 +589,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     502, "Cancellation could not be confirmed; check Discord"
                 ) from None
+            return serialize(event)
+
+    @app.post("/api/events/{event_id}/recover")
+    def recover(event_id: str, body: RecoveryInput, request: Request) -> dict[str, Any]:
+        session = authenticated(request, True)
+        recover_event(
+            engine, app.state.discord, config, event_id, body, session.user_id
+        )
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            assert event is not None
             return serialize(event)
 
     return app

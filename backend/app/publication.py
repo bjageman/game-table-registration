@@ -61,7 +61,8 @@ def publish_event(
             duration = max(1, math.ceil((closing - time.time()) / 3600))
             payload: dict[str, Any] = {
                 "content": (
-                    f"**{event.title}**\nEvent: <t:{int(event.starts_at)}:F>\n"
+                    f"**{event.title}**\nEvent ID: {event.id}\n"
+                    f"Event: <t:{int(event.starts_at)}:F>\n"
                     f"Signups close: <t:{int(closing)}:F>\n"
                     "Select every table you would attend. "
                     "This is a lottery entry, not a guaranteed seat."

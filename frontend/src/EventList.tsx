@@ -1,3 +1,4 @@
+import RecoverEvent from "./RecoverEvent";
 import DraftActions from "./DraftActions";
 import type { EventRecord } from "./api";
 import PublishEvent, { type PublicationActions } from "./PublishEvent";
@@ -105,8 +106,8 @@ export default function EventList({
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (
               <p className="notice">
-                Check Discord before taking further action. Publication has not
-                been confirmed; this event will not be retried automatically.
+                Check Discord before taking further action. This event is held
+                for review; publication will not be retried automatically.
               </p>
             )}
             {["draft", "scheduled", "paused", "open"].includes(
@@ -124,6 +125,33 @@ export default function EventList({
                   onAccessError={actions.onAccessError}
                 />
               </div>
+            )}
+            {event.status === "open" && event.live_signup_count != null && (
+              <p>
+                Signup preview: {event.live_signup_count} players (may be
+                incomplete).
+              </p>
+            )}
+            {event.signup_count != null && (
+              <p>
+                Final voter snapshot: {event.signup_count} players. Lottery
+                assignments are pending.
+              </p>
+            )}
+            {event.status === "needs_review" && (
+              <RecoverEvent
+                event={event}
+                csrf={actions.csrf}
+                onUpdated={actions.onUpdated}
+                onAccessError={actions.onAccessError}
+              />
+            )}
+            {event.recovery_audit?.some(
+              (entry) => entry.accepted_late_votes,
+            ) && (
+              <p className="notice">
+                A moderator accepted later votes after a missed deadline.
+              </p>
             )}
             {event.last_error && <p className="notice">{event.last_error}</p>}
             {event.discord_url && (
