@@ -91,7 +91,7 @@ export default function PublishEvent({
           setConfirming(true);
         }}
       >
-        {scheduled ? "Schedule signups" : "Publish to Discord"}
+        Schedule a Sign-up
       </button>
       {expired && (
         <p className="help">
@@ -103,21 +103,12 @@ export default function PublishEvent({
         <dialog
           ref={dialog}
           aria-labelledby={`publish-title-${event.id}`}
-          aria-describedby={`publish-description-${event.id}`}
           onCancel={(escape) => {
             if (inFlight.current) escape.preventDefault();
             else setConfirming(false);
           }}
         >
-          <h2 id={`publish-title-${event.id}`}>
-            {scheduled ? "Schedule" : "Publish"} {event.title}?
-          </h2>
-          <p id={`publish-description-${event.id}`}>
-            {scheduled
-              ? `The worker will publish the poll at ${new Date((event.opens_at ?? 0) * 1000).toLocaleString()} and close signups at ${new Date((event.signup_closes_at ?? 0) * 1000).toLocaleString()}.`
-              : `This posts a signup poll to your configured Discord channel. Signups open immediately for ${event.duration_hours} hours.`}{" "}
-            Table options and capacities freeze when publication begins.
-          </p>
+          <h2 id={`publish-title-${event.id}`}>Schedule sign-up for {event.title}?</h2>
           <ul className="table-summary">
             {event.tables.map((table) => (
               <li key={table.name}>
@@ -135,7 +126,7 @@ export default function PublishEvent({
               Publishing… Keep this page open while the request completes.
             </p>
           )}
-          <div className="form-actions">
+          <div className="form-actions signup-confirmation-actions">
             <button
               ref={cancel}
               onClick={() => setConfirming(false)}
@@ -148,13 +139,7 @@ export default function PublishEvent({
               disabled={busy}
               onClick={() => void publish()}
             >
-              {busy
-                ? scheduled
-                  ? "Scheduling…"
-                  : "Publishing…"
-                : scheduled
-                  ? "Confirm schedule"
-                  : "Confirm publication"}
+              {busy ? "Publishing…" : "Confirm"}
             </button>
           </div>
         </dialog>

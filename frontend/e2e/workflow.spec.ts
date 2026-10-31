@@ -38,11 +38,18 @@ async function setDateTime(
     ["Minutes", minutes],
     ["Meridiem", meridiem],
   ]) {
-    await page.getByRole("spinbutton", { name, exact: true }).fill(value);
+    const dateField = page.getByRole("group", { name: /^Event starts/ });
+    const mobileTime = page.getByRole("group", { name: /^Event time/ });
+    const field =
+      ["Hours", "Minutes", "Meridiem"].includes(name) &&
+      (await mobileTime.count())
+        ? mobileTime
+        : dateField;
+    await field.getByRole("spinbutton", { name, exact: true }).fill(value);
   }
 }
 
-test("completes login, draft creation, publication, refresh, and logout", async ({
+test("completes login, timed draft creation, scheduling, refresh, and logout", async ({
   page,
 }) => {
   let signedIn = false;
@@ -76,18 +83,24 @@ test("completes login, draft creation, publication, refresh, and logout", async 
       expect(body.starts_at).toMatch(/Z$/);
       expect(body.tables).toEqual([{ name: "Clocktower", capacity: 15 }]);
       events = [
-        { ...draft, ...body, starts_at: Date.parse(body.starts_at) / 1000 },
+        {
+          ...draft,
+          ...body,
+          starts_at: Date.parse(body.starts_at) / 1000,
+          opens_at: Date.parse(body.opens_at) / 1000,
+          signup_closes_at: Date.parse(body.signup_closes_at) / 1000,
+        },
       ];
       return route.fulfill({ status: 201, json: events[0] });
     }
-    if (path === "/api/events/event-1/publish") {
+    if (path === "/api/events/event-1/schedule") {
       publications++;
       expect(route.request().headers()["x-csrf-token"]).toBe(session.csrf);
       const published = {
         ...events[0],
-        status: "open",
+        status: "scheduled",
         closes_at: 3800000000,
-        discord_url: "https://discord.com/channels/guild/channel/message",
+        discord_url: null,
       };
       events = [published as unknown as typeof draft];
       return route.fulfill({ json: published });
@@ -110,13 +123,11 @@ test("completes login, draft creation, publication, refresh, and logout", async 
   await expect(page.getByText("draft", { exact: true })).toBeVisible();
   await expect(page.getByRole("status")).toBeFocused();
   expect(publications).toBe(0);
-  await page.getByRole("button", { name: "Publish to Discord" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
-  await expect(
-    page.getByRole("link", { name: /View Discord poll/ }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Refresh events" }).click();
-  await expect(page.getByText("open", { exact: true })).toBeVisible();
+  await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   expect(creations).toBe(1);
   expect(publications).toBe(1);
   expect(
@@ -247,11 +258,11 @@ for (const outcome of ["network", "conflict"] as const) {
       });
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Publish to Discord" }).click();
-    await page.getByRole("button", { name: "Confirm publication" }).click();
+    await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page.getByText("unconfirmed", { exact: true })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Publish to Discord" }),
+      page.getByRole("button", { name: "Schedule a Sign-up" }),
     ).toHaveCount(0);
     expect(calls).toBe(1);
   });
@@ -281,8 +292,8 @@ test("blocks repeat confirmation and Escape while a publication is pending", asy
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Publish to Discord" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Schedule a Sign-up" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Publishing…", exact: true }),
   ).toBeDisabled();
@@ -330,6 +341,8 @@ test("edits a draft and requires confirmation before deleting it", async ({
         ...current,
         ...body,
         starts_at: Date.parse(body.starts_at) / 1000,
+        opens_at: Date.parse(body.opens_at) / 1000,
+        signup_closes_at: Date.parse(body.signup_closes_at) / 1000,
       };
       return route.fulfill({ json: current });
     }
@@ -415,14 +428,14 @@ test("saves explicit signup times and requires confirmation to schedule them", a
   }
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Schedule signups", exact: true }),
+    page.getByRole("button", { name: "Schedule a Sign-up", exact: true }),
   ).toBeVisible();
   expect(activations).toBe(0);
   await page
-    .getByRole("button", { name: "Schedule signups", exact: true })
+    .getByRole("button", { name: "Schedule a Sign-up", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Confirm schedule", exact: true })
+    .getByRole("button", { name: "Confirm", exact: true, exact: true })
     .click();
   await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   expect(activations).toBe(1);

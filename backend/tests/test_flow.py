@@ -251,6 +251,22 @@ def test_explicit_signup_window(client):
     assert client.post("/api/events", headers=headers, json=body).status_code == 422
 
 
+def test_timed_draft_confirmation_schedules_without_immediate_publication(client):
+    headers = login(client)
+    now = datetime.now(UTC)
+    body = {
+        **event_body(),
+        "opens_at": (now + timedelta(days=1)).isoformat(),
+        "signup_closes_at": (now + timedelta(days=2)).isoformat(),
+    }
+    event = client.post("/api/events", headers=headers, json=body).json()
+    path = f"/api/events/{event['id']}/schedule"
+    assert client.post(path).status_code == 403
+    assert client.post(path, headers=headers).json()["status"] == "scheduled"
+    assert client.post(path, headers=headers).status_code == 409
+    client.app.state.discord.publish.assert_not_called()
+
+
 def schedule_body():
     return {
         "title": "Weekly games",
