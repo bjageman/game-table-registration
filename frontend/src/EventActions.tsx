@@ -67,7 +67,7 @@ export default function EventActions({
           onCancel={() => setConfirming(false)}
           onConfirm={() => void remove()}
         >
-          <p>{isDraft ? "This permanently deletes the unpublished draft and its tables." : "This permanently removes the signup from Gather."}</p>
+          <p>{isDraft ? "This permanently deletes the unpublished draft and its tables." : "This permanently removes the signup from TableSignup."}</p>
           {event.discord_url && <label className="delete-poll-option">
             <input type="checkbox" checked={deletePoll} disabled={busy}
               onChange={(event) => setDeletePoll(event.target.checked)} />

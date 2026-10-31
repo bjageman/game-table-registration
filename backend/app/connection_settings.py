@@ -88,7 +88,8 @@ def register_settings(
         channel = next((c for c in channels if c["id"] == body.channel_id), None)
         if channel is None:
             raise HTTPException(
-                403, "Choose a text channel you can view where Gather can send polls."
+                403,
+                "Choose a text channel you can view where TableSignup can send polls.",
             )
         with DBSession(engine) as db:
             db.merge(

@@ -1,4 +1,4 @@
-# Game table registration: development plan
+# TableSignup: development plan
 
 Status: proposed architecture; no application or deployment has been implemented. Scope is one Discord community initially, with all records scoped to a guild so another community can be supported later.
 

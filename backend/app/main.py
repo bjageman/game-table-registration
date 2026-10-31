@@ -67,7 +67,7 @@ class PlayerProfileInput(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or Settings()
     engine = create_engine(config.database_url, pool_pre_ping=True)
-    app = FastAPI(title="Table registration")
+    app = FastAPI(title="TableSignup")
     app.state.engine = engine
     app.state.discord = DiscordAPI(config)
 

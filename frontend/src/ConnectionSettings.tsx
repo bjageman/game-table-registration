@@ -63,12 +63,12 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
   const installUrl = setup ? setup.install_url + (guildId ? `&guild_id=${encodeURIComponent(guildId)}&disable_guild_select=true` : "") : "";
   return <section className="panel settings-panel" aria-labelledby="settings-heading">
     <div className="section-heading"><h2 id="settings-heading">Settings</h2><a href="#/">Game Events</a></div>
-    <p>Choose a server you manage and the channel where Gather should post signups.</p>
+    <p>Choose a server you manage and the channel where TableSignup should post signups.</p>
     {!setup && !error && <p role="status">Loading settings…</p>}
     {error && <p role="alert" className="error">{error}{!setup && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry settings</button>}</p>}
     {setup && <>
       <div className="form-actions settings-connections">
-        <a className="button" href={installUrl} target="_blank" rel="noreferrer">Add Gather to Discord<span className="sr-only"> (opens in a new tab)</span></a>
+        <a className="button" href={installUrl} target="_blank" rel="noreferrer">Add TableSignup to Discord<span className="sr-only"> (opens in a new tab)</span></a>
         <a href="/api/auth/login?return_to=settings">Refresh Server List</a>
       </div>
       {!setup.guilds.length && <p className="help">No manageable servers found. Refresh your server list to grant Discord server access.</p>}
@@ -93,7 +93,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
         {guildId && !channels && !channelError && <p role="status">Loading channels…</p>}
         {channelError && <p role="alert" className="error">Could not load channels. {channelError}</p>}
         {guildId && <>
-          <p className="help">If channels are missing, add Gather to this server and allow View Channel, Send Messages, Read Message History, and Send Polls.</p>
+          <p className="help">If channels are missing, add TableSignup to this server and allow View Channel, Send Messages, Read Message History, and Send Polls.</p>
           <button type="button" disabled={saving} onClick={() => { setChannelError(""); setChannels(undefined); setChannelAttempt((n) => n + 1); }}>Refresh Channels</button>
         </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
