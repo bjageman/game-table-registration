@@ -409,7 +409,6 @@ test("saves explicit signup times and requires confirmation to schedule them", a
   });
   await page.goto("/");
   await fillDraft(page);
-  await page.getByLabel("Schedule signup opening and closing").check();
   for (const [label, day] of [
     ["Signup opens", "9"],
     ["Signup closes", "13"],
@@ -435,7 +434,7 @@ test("saves explicit signup times and requires confirmation to schedule them", a
     .getByRole("button", { name: "Schedule a Sign-up", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Confirm", exact: true, exact: true })
+    .getByRole("button", { name: "Confirm", exact: true })
     .click();
   await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   expect(activations).toBe(1);

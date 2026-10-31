@@ -577,32 +577,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ) from None
             return serialize(event)
 
-    @app.post("/api/events/{event_id}/schedule")
-    def schedule_event(event_id: str, request: Request) -> dict[str, Any]:
-        authenticated(request, True)
-        now = time.time()
-        with DBSession(engine) as db:
-            claimed = db.execute(
-                update(Event)
-                .where(
-                    Event.id == event_id,
-                    Event.guild_id == config.discord_guild_id,
-                    Event.status == "draft",
-                    Event.opens_at > now,
-                    Event.signup_closes_at > Event.opens_at,
-                    Event.starts_at > Event.signup_closes_at,
-                )
-                .values(status="scheduled")
-                .returning(Event.id)
-            ).scalar_one_or_none()
-            if not claimed:
-                raise HTTPException(
-                    409, "Only future drafts with valid signup times can be scheduled"
-                )
-            db.commit()
-            event = db.get(Event, event_id)
-            assert event is not None
-            return serialize(event)
 
     return app
 
