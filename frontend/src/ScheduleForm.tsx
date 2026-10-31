@@ -40,7 +40,14 @@ export default function ScheduleForm({
       skip_dates: [],
     },
   );
-  const requestKey = useRef(crypto.randomUUID());
+  const [requestKey] = useState(() => {
+    // getRandomValues also works on HTTP LAN origins, unlike randomUUID.
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  });
   const inFlight = useRef(false);
   const [rows, setRows] = useState<OccurrencePreview[]>([]);
   const [busy, setBusy] = useState(false);
@@ -67,7 +74,7 @@ export default function ScheduleForm({
               method: initial ? "PUT" : "POST",
               headers: {
                 ...mutationOptions(csrf).headers,
-                "Idempotency-Key": requestKey.current,
+                "Idempotency-Key": requestKey,
               },
             },
           ),
