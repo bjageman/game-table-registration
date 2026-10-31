@@ -1,11 +1,15 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
+import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
-import { renderTimeViewClock } from "@mui/x-date-pickers/timeViewRenderers";
+import {
+  renderDigitalClockTimeView,
+  renderTimeViewClock,
+} from "@mui/x-date-pickers/timeViewRenderers";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
@@ -16,6 +20,8 @@ interface Props {
   onCancel: () => void;
   onAccessError: (error: unknown) => boolean;
 }
+
+type TimePickerStyle = "clock" | "digital";
 
 function initialTime(): Dayjs {
   const current = dayjs();
@@ -34,6 +40,7 @@ export default function EventForm({
   const [title, setTitle] = useState("");
   const [startsAt, setStartsAt] = useState<Dayjs | null>(null);
   const [mobileTime, setMobileTime] = useState(initialTime);
+  const [timePickerStyle, setTimePickerStyle] = useState<TimePickerStyle>("clock");
   const [duration, setDuration] = useState("24");
   const [tables, setTables] = useState([{ id: 0, name: "", capacity: "15" }]);
   const nextId = useRef(1);
@@ -42,6 +49,14 @@ export default function EventForm({
   const [error, setError] = useState("");
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const isMobile = useMediaQuery("(max-width: 600px)");
+  const timeViewRenderer =
+    timePickerStyle === "clock"
+      ? renderTimeViewClock
+      : renderDigitalClockTimeView;
+  const timeViewRenderers = {
+    hours: timeViewRenderer,
+    minutes: timeViewRenderer,
+  };
 
   function updateDesktopStart(value: Dayjs | null) {
     setStartsAt(value);
@@ -185,10 +200,7 @@ export default function EventForm({
                     onChange={updateMobileTime}
                     ampm
                     timeSteps={{ minutes: 15 }}
-                    viewRenderers={{
-                      hours: renderTimeViewClock,
-                      minutes: renderTimeViewClock,
-                    }}
+                    viewRenderers={timeViewRenderers}
                     slotProps={{
                       textField: {
                         fullWidth: true,
@@ -208,10 +220,7 @@ export default function EventForm({
                   format="MMMM D, YYYY h:mm A"
                   ampm
                   timeSteps={{ minutes: 15 }}
-                  viewRenderers={{
-                    hours: renderTimeViewClock,
-                    minutes: renderTimeViewClock,
-                  }}
+                  viewRenderers={timeViewRenderers}
                   slotProps={{
                     textField: {
                       fullWidth: true,
@@ -222,6 +231,21 @@ export default function EventForm({
                   }}
                 />
               )}
+              <TextField
+                label="Time picker style"
+                select
+                value={timePickerStyle}
+                onChange={(event) =>
+                  setTimePickerStyle(event.target.value as TimePickerStyle)
+                }
+                variant="outlined"
+                size="small"
+                className="time-picker-style"
+                slotProps={{ inputLabel: { shrink: true } }}
+              >
+                <MenuItem value="clock">Clock face</MenuItem>
+                <MenuItem value="digital">Digital list</MenuItem>
+              </TextField>
             </div>
             <div>
               <TextField
