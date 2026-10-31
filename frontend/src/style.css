@@ -285,3 +285,19 @@ input {
     justify-self: start;
   }
 }
+dialog {
+  max-width: 560px;
+  width: calc(100% - 32px);
+  border: 1px solid #bdc9c0;
+  border-radius: 14px;
+  padding: 28px;
+  color: #23392f;
+  background: #fff;
+  box-shadow: 0 24px 80px #10241940;
+}
+dialog::backdrop {
+  background: #10241980;
+}
+dialog h2 {
+  overflow-wrap: anywhere;
+}

@@ -1,4 +1,5 @@
 import type { EventRecord } from "./api";
+import PublishEvent, { type PublicationActions } from "./PublishEvent";
 
 export function formatTime(timestamp: number): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -7,7 +8,10 @@ export function formatTime(timestamp: number): string {
   }).format(new Date(timestamp * 1000));
 }
 
-export default function EventList({ events }: { events: EventRecord[] }) {
+export default function EventList({
+  events,
+  ...actions
+}: { events: EventRecord[] } & PublicationActions) {
   return (
     <ul className="event-list">
       {events.map((event) => (
@@ -60,11 +64,15 @@ export default function EventList({ events }: { events: EventRecord[] }) {
               ))}
             </ul>
             {(event.status === "publishing" ||
-              event.status === "needs_review") && (
+              event.status === "needs_review" ||
+              event.status === "unconfirmed") && (
               <p className="notice">
                 Check Discord before taking further action. Publication has not
                 been confirmed; this event will not be retried automatically.
               </p>
+            )}
+            {event.status === "draft" && (
+              <PublishEvent event={event} {...actions} />
             )}
             {event.discord_url && (
               <a
