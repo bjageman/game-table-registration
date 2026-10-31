@@ -83,19 +83,15 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
   return (
     <dialog ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
-      <div className="event-modal-close">
+      <div className="event-modal-header">
+        <h2 id={`event-${event.id}`}>{event.title}</h2>
+        <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
+          {event.status.replaceAll("_", " ")}
+        </span>
         <button type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
           <X size={18} aria-hidden="true" />
         </button>
       </div>
-            <div className="section-heading">
-              <h2 id={`event-${event.id}`}>{event.title}</h2>
-              <span
-                className={`badge ${event.status === "draft" ? "draft" : ""}`}
-              >
-                {event.status.replaceAll("_", " ")}
-              </span>
-            </div>
             <dl className="event-details">
               <div>
                 <dt>Event starts</dt>

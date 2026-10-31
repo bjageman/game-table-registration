@@ -375,4 +375,7 @@ dd {
   .event-list-dates { flex-direction: column; }
 }
 .event-modal { max-width: 1000px; max-height: calc(100dvh - 32px); overflow-y: auto; }
-.event-modal-close { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.event-modal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.event-modal-header h2 { margin: 0; min-width: 0; }
+.event-modal-header > .badge { flex-shrink: 0; }
+.event-modal-header > button { margin-left: auto; flex-shrink: 0; }
