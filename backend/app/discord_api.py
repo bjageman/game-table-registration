@@ -68,3 +68,33 @@ class DiscordAPI:
             f"/channels/{self.settings.discord_channel_id}/messages",
             json=payload,
         )
+
+    def voters(self, message_id: str, answer_id: int) -> list[dict[str, str]]:
+        players: dict[str, dict[str, str]] = {}
+        after = 0
+        while True:
+            response = self.bot(
+                "GET",
+                f"/channels/{self.settings.discord_channel_id}/polls/"
+                f"{message_id}/answers/{answer_id}",
+                params={"limit": 100, **({"after": str(after)} if after else {})},
+            )
+            users = response.get("users")
+            if not isinstance(users, list):
+                raise HTTPException(502, "Discord returned an invalid signup list")
+            if not users:
+                break
+            for user in users:
+                if not user.get("bot"):
+                    player_id = str(user["id"])
+                    players[player_id] = {
+                        "id": player_id,
+                        "name": user.get("global_name") or user["username"],
+                    }
+            cursor = max(int(user["id"]) for user in users)
+            if cursor <= after:
+                raise HTTPException(502, "Discord signup pagination did not advance")
+            after = cursor
+            if len(users) < 100:
+                break
+        return sorted(players.values(), key=lambda player: player["name"].casefold())

@@ -1,3 +1,4 @@
+import EventTables from "./EventTables";
 import DraftActions from "./DraftActions";
 import type { EventRecord } from "./api";
 import PublishEvent, { type PublicationActions } from "./PublishEvent";
@@ -63,13 +64,7 @@ export default function EventList({
                 </div>
               )}
             </dl>
-            <ul className="table-summary" aria-label="Tables">
-              {event.tables.map((table) => (
-                <li key={table.name}>
-                  {table.name} <span>· {table.capacity} seats</span>
-                </li>
-              ))}
-            </ul>
+            <EventTables event={event} onAccessError={actions.onAccessError} />
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (

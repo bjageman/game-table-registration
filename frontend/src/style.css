@@ -343,3 +343,15 @@ dd {
     justify-self: start;
   }
 }
+
+.event-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 24px;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+}
+.event-table { min-width: 0; overflow-wrap: anywhere; }
+.event-table h4 { font-weight: 650; margin-bottom: 8px; }
+.table-players { list-style: disc; padding-left: 20px; }
