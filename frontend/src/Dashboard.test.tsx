@@ -23,8 +23,8 @@ afterEach(() => {
 });
 
 it("opens event details from a compact event listing", async () => {
-  vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function () { this.setAttribute("open", ""); });
-  vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function () { this.removeAttribute("open"); });
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(JSON.stringify([draft]))),
