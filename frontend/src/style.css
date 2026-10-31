@@ -272,7 +272,7 @@ dd {
 @media (max-width: 600px) {
   .form-grid {
     grid-template-columns: 1fr;
-    gap: 0;
+    gap: 20px;
   }
   .table-fields {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
