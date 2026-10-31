@@ -89,7 +89,7 @@ export default function App() {
     <div className="app-shell">
       <header className="site-header">
         <div>
-          <h1>Gather</h1>
+          <h1><a className="home-link" href="/">Gather</a></h1>
         </div>
         {auth.kind === "ready" && (
           <div className="account">
