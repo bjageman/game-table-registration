@@ -91,3 +91,59 @@ export default function PublishEvent({
           setConfirming(true);
         }}
       >
+        Schedule a Sign-up
+      </button>
+      {expired && (
+        <p className="help">
+          The signup window would end after this event starts. Create a new
+          draft with a later event time or shorter duration.
+        </p>
+      )}
+      {confirming && (
+        <dialog
+          ref={dialog}
+          aria-labelledby={`publish-title-${event.id}`}
+          onCancel={(escape) => {
+            if (inFlight.current) escape.preventDefault();
+            else setConfirming(false);
+          }}
+        >
+          <h2 id={`publish-title-${event.id}`}>Schedule sign-up for {event.title}?</h2>
+          <ul className="table-summary">
+            {event.tables.map((table) => (
+              <li key={table.name}>
+                {table.name} · {table.capacity} seats
+              </li>
+            ))}
+          </ul>
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+          {busy && (
+            <p role="status">
+              Publishing… Keep this page open while the request completes.
+            </p>
+          )}
+          <div className="form-actions signup-confirmation-actions">
+            <button
+              ref={cancel}
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() => void publish()}
+            >
+              {busy ? "Publishing…" : "Confirm"}
+            </button>
+          </div>
+        </dialog>
+      )}
+    </>
+  );
+}

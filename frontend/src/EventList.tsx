@@ -116,3 +116,33 @@ export default function EventList({
                 {event.status === "draft" && (
                   <PublishEvent event={event} {...actions} />
                 )}
+                <DraftActions
+                  event={event}
+                  csrf={actions.csrf}
+                  onEdit={onEdit}
+                  onDeleted={onDeleted}
+                  onAccessError={actions.onAccessError}
+                />
+              </div>
+            )}
+            {event.last_error && <p className="notice">{event.last_error}</p>}
+            {event.discord_url && (
+              <a
+                className="button"
+                href={event.discord_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View Discord poll
+                <span className="sr-only">
+                  {" "}
+                  for {event.title} (opens in a new tab)
+                </span>
+              </a>
+            )}
+          </article>
+        </li>
+      ))}
+    </ul>
+  );
+}

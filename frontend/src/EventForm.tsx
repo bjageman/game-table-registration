@@ -242,3 +242,189 @@ export default function EventForm({
               htmlInput: { maxLength: 100 },
             }}
           />
+          <div className="form-grid event-schedule-fields">
+            <div className="date-time-fields">
+              {isMobile ? (
+                <div className="mobile-date-time-fields">
+                  <DatePicker
+                    label="Event starts"
+                    slotProps={{
+                      textField: {
+                        id: `${prefix}-start`,
+                        error: Boolean(fieldErrors.start),
+                        helperText: fieldErrors.start,
+                        fullWidth: true,
+                        required: true,
+                        slotProps: { inputLabel: { shrink: true } },
+                      },
+                    }}
+                    value={startsAt}
+                    onChange={updateMobileDate}
+                    format="MMMM D, YYYY"
+                  />
+                  <TimePicker
+                    label="Event time"
+                    value={mobileTime}
+                    onChange={updateMobileTime}
+                    ampm
+                    timeSteps={{ minutes: 15 }}
+                    slotProps={{
+                      textField: {
+                        id: `${prefix}-time`,
+                        fullWidth: true,
+                        required: true,
+                        slotProps: { inputLabel: { shrink: true } },
+                      },
+                    }}
+                  />
+                </div>
+              ) : (
+                <DateTimePicker
+                  label="Event starts"
+                  value={startsAt}
+                  onChange={updateDesktopStart}
+                  referenceDate={mobileTime}
+                  format="MMMM D, YYYY h:mm A"
+                  ampm
+                  timeSteps={{ minutes: 15 }}
+                  slotProps={{
+                    textField: {
+                      id: `${prefix}-start`,
+                      fullWidth: true,
+                      required: true,
+                      error: Boolean(fieldErrors.start),
+                      helperText: fieldErrors.start,
+                      slotProps: { inputLabel: { shrink: true } },
+                    },
+                  }}
+                />
+              )}
+            </div>
+            <div>
+              <DateTimePicker
+                label="Signup opens"
+                value={opening}
+                onChange={setOpening}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    error: Boolean(fieldErrors.window),
+                    slotProps: { inputLabel: { shrink: true } },
+                  },
+                }}
+              />{" "}
+            </div>
+            <div>
+              <TextField
+                id={`${prefix}-duration`}
+                error={Boolean(fieldErrors.duration || fieldErrors.window)}
+                helperText={fieldErrors.duration || fieldErrors.window}
+                label="Signup duration (hours)"
+                type="number"
+                value={duration}
+                onChange={(event) => setDuration(event.target.value)}
+                required
+                fullWidth
+                variant="outlined"
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  htmlInput: { min: 1, max: 768, step: 1 },
+                }}
+              />{" "}
+            </div>
+          </div>
+          <div className="section-heading tables-heading">
+            <h4>Tables</h4>
+            <span className="help">{tables.length} of 10</span>
+          </div>
+          <div className="table-list">
+            {tables.map((table, index) => (
+              <div className="table-fields" key={table.id}>
+                <div>
+                  <TextField
+                    id={`${prefix}-name-${table.id}`}
+                    error={Boolean(fieldErrors[`name-${table.id}`])}
+                    helperText={fieldErrors[`name-${table.id}`]}
+                    label={`Table ${index + 1} name`}
+                    value={table.name}
+                    onChange={(event) =>
+                      updateTable(table.id, { name: event.target.value })
+                    }
+                    required
+                    fullWidth
+                    variant="outlined"
+                    slotProps={{
+                      inputLabel: { shrink: true },
+                      htmlInput: { maxLength: 35 },
+                    }}
+                  />
+                </div>
+                <div>
+                  <TextField
+                    id={`${prefix}-capacity-${table.id}`}
+                    error={Boolean(fieldErrors[`capacity-${table.id}`])}
+                    helperText={fieldErrors[`capacity-${table.id}`]}
+                    label={`Table ${index + 1} capacity`}
+                    type="number"
+                    value={table.capacity}
+                    onChange={(event) =>
+                      updateTable(table.id, { capacity: event.target.value })
+                    }
+                    required
+                    fullWidth
+                    variant="outlined"
+                    slotProps={{
+                      inputLabel: { shrink: true },
+                      htmlInput: { min: 1, max: 999, step: 1 },
+                    }}
+                  />
+                </div>
+                {tables.length > 1 && (
+                  <button
+                    type="button"
+                    aria-label={`Remove table ${index + 1}`}
+                    onClick={() =>
+                      setTables((rows) =>
+                        rows.filter((row) => row.id !== table.id),
+                      )
+                    }
+                  >
+                    −
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            className="add-table-button"
+            type="button"
+            aria-label="Add table"
+            title="Add table"
+            disabled={tables.length >= 10}
+            onClick={() =>
+              setTables((rows) => [
+                ...rows,
+                { id: nextId.current++, name: "", capacity: "15" },
+              ])
+            }
+          >
+            <Plus size={18} aria-hidden="true" />
+          </button>
+        </fieldset>
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <div className="form-actions">
+          <button className="primary" type="submit" disabled={saving}>
+            {saving ? "Saving draft…" : "Save draft"}
+          </button>
+          <button type="button" onClick={onCancel} disabled={saving}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
