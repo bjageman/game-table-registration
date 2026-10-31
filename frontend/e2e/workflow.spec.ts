@@ -100,7 +100,7 @@ test("completes login, draft creation, publication, refresh, and logout", async 
   await page.goto("/");
   await page.getByRole("link", { name: "Log in with Discord" }).click();
   await expect(
-    page.getByRole("heading", { name: "No events yet" }),
+    page.getByRole("heading", { name: "No Events Yet" }),
   ).toBeVisible();
   await fillDraft(page);
   await page.getByRole("button", { name: "Save draft" }).click();
@@ -189,7 +189,7 @@ for (const status of [401, 403]) {
       ).toBeVisible();
     else
       await expect(
-        page.getByRole("heading", { name: "Moderator access required" }),
+        page.getByRole("heading", { name: "Moderator Access Required" }),
       ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Friday games" }),
@@ -223,10 +223,10 @@ test("shows loading, recovers from a failed event request, and distinguishes an 
   ).toBeDisabled();
   release();
   await expect(page.getByRole("alert")).toHaveText("Service unavailable");
-  await expect(page.getByText("No events yet")).toHaveCount(0);
+  await expect(page.getByText("No Events Yet")).toHaveCount(0);
   failed = false;
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByText("No events yet")).toBeVisible();
+  await expect(page.getByText("No Events Yet")).toBeVisible();
 });
 
 for (const outcome of ["network", "conflict"] as const) {
@@ -355,7 +355,7 @@ test("edits a draft and requires confirmation before deleting it", async ({
     .getByRole("button", { name: "Confirm deletion", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "No events yet" }),
+    page.getByRole("heading", { name: "No Events Yet" }),
   ).toBeVisible();
   expect(deletions).toBe(1);
 });

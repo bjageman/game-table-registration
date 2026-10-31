@@ -113,7 +113,7 @@ export default function App() {
         )}
         {auth.kind === "signed-out" && (
           <section className="panel sign-in" aria-labelledby="sign-in-heading">
-            <h2 id="sign-in-heading">Bring everyone to the table.</h2>
+            <h2 id="sign-in-heading">Bring Everyone to the Table.</h2>
             <p>Sign in with Discord to manage your community’s game events.</p>
             {auth.configured ? (
               <a className="button primary" href="/api/auth/login">
@@ -130,8 +130,8 @@ export default function App() {
           <section className="panel">
             <h2>
               {auth.kind === "forbidden"
-                ? "Moderator access required"
-                : "Unable to load your session"}
+                ? "Moderator Access Required"
+                : "Unable to Load Your Session"}
             </h2>
             <p role="alert" className="error">
               {auth.message}

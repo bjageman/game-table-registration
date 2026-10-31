@@ -76,7 +76,7 @@ it("explains when server membership or moderator access is missing", async () =>
   mockApi(403);
   render(<App />);
   expect(
-    await screen.findByRole("heading", { name: "Moderator access required" }),
+    await screen.findByRole("heading", { name: "Moderator Access Required" }),
   ).toBeVisible();
   expect(
     screen.queryByRole("button", { name: "Log out" }),

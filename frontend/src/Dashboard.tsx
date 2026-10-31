@@ -85,7 +85,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
     <section aria-labelledby="events-heading">
       <div className="section-heading">
         <div>
-          <h2 id="events-heading">Game events</h2>
+          <h2 id="events-heading">Game Events</h2>
         </div>
         <div className="form-actions">
           <button
@@ -164,7 +164,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           />
         ) : (
           <div className="panel">
-            <h3>No events yet</h3>
+            <h3>No Events Yet</h3>
             <p>Event drafts and published signups will appear here.</p>
           </div>
         ))}

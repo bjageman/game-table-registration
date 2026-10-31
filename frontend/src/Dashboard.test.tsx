@@ -44,9 +44,9 @@ it("offers retry after a failed request instead of showing an empty list", async
   vi.stubGlobal("fetch", fetchMock);
   render(<Dashboard {...props} />);
   expect(await screen.findByRole("alert")).toHaveTextContent(/Could not reach/);
-  expect(screen.queryByText("No events yet")).not.toBeInTheDocument();
+  expect(screen.queryByText("No Events Yet")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  expect(await screen.findByText("No events yet")).toBeVisible();
+  expect(await screen.findByText("No Events Yet")).toBeVisible();
 });
 
 it("passes expired-session errors to the auth boundary", async () => {
