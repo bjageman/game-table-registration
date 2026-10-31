@@ -49,7 +49,7 @@ async function setDateTime(
   }
 }
 
-test("completes login, timed draft creation, refresh, and logout", async ({
+test("completes login, timed draft creation, scheduling, refresh, and logout", async ({
   page,
 }) => {
   let signedIn = false;
@@ -93,14 +93,14 @@ test("completes login, timed draft creation, refresh, and logout", async ({
       ];
       return route.fulfill({ status: 201, json: events[0] });
     }
-    if (path === "/api/events/event-1/publish") {
+    if (path === "/api/events/event-1/schedule") {
       publications++;
       expect(route.request().headers()["x-csrf-token"]).toBe(session.csrf);
       const published = {
         ...events[0],
-        status: "open",
+        status: "scheduled",
         closes_at: 3800000000,
-        discord_url: "https://discord.com/channels/guild/channel/message",
+        discord_url: null,
       };
       events = [published as unknown as typeof draft];
       return route.fulfill({ json: published });
@@ -123,13 +123,13 @@ test("completes login, timed draft creation, refresh, and logout", async ({
   await expect(page.getByText("draft", { exact: true })).toBeVisible();
   await expect(page.getByRole("status")).toBeFocused();
   expect(publications).toBe(0);
-  await expect(
-    page.getByRole("button", { name: "Publish to Discord" }),
-  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Publish to Discord" }).click();
+  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Refresh events" }).click();
-  await expect(page.getByText("draft", { exact: true })).toBeVisible();
+  await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   expect(creations).toBe(1);
-  expect(publications).toBe(0);
+  expect(publications).toBe(1);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

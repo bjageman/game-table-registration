@@ -92,7 +92,7 @@ export default function EventList({
             )}
             {event.status === "draft" && (
               <div className="form-actions draft-actions">
-                {!event.opens_at && <PublishEvent event={event} {...actions} />}
+                <PublishEvent event={event} {...actions} />
                 <DraftActions
                   event={event}
                   csrf={actions.csrf}
