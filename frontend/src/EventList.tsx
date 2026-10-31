@@ -2,7 +2,7 @@ import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
 import { Eye, RefreshCw, X } from "lucide-react";
 import EventTables from "./EventTables";
-import DraftActions from "./DraftActions";
+import EventActions from "./EventActions";
 import type { EventRecord } from "./api";
 import PublishEvent, { type PublicationActions } from "./PublishEvent";
 
@@ -105,10 +105,10 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
               <Eye size={18} aria-hidden="true" />
             </a>
           )}
-          {event.status === "draft" && (
+          {event.status === "draft" && <PublishEvent event={event} {...actions} />}
+          {(event.status === "draft" || event.status === "open") && (
             <>
-                <PublishEvent event={event} {...actions} />
-                <DraftActions
+                <EventActions
                   event={event}
                   csrf={actions.csrf}
                   onEdit={(edited) => { onClose(); onEdit(edited); }}

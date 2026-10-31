@@ -401,3 +401,20 @@ dd {
 .confirmation-actions {
   justify-content: center;
 }
+
+.delete-poll-option { display: flex; align-items: center; gap: 8px; }
+
+.player-name {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #285841;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.player-name:hover { background: transparent; color: #19432f; }

@@ -275,20 +275,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return serialize(event)
 
     @app.delete("/api/events/{event_id}", status_code=204)
-    def delete_event(event_id: str, request: Request) -> Response:
+    def delete_event(
+        event_id: str, request: Request, delete_poll: bool = False
+    ) -> Response:
         authenticated(request, True)
         with DBSession(engine) as db:
+            # Claim deletion atomically, keeping the transaction open until the
+            # optional Discord operation succeeds. Failures roll back this row.
             changed = db.execute(
                 delete(Event)
                 .where(
                     Event.id == event_id,
                     Event.guild_id == config.discord_guild_id,
-                    Event.status == "draft",
+                    Event.status.in_(["draft", "open"]),
                 )
-                .returning(Event.id)
-            ).scalar_one_or_none()
-            if not changed:
-                raise HTTPException(409, "Only unpublished drafts can be deleted.")
+                .returning(Event.message_id)
+            ).first()
+            if changed is None:
+                raise HTTPException(409, "Only drafts and open signups can be deleted.")
+            if delete_poll and changed.message_id:
+                app.state.discord.delete_poll(changed.message_id)
             db.commit()
         return Response(status_code=204)
 

@@ -1,5 +1,6 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
@@ -94,3 +95,31 @@ def test_signup_page_failure_does_not_return_partial_players():
     )
     with pytest.raises(HTTPException):
         api.voters("message", 9)
+
+
+@pytest.mark.parametrize("status", [204, 404])
+def test_delete_discord_poll_accepts_success_and_already_deleted(status):
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    with patch("app.discord_api.httpx.Client") as client:
+        request = client.return_value.__enter__.return_value.request
+        request.return_value = httpx.Response(
+            status, request=httpx.Request("DELETE", "https://discord.com/test")
+        )
+        api.delete_poll("message")
+        assert request.call_args.args == (
+            "DELETE",
+            "https://discord.com/api/v10/channels/channel/messages/message",
+        )
+
+
+def test_delete_discord_poll_failure_is_reported():
+    api = DiscordAPI(Settings(_env_file=None))
+    with patch("app.discord_api.httpx.Client") as client:
+        client.return_value.__enter__.return_value.request.return_value = (
+            httpx.Response(
+                403, request=httpx.Request("DELETE", "https://discord.com/test")
+            )
+        )
+        with pytest.raises(HTTPException) as error:
+            api.delete_poll("message")
+        assert error.value.status_code == 502

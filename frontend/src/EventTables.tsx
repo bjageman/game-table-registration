@@ -53,7 +53,10 @@ export default function EventTables({ event, onAccessError, refreshToken = 0, on
             </span>
           </div>
           {players?.length ? <ul className="table-players">
-            {players.map((player) => <li key={player.id}>{player.name}</li>)}
+            {players.map((player) => <li key={player.id}>
+              <button type="button" className="player-name" aria-disabled="true"
+                title="Player editing is coming soon">{player.name}</button>
+            </li>)}
           </ul> : <p className="help">{count === 0 ? "No players signed up yet." : error ? "Signups unavailable." : "Loading signups…"}</p>}
         </li>;
       })}

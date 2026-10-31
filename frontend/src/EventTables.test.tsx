@@ -31,6 +31,7 @@ it("refreshes names and counts when votes are added and removed, and stops on cl
   expect(screen.getByText("0/8")).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
   expect(screen.getByText("Mary")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Mary" })).toHaveAttribute("aria-disabled", "true");
   expect(screen.getByText("1/8")).toBeVisible();
   expect(screen.getByText("Dan")).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(15000); });

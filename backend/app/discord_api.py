@@ -16,7 +16,12 @@ class DiscordAPI:
                 response = client.request(
                     method, f"https://discord.com/api/v10{path}", **kwargs
                 )
+            # A retried deletion may find a poll that was already deleted.
+            if method == "DELETE" and response.status_code == 404:
+                return {}
             response.raise_for_status()
+            if response.status_code == 204:
+                return {}
             return dict(response.json())
         except (httpx.HTTPError, ValueError):
             raise HTTPException(
@@ -126,3 +131,9 @@ class DiscordAPI:
             if len(users) < 100:
                 break
         return sorted(players.values(), key=lambda player: player["name"].casefold())
+
+    def delete_poll(self, message_id: str) -> None:
+        self.bot(
+            "DELETE",
+            f"/channels/{self.settings.discord_channel_id}/messages/{message_id}",
+        )
