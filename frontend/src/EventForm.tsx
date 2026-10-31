@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
-import { Button, Datepicker, Timepicker } from "material/react";
+import { DateTimePicker } from "@mantine/dates";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
 interface Props {
@@ -18,34 +18,6 @@ function initialTime() {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function displayTime(value: string) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(2000, 0, 1, hours, minutes));
-}
-
-function useIsMobile() {
-  const query = "(max-width: 600px)";
-  const [isMobile, setIsMobile] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia(query).matches,
-  );
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const media = window.matchMedia(query);
-    const update = (event: MediaQueryListEvent) => setIsMobile(event.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
-  return isMobile;
-}
-
 export default function EventForm({
   csrf,
   onCreated,
@@ -54,9 +26,8 @@ export default function EventForm({
 }: Props) {
   const prefix = useId();
   const [title, setTitle] = useState("");
-  const [eventDate, setEventDate] = useState("");
-  const [eventTime, setEventTime] = useState(initialTime);
-  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [startsAt, setStartsAt] = useState<string | null>(null);
+  const [defaultTimeValue] = useState(initialTime);
   const [duration, setDuration] = useState("24");
   const [tables, setTables] = useState([{ id: 0, name: "", capacity: "15" }]);
   const nextId = useRef(1);
@@ -64,7 +35,6 @@ export default function EventForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const isMobile = useIsMobile();
 
   function updateTable(
     id: number,
@@ -79,10 +49,7 @@ export default function EventForm({
     event.preventDefault();
     if (inFlight.current) return;
     setError("");
-    const start =
-      eventDate && eventTime
-        ? new Date(`${eventDate}T${eventTime}:00`)
-        : null;
+    const start = startsAt ? new Date(startsAt.replace(" ", "T")) : null;
     const hours = Number(duration);
     if (!title.trim()) {
       setError("Enter an event title.");
@@ -151,36 +118,20 @@ export default function EventForm({
           />
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
-              <Datepicker
+              <DateTimePicker
                 label="Event starts"
-                value={eventDate}
-                onChange={(change) => setEventDate(change.detail.value)}
-                variant={isMobile ? "fullscreen" : "docked"}
-                dateFormat="MMMM D, YYYY"
-                supportingText={`Timezone: ${timezone}`}
+                value={startsAt}
+                onChange={(value) => setStartsAt(value)}
+                valueFormat="MMMM D, YYYY h:mm A"
+                defaultTimeValue={defaultTimeValue}
+                timePickerProps={{
+                  format: "12h",
+                  minutesStep: 15,
+                  withDropdown: true,
+                }}
+                placeholder="Choose a date and time"
+                description={`Timezone: ${timezone}. Times are saved with the correct UTC offset.`}
                 required
-              />
-            </div>
-            <div className="time-picker-field">
-              <span className="time-picker-label">Event time</span>
-              <Button
-                variant="outlined"
-                type="button"
-                disabled={saving}
-                aria-label={`Event time, ${displayTime(eventTime)}`}
-                onClick={() => setTimePickerOpen(true)}
-              >
-                {displayTime(eventTime)}
-              </Button>
-              <Timepicker
-                title="Event time"
-                value={eventTime}
-                open={timePickerOpen}
-                onChange={(change) => setEventTime(change.detail.value)}
-                onConfirm={(change) => setEventTime(change.detail.value)}
-                onClose={() => setTimePickerOpen(false)}
-                format="12h"
-                step={900}
               />
             </div>
             <div>
@@ -261,6 +212,8 @@ export default function EventForm({
           <button
             className="add-table-button"
             type="button"
+            aria-label="Add table"
+            title="Add table"
             disabled={tables.length >= 10}
             onClick={() =>
               setTables((rows) => [
@@ -270,7 +223,6 @@ export default function EventForm({
             }
           >
             <Plus size={18} aria-hidden="true" />
-            Add Table
           </button>
         </fieldset>
         {error && (
