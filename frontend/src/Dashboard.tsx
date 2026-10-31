@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import {
   api,
   errorMessage,
@@ -99,8 +100,13 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           >
             Create event
           </button>
-          <button onClick={refresh} disabled={loading || creating}>
-            {loading ? "Refreshing…" : "Refresh events"}
+          <button
+            onClick={refresh}
+            disabled={loading || creating}
+            aria-label={loading ? "Refreshing…" : "Refresh events"}
+            title={loading ? "Refreshing…" : "Refresh events"}
+          >
+            <RefreshCw size={18} aria-hidden="true" />
           </button>
         </div>
       </div>
