@@ -22,18 +22,25 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("loads event dates, tables, and publication status", async () => {
+it("opens event details from a compact event listing", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(JSON.stringify([draft]))),
   );
   render(<Dashboard {...props} />);
-  expect(
-    await screen.findByRole("heading", { name: "Friday games" }),
-  ).toBeVisible();
-  expect(screen.getByText("draft")).toBeVisible();
+  const item = await screen.findByRole("button", { name: /Friday games draft 1 table/ });
+  expect(item).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(item);
+  expect(screen.getByRole("dialog", { name: "Friday games" })).toBeVisible();
+  expect(screen.getAllByText("draft")).toHaveLength(2);
   expect(screen.getByText(/15 seats/)).toBeVisible();
   expect(screen.getByText(/24 hours from publication/)).toBeVisible();
+  expect(screen.getAllByRole("listitem").filter((li) => li.parentElement?.className === "table-players")).toHaveLength(15);
+  fireEvent.click(screen.getByRole("button", { name: "Close event" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it("offers retry after a failed request instead of showing an empty list", async () => {
@@ -44,9 +51,9 @@ it("offers retry after a failed request instead of showing an empty list", async
   vi.stubGlobal("fetch", fetchMock);
   render(<Dashboard {...props} />);
   expect(await screen.findByRole("alert")).toHaveTextContent(/Could not reach/);
-  expect(screen.queryByText("No events yet")).not.toBeInTheDocument();
+  expect(screen.queryByText("No Events Yet")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  expect(await screen.findByText("No events yet")).toBeVisible();
+  expect(await screen.findByText("No Events Yet")).toBeVisible();
 });
 
 it("passes expired-session errors to the auth boundary", async () => {

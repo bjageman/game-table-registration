@@ -100,7 +100,7 @@ test("completes login, draft creation, publication, refresh, and logout", async 
   await page.goto("/");
   await page.getByRole("link", { name: "Log in with Discord" }).click();
   await expect(
-    page.getByRole("heading", { name: "No events yet" }),
+    page.getByRole("heading", { name: "No Events Yet" }),
   ).toBeVisible();
   await fillDraft(page);
   await page.getByRole("button", { name: "Save draft" }).click();
@@ -111,7 +111,7 @@ test("completes login, draft creation, publication, refresh, and logout", async 
   await expect(page.getByRole("status")).toBeFocused();
   expect(publications).toBe(0);
   await page.getByRole("button", { name: "Publish to Discord" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
     page.getByRole("link", { name: /View Discord poll/ }),
   ).toBeVisible();
@@ -124,7 +124,8 @@ test("completes login, draft creation, publication, refresh, and logout", async 
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("button", { name: "organizer" }).click();
+  await page.getByRole("menuitem", { name: "Log Out" }).click();
   await expect(
     page.getByRole("link", { name: "Log in with Discord" }),
   ).toBeVisible();
@@ -189,7 +190,7 @@ for (const status of [401, 403]) {
       ).toBeVisible();
     else
       await expect(
-        page.getByRole("heading", { name: "Moderator access required" }),
+        page.getByRole("heading", { name: "Moderator Access Required" }),
       ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Friday games" }),
@@ -223,10 +224,10 @@ test("shows loading, recovers from a failed event request, and distinguishes an 
   ).toBeDisabled();
   release();
   await expect(page.getByRole("alert")).toHaveText("Service unavailable");
-  await expect(page.getByText("No events yet")).toHaveCount(0);
+  await expect(page.getByText("No Events Yet")).toHaveCount(0);
   failed = false;
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByText("No events yet")).toBeVisible();
+  await expect(page.getByText("No Events Yet")).toBeVisible();
 });
 
 for (const outcome of ["network", "conflict"] as const) {
@@ -248,7 +249,7 @@ for (const outcome of ["network", "conflict"] as const) {
     });
     await page.goto("/");
     await page.getByRole("button", { name: "Publish to Discord" }).click();
-    await page.getByRole("button", { name: "Confirm publication" }).click();
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page.getByText("unconfirmed", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Publish to Discord" }),
@@ -282,9 +283,9 @@ test("blocks repeat confirmation and Escape while a publication is pending", asy
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Publish to Discord" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Publishing…", exact: true }),
+    page.getByRole("button", { name: "Confirm", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -352,10 +353,10 @@ test("edits a draft and requires confirmation before deleting it", async ({
   expect(deletions).toBe(0);
   await page.getByRole("button", { name: "Delete draft", exact: true }).click();
   await page
-    .getByRole("button", { name: "Confirm deletion", exact: true })
+    .getByRole("button", { name: "Confirm", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "No events yet" }),
+    page.getByRole("heading", { name: "No Events Yet" }),
   ).toBeVisible();
   expect(deletions).toBe(1);
 });

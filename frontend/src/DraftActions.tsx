@@ -1,4 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import ConfirmationDialog from "./ConfirmationDialog";
+import { useRef, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
 export default function DraftActions({
@@ -18,17 +20,6 @@ export default function DraftActions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const inFlight = useRef(false);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const heading = useId();
-  useEffect(() => {
-    if (confirming) dialog.current?.showModal();
-  }, [confirming]);
-  function close() {
-    dialog.current?.close();
-    setConfirming(false);
-    trigger.current?.focus();
-  }
   async function remove() {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -49,44 +40,32 @@ export default function DraftActions({
   }
   return (
     <>
-      <button type="button" onClick={() => onEdit(event)}>
-        Edit draft
+      <button type="button" className="event-icon-action" aria-label="Edit draft" title="Edit Draft" onClick={() => onEdit(event)}>
+        <Pencil size={18} aria-hidden="true" />
       </button>
       <button
         type="button"
-        ref={trigger}
+        className="event-icon-action"
+        aria-label="Delete draft"
+        title="Delete Draft"
         onClick={() => {
           setError("");
           setConfirming(true);
         }}
       >
-        Delete draft
+        <Trash2 size={18} aria-hidden="true" />
       </button>
       {confirming && (
-        <dialog
-          ref={dialog}
-          aria-labelledby={heading}
-          onCancel={(e) => {
-            e.preventDefault();
-            if (!busy) close();
-          }}
+        <ConfirmationDialog
+          title={`Delete ${event.title}?`}
+          busy={busy}
+          error={error}
+          status="Deleting…"
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void remove()}
         >
-          <h2 id={heading}>Delete {event.title}?</h2>
           <p>This permanently deletes the unpublished draft and its tables.</p>
-          {error && (
-            <p role="alert" className="error">
-              {error}
-            </p>
-          )}
-          <div className="form-actions">
-            <button type="button" autoFocus disabled={busy} onClick={close}>
-              Cancel
-            </button>
-            <button type="button" disabled={busy} onClick={() => void remove()}>
-              {busy ? "Deleting…" : "Confirm deletion"}
-            </button>
-          </div>
-        </dialog>
+        </ConfirmationDialog>
       )}
     </>
   );

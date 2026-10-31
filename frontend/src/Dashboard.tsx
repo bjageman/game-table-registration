@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import {
   api,
   errorMessage,
@@ -84,8 +85,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
     <section aria-labelledby="events-heading">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Your community</p>
-          <h2 id="events-heading">Game events</h2>
+          <h2 id="events-heading">Game Events</h2>
         </div>
         <div className="form-actions">
           <button
@@ -100,8 +100,14 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           >
             Create event
           </button>
-          <button onClick={refresh} disabled={loading || creating}>
-            {loading ? "Refreshing…" : "Refresh events"}
+          <button
+            className="refresh-events-button"
+            onClick={refresh}
+            disabled={loading || creating}
+            aria-label={loading ? "Refreshing…" : "Refresh events"}
+            title={loading ? "Refreshing…" : "Refresh events"}
+          >
+            <RefreshCw size={18} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -158,7 +164,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           />
         ) : (
           <div className="panel">
-            <h3>No events yet</h3>
+            <h3>No Events Yet</h3>
             <p>Event drafts and published signups will appear here.</p>
           </div>
         ))}

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 import {
   api,
   ApiError,
@@ -17,6 +20,7 @@ type AuthState =
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
 
@@ -89,17 +93,38 @@ export default function App() {
     <div className="app-shell">
       <header className="site-header">
         <div>
-          <p className="eyebrow">Game table registration</p>
-          <h1>Gather</h1>
+          <h1><a className="home-link" href="/">Gather</a></h1>
         </div>
         {auth.kind === "ready" && (
           <div className="account">
-            <span>
-              Signed in as <strong>{auth.session.username}</strong>
-            </span>
-            <button onClick={() => void logout()} disabled={loggingOut}>
-              {loggingOut ? "Signing out…" : "Log out"}
+            <button
+              className="profile-button"
+              aria-haspopup="menu"
+              aria-expanded={Boolean(accountAnchor)}
+              aria-controls={accountAnchor ? "account-menu" : undefined}
+              onClick={(event) => setAccountAnchor(event.currentTarget)}
+            >
+              <span><strong>{auth.session.username}</strong></span>
+              <ChevronDown size={16} aria-hidden="true" />
             </button>
+            <Menu
+              id="account-menu"
+              anchorEl={accountAnchor}
+              open={Boolean(accountAnchor)}
+              onClose={() => setAccountAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+            >
+              <MenuItem
+                disabled={loggingOut}
+                onClick={() => {
+                  setAccountAnchor(null);
+                  void logout();
+                }}
+              >
+                {loggingOut ? "Signing Out…" : "Log Out"}
+              </MenuItem>
+            </Menu>
           </div>
         )}
       </header>
@@ -114,8 +139,7 @@ export default function App() {
         )}
         {auth.kind === "signed-out" && (
           <section className="panel sign-in" aria-labelledby="sign-in-heading">
-            <p className="eyebrow">Moderator dashboard</p>
-            <h2 id="sign-in-heading">Bring everyone to the table.</h2>
+            <h2 id="sign-in-heading">Bring Everyone to the Table.</h2>
             <p>Sign in with Discord to manage your community’s game events.</p>
             {auth.configured ? (
               <a className="button primary" href="/api/auth/login">
@@ -132,8 +156,8 @@ export default function App() {
           <section className="panel">
             <h2>
               {auth.kind === "forbidden"
-                ? "Moderator access required"
-                : "Unable to load your session"}
+                ? "Moderator Access Required"
+                : "Unable to Load Your Session"}
             </h2>
             <p role="alert" className="error">
               {auth.message}

@@ -56,7 +56,8 @@ it("does not offer login before Discord is configured", async () => {
 it("restores the moderator session and logs out with its CSRF token", async () => {
   const fetchMock = mockApi();
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
+  fireEvent.click(await screen.findByRole("button", { name: "organizer" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Log Out" }));
   expect(
     await screen.findByRole("link", { name: "Log in with Discord" }),
   ).toBeVisible();
@@ -76,7 +77,7 @@ it("explains when server membership or moderator access is missing", async () =>
   mockApi(403);
   render(<App />);
   expect(
-    await screen.findByRole("heading", { name: "Moderator access required" }),
+    await screen.findByRole("heading", { name: "Moderator Access Required" }),
   ).toBeVisible();
   expect(
     screen.queryByRole("button", { name: "Log out" }),

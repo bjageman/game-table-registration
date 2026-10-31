@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { Send } from "lucide-react";
+import ConfirmationDialog from "./ConfirmationDialog";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   api,
   ApiError,
@@ -21,13 +23,11 @@ export default function PublishEvent({
   onUncertain,
   onAccessError,
 }: PublicationActions & { event: EventRecord }) {
+  const expirationHint = useId();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const inFlight = useRef(false);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(Date.now);
   const expired =
     event.starts_at * 1000 <= now + event.duration_hours * 3600000;
@@ -36,18 +36,6 @@ export default function PublishEvent({
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    if (!confirming) return;
-    const modal = dialog.current;
-    const returnFocus = trigger.current;
-    modal?.showModal();
-    cancel.current?.focus();
-    return () => {
-      modal?.close();
-      returnFocus?.focus();
-    };
-  }, [confirming]);
 
   async function publish() {
     if (inFlight.current) return;
@@ -81,38 +69,34 @@ export default function PublishEvent({
   return (
     <>
       <button
-        ref={trigger}
-        className="primary"
+        className="primary event-icon-action"
+        type="button"
+        aria-label="Publish to Discord"
+        aria-describedby={expired ? expirationHint : undefined}
+        title={expired ? "Choose a later event time or shorter signup duration before publishing" : "Publish to Discord"}
         disabled={expired}
         onClick={() => {
           setError("");
           setConfirming(true);
         }}
       >
-        Publish to Discord
+        <Send size={18} aria-hidden="true" />
       </button>
       {expired && (
-        <p className="help">
+        <p className="sr-only" id={expirationHint}>
           The signup window would end after this event starts. Create a new
           draft with a later event time or shorter duration.
         </p>
       )}
       {confirming && (
-        <dialog
-          ref={dialog}
-          aria-labelledby={`publish-title-${event.id}`}
-          aria-describedby={`publish-description-${event.id}`}
-          onCancel={(escape) => {
-            if (inFlight.current) escape.preventDefault();
-            else setConfirming(false);
-          }}
+        <ConfirmationDialog
+          title={`Publish ${event.title}?`}
+          busy={busy}
+          error={error}
+          status="Publishing… Keep this page open while the request completes."
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void publish()}
         >
-          <h2 id={`publish-title-${event.id}`}>Publish {event.title}?</h2>
-          <p id={`publish-description-${event.id}`}>
-            This posts a signup poll to your configured Discord channel. Signups
-            open immediately for {event.duration_hours} hours. Table options and
-            capacities cannot be edited after publication.
-          </p>
           <ul className="table-summary">
             {event.tables.map((table) => (
               <li key={table.name}>
@@ -120,33 +104,7 @@ export default function PublishEvent({
               </li>
             ))}
           </ul>
-          {error && (
-            <p role="alert" className="error">
-              {error}
-            </p>
-          )}
-          {busy && (
-            <p role="status">
-              Publishing… Keep this page open while the request completes.
-            </p>
-          )}
-          <div className="form-actions">
-            <button
-              ref={cancel}
-              onClick={() => setConfirming(false)}
-              disabled={busy}
-            >
-              Cancel
-            </button>
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() => void publish()}
-            >
-              {busy ? "Publishing…" : "Confirm publication"}
-            </button>
-          </div>
-        </dialog>
+        </ConfirmationDialog>
       )}
     </>
   );
