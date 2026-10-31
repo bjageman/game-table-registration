@@ -224,27 +224,3 @@ def test_published_events_cannot_be_edited_or_deleted(client, status):
     assert client.put(path, headers=headers, json=event_body()).status_code == 409
     assert client.delete(path, headers=headers).status_code == 409
     assert client.get("/api/events").json()[0]["status"] == status
-
-
-def test_event_signup_players_use_saved_answer_ids(client):
-    from app.models import Event
-
-    headers = login(client)
-    event = client.post("/api/events", headers=headers, json=event_body()).json()
-    with DBSession(client.app.state.engine) as db:
-        row = db.get(Event, event["id"])
-        row.message_id = "message"
-        row.answers = [
-            {
-                "answer_id": 9,
-                "poll_media": {"text": f"{t['name']} · {t['capacity']} seats"},
-            }
-            for t in row.tables
-        ]
-        db.commit()
-    client.app.state.discord.voters.return_value = [{"id": "mary", "name": "Mary"}]
-    result = client.get(f"/api/events/{event['id']}/signups")
-    assert result.status_code == 200
-    assert result.json()[0]["players"] == [{"id": "mary", "name": "Mary"}]
-    client.app.state.discord.voters.assert_called_with("message", 9)
-    assert client.get("/api/events/missing/signups").status_code == 404

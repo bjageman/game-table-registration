@@ -216,36 +216,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             ]
 
-    @app.get("/api/events/{event_id}/signups")
-    def event_signups(event_id: str, request: Request) -> list[dict[str, Any]]:
-        authenticated(request)
-        with DBSession(engine) as db:
-            event = db.get(Event, event_id)
-            if event is None or event.guild_id != config.discord_guild_id:
-                raise HTTPException(404, "Event not found")
-            if not event.message_id:
-                return [{"name": t["name"], "players": []} for t in event.tables]
-            answers = {
-                answer.get("poll_media", {}).get("text"): answer["answer_id"]
-                for answer in event.answers or []
-            }
-            rows = []
-            for table in event.tables:
-                label = f"{table['name']} · {table['capacity']} seats"
-                if label not in answers:
-                    raise HTTPException(
-                        502, "Cannot match Discord poll answers to tables"
-                    )
-                rows.append(
-                    {
-                        "name": table["name"],
-                        "players": app.state.discord.voters(
-                            event.message_id, answers[label]
-                        ),
-                    }
-                )
-            return rows
-
     @app.post("/api/events", status_code=201)
     def create_event(body: EventInput, request: Request) -> dict[str, Any]:
         session = authenticated(request, True)

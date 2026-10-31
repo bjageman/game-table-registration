@@ -29,27 +29,3 @@ def test_wrong_channel_guild_cannot_post():
     with pytest.raises(HTTPException):
         api.publish({})
     assert api.bot.call_count == 1
-
-
-def test_voters_paginates_deduplicates_and_excludes_bots():
-    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
-    api.bot = Mock(
-        side_effect=[
-            {
-                "users": [
-                    {"id": str(i), "username": f"player{i}"} for i in range(1, 101)
-                ]
-            },
-            {
-                "users": [
-                    {"id": "101", "username": "mary", "global_name": "Mary"},
-                    {"id": "102", "username": "bot", "bot": True},
-                ]
-            },
-        ]
-    )
-    players = api.voters("message", 9)
-    assert len(players) == 101
-    assert {"id": "101", "name": "Mary"} in players
-    assert api.bot.call_args.kwargs["params"] == {"limit": 100, "after": "100"}
-    assert api.bot.call_args.args[1].endswith("/message/answers/9")

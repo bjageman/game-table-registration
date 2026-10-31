@@ -64,7 +64,7 @@ export default function EventList({
                 </div>
               )}
             </dl>
-            <EventTables event={event} onAccessError={actions.onAccessError} />
+            <EventTables event={event} />
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (
