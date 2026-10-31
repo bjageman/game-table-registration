@@ -9,3 +9,5 @@ Checks: `npm run lint`, `npm run build`, `npm test`, and `npx playwright install
 Run `docker compose -f compose.yml -f compose.frontend.yml up --build -d --wait` from the repository root. Open http://localhost:8080. Set PUBLIC_URL to your browser origin. The frontend Compose file extends the backend Compose file and is not a standalone deployment.
 
 The event list loads the server's event records with start times, signup duration, table capacities, and publication status. Times use the browser's local timezone. Refresh retrieves the latest server state. A lost session or removed moderator access hides the dashboard. Events awaiting publication review show a check-Discord notice.
+
+Create event opens a draft form for the title, local event date/time, whole-hour signup duration (1–768), and 1–10 tables with capacities (1–999, default 15). The browser sends a timezone-qualified timestamp. Table names must be distinct, and the event must start after the signup window ends. Saving creates a draft; it does not publish a Discord message. Failed requests keep entered values for correction.
