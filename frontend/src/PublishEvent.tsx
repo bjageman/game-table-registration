@@ -1,5 +1,6 @@
+import { Send } from "lucide-react";
 import ConfirmationDialog from "./ConfirmationDialog";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   api,
   ApiError,
@@ -22,6 +23,7 @@ export default function PublishEvent({
   onUncertain,
   onAccessError,
 }: PublicationActions & { event: EventRecord }) {
+  const expirationHint = useId();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -67,17 +69,21 @@ export default function PublishEvent({
   return (
     <>
       <button
-        className="primary"
+        className="primary event-icon-action"
+        type="button"
+        aria-label="Publish to Discord"
+        aria-describedby={expired ? expirationHint : undefined}
+        title={expired ? "Choose a later event time or shorter signup duration before publishing" : "Publish to Discord"}
         disabled={expired}
         onClick={() => {
           setError("");
           setConfirming(true);
         }}
       >
-        Publish to Discord
+        <Send size={18} aria-hidden="true" />
       </button>
       {expired && (
-        <p className="help">
+        <p className="sr-only" id={expirationHint}>
           The signup window would end after this event starts. Create a new
           draft with a later event time or shorter duration.
         </p>

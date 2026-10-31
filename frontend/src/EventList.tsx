@@ -96,6 +96,8 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
             </a>
           )}
           {event.status === "draft" && (
+            <>
+                <PublishEvent event={event} {...actions} />
                 <DraftActions
                   event={event}
                   csrf={actions.csrf}
@@ -103,6 +105,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
                   onDeleted={onDeleted}
                   onAccessError={actions.onAccessError}
                 />
+            </>
           )}
         </div>
         <button type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
@@ -145,11 +148,6 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
                 Check Discord before taking further action. Publication has not
                 been confirmed; this event will not be retried automatically.
               </p>
-            )}
-            {event.status === "draft" && (
-              <div className="form-actions draft-actions">
-                <PublishEvent event={event} {...actions} />
-              </div>
             )}
     </dialog>
   );
