@@ -247,6 +247,15 @@ input {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
+.date-time-fields {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.date-time-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
 .table-fields {
   display: grid;
   grid-template-columns: 2fr 1fr auto;

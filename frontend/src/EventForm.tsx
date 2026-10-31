@@ -16,7 +16,8 @@ export default function EventForm({
 }: Props) {
   const prefix = useId();
   const [title, setTitle] = useState("");
-  const [startsAt, setStartsAt] = useState("");
+  const [eventDate, setEventDate] = useState("");
+  const [eventTime, setEventTime] = useState("");
   const [duration, setDuration] = useState("24");
   const [tables, setTables] = useState([{ id: 0, name: "", capacity: "15" }]);
   const nextId = useRef(1);
@@ -38,6 +39,7 @@ export default function EventForm({
     event.preventDefault();
     if (inFlight.current) return;
     setError("");
+    const startsAt = eventDate && eventTime ? `${eventDate}T${eventTime}` : "";
     const start = new Date(startsAt);
     const hours = Number(duration);
     if (!title.trim()) {
@@ -106,18 +108,33 @@ export default function EventForm({
             autoFocus
           />
           <div className="form-grid">
-            <div>
-              <label htmlFor={`${prefix}-start`}>Event date and time</label>
-              <input
-                type="datetime-local"
-                id={`${prefix}-start`}
-                value={startsAt}
-                onChange={(event) => setStartsAt(event.target.value)}
-                required
-                aria-describedby={`${prefix}-timezone`}
-              />
+            <div className="date-time-fields">
+              <div className="date-time-inputs">
+                <div>
+                  <label htmlFor={`${prefix}-date`}>Event date</label>
+                  <input
+                    type="date"
+                    id={`${prefix}-date`}
+                    value={eventDate}
+                    onChange={(event) => setEventDate(event.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor={`${prefix}-time`}>Event time</label>
+                  <input
+                    type="time"
+                    id={`${prefix}-time`}
+                    value={eventTime}
+                    onChange={(event) => setEventTime(event.target.value)}
+                    required
+                    step={60}
+                  />
+                </div>
+              </div>
               <p id={`${prefix}-timezone`} className="help">
-                Your timezone: {timezone}. Times are saved with a UTC offset.
+                Timezone: {timezone}. Times are saved with the correct UTC
+                offset.
               </p>
             </div>
             <div>
