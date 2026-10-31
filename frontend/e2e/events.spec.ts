@@ -22,6 +22,7 @@ test("offers Discord login without exposing moderator content", async ({
 });
 
 test("restores a session and logs out", async ({ page }) => {
+  await page.route("**/api/events", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/me", (route) =>
     route.fulfill({ json: { username: "organizer", csrf: "test-csrf" } }),
   );

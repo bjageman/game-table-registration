@@ -7,3 +7,5 @@ For headless access, set `DEV_HOST=0.0.0.0` and `PUBLIC_URL=http://your-host:518
 Checks: `npm run lint`, `npm run build`, `npm test`, and `npx playwright install chromium && npm run test:e2e`. Stop any existing server on port 5180 before the browser tests. CI also builds the frontend Docker image. Browser tests mock the API and check login/logout on desktop and mobile without contacting Discord.
 
 Run `docker compose -f compose.yml -f compose.frontend.yml up --build -d --wait` from the repository root. Open http://localhost:8080. Set PUBLIC_URL to your browser origin. The frontend Compose file extends the backend Compose file and is not a standalone deployment.
+
+The event list loads the server's event records with start times, signup duration, table capacities, and publication status. Times use the browser's local timezone. Refresh retrieves the latest server state. A lost session or removed moderator access hides the dashboard. Events awaiting publication review show a check-Discord notice.
