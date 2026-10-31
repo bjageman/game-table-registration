@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { MantineProvider } from "@mantine/core";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import EventForm from "./EventForm";
 
 const props = {
@@ -16,9 +17,9 @@ afterEach(() => {
 });
 function renderForm() {
   return render(
-    <MantineProvider>
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
       <EventForm {...props} />
-    </MantineProvider>,
+    </LocalizationProvider>,
   );
 }
 function fill() {

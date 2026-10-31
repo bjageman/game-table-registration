@@ -1,14 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { MantineProvider } from "@mantine/core";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import App from "./App";
-import "@mantine/core/styles.css";
-import "@mantine/dates/styles.css";
 import "./style.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <MantineProvider>
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
       <App />
-    </MantineProvider>
+    </LocalizationProvider>
   </React.StrictMode>,
 );

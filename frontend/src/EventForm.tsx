@@ -1,6 +1,12 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
-import { DateTimePicker } from "@mantine/dates";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
+import { TimePicker } from "@mui/x-date-pickers/TimePicker";
+import { renderTimeViewClock } from "@mui/x-date-pickers/timeViewRenderers";
+import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
 interface Props {
@@ -10,12 +16,11 @@ interface Props {
   onAccessError: (error: unknown) => boolean;
 }
 
-function initialTime() {
-  const date = new Date();
+function initialTime(): Dayjs {
+  const current = dayjs();
   const minute =
-    date.getMinutes() + Number(date.getSeconds() > 0 || date.getMilliseconds() > 0);
-  date.setMinutes(Math.ceil(minute / 15) * 15, 0, 0);
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    current.minute() + Number(current.second() > 0 || current.millisecond() > 0);
+  return current.minute(Math.ceil(minute / 15) * 15).second(0).millisecond(0);
 }
 
 export default function EventForm({
@@ -26,8 +31,8 @@ export default function EventForm({
 }: Props) {
   const prefix = useId();
   const [title, setTitle] = useState("");
-  const [startsAt, setStartsAt] = useState<string | null>(null);
-  const [defaultTimeValue] = useState(initialTime);
+  const [startsAt, setStartsAt] = useState<Dayjs | null>(null);
+  const [mobileTime, setMobileTime] = useState(initialTime);
   const [duration, setDuration] = useState("24");
   const [tables, setTables] = useState([{ id: 0, name: "", capacity: "15" }]);
   const nextId = useRef(1);
@@ -35,6 +40,39 @@ export default function EventForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const isMobile = useMediaQuery("(max-width: 600px)");
+
+  function updateDesktopStart(value: Dayjs | null) {
+    setStartsAt(value);
+    if (value) setMobileTime(value);
+  }
+
+  function updateMobileDate(value: Dayjs | null) {
+    if (!value) {
+      setStartsAt(null);
+      return;
+    }
+    const time = startsAt ?? mobileTime;
+    setStartsAt(
+      value
+        .hour(time.hour())
+        .minute(time.minute())
+        .second(0)
+        .millisecond(0),
+    );
+  }
+
+  function updateMobileTime(value: Dayjs | null) {
+    if (!value) return;
+    setMobileTime(value);
+    setStartsAt((current) =>
+      current
+        ?.hour(value.hour())
+        .minute(value.minute())
+        .second(0)
+        .millisecond(0) ?? null,
+    );
+  }
 
   function updateTable(
     id: number,
@@ -49,7 +87,7 @@ export default function EventForm({
     event.preventDefault();
     if (inFlight.current) return;
     setError("");
-    const start = startsAt ? new Date(startsAt.replace(" ", "T")) : null;
+    const start = startsAt?.toDate() ?? null;
     const hours = Number(duration);
     if (!title.trim()) {
       setError("Enter an event title.");
@@ -118,21 +156,62 @@ export default function EventForm({
           />
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
-              <DateTimePicker
-                label="Event starts"
-                value={startsAt}
-                onChange={(value) => setStartsAt(value)}
-                valueFormat="MMMM D, YYYY h:mm A"
-                defaultTimeValue={defaultTimeValue}
-                timePickerProps={{
-                  format: "12h",
-                  minutesStep: 15,
-                  withDropdown: true,
-                }}
-                placeholder="Choose a date and time"
-                description={`Timezone: ${timezone}. Times are saved with the correct UTC offset.`}
-                required
-              />
+              {isMobile ? (
+                <div className="mobile-date-time-fields">
+                  <DatePicker
+                    label="Event starts"
+                    value={startsAt}
+                    onChange={updateMobileDate}
+                    format="MMMM D, YYYY"
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        required: true,
+                        helperText: `Timezone: ${timezone}`,
+                      },
+                    }}
+                  />
+                  <TimePicker
+                    label="Event time"
+                    value={startsAt ?? mobileTime}
+                    onChange={updateMobileTime}
+                    ampm
+                    timeSteps={{ minutes: 15 }}
+                    viewRenderers={{
+                      hours: renderTimeViewClock,
+                      minutes: renderTimeViewClock,
+                    }}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        required: true,
+                        helperText: "Defaults to the current time.",
+                      },
+                    }}
+                  />
+                </div>
+              ) : (
+                <DateTimePicker
+                  label="Event starts"
+                  value={startsAt}
+                  onChange={updateDesktopStart}
+                  referenceDate={mobileTime}
+                  format="MMMM D, YYYY h:mm A"
+                  ampm
+                  timeSteps={{ minutes: 15 }}
+                  viewRenderers={{
+                    hours: renderTimeViewClock,
+                    minutes: renderTimeViewClock,
+                  }}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      required: true,
+                      helperText: `Timezone: ${timezone}. Times are saved with the correct UTC offset.`,
+                    },
+                  }}
+                />
+              )}
             </div>
             <div>
               <label htmlFor={`${prefix}-signup-start`}>Signup starts</label>
