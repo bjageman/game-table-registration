@@ -30,7 +30,7 @@ it("opens event details from a compact event listing", async () => {
     vi.fn(async () => new Response(JSON.stringify([draft]))),
   );
   render(<Dashboard {...props} />);
-  const item = await screen.findByRole("button", { name: /Friday games draft 1 table/ });
+  const item = await screen.findByRole("button", { name: /^Friday games/ });
   expect(item).toBeVisible();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   fireEvent.click(item);

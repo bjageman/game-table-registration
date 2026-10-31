@@ -9,12 +9,14 @@ from urllib.parse import urlencode
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import create_engine, delete, select, text, update
+from sqlalchemy import create_engine, delete, func, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import Settings
+from app.connection_settings import register_settings
 from app.discord_api import DiscordAPI
-from app.models import Event, LoginState, Session
+from app.models import Event, LoginState, PlayerProfile, Session, UserSettings
 
 
 def digest(token: str) -> str:
@@ -52,10 +54,20 @@ class EventInput(BaseModel):
         return self
 
 
+class PlayerProfileInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    real_name: str = Field(max_length=100)
+
+    @field_validator("real_name")
+    @classmethod
+    def clean_real_name(cls, value: str) -> str:
+        return value.strip()
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or Settings()
     engine = create_engine(config.database_url, pool_pre_ping=True)
-    app = FastAPI(title="Table registration")
+    app = FastAPI(title="TableSignup")
     app.state.engine = engine
     app.state.discord = DiscordAPI(config)
 
@@ -70,7 +82,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             path="/api",
         )
 
-    def authenticated(request: Request, mutation: bool = False) -> Session:
+    def client_for(target: Settings) -> DiscordAPI:
+        if (target.discord_guild_id, target.discord_channel_id) == (
+            config.discord_guild_id,
+            config.discord_channel_id,
+        ):
+            client: DiscordAPI = app.state.discord
+            return client
+        scoped: DiscordAPI = app.state.discord.at(
+            target.discord_guild_id, target.discord_channel_id
+        )
+        return scoped
+
+    def destination(request: Request) -> Settings:
+        target: Settings = request.state.destination
+        return target
+
+    def scoped_discord(request: Request) -> DiscordAPI:
+        client: DiscordAPI = request.state.discord
+        return client
+
+    def event_scope(request: Request) -> tuple[Any, Any]:
+        target = destination(request)
+        return (
+            Event.guild_id == target.discord_guild_id,
+            func.coalesce(Event.channel_id, config.discord_channel_id)
+            == target.discord_channel_id,
+        )
+
+    def matches_destination(event: Event, request: Request) -> bool:
+        target = destination(request)
+        return (
+            event.guild_id == target.discord_guild_id
+            and (event.channel_id or config.discord_channel_id)
+            == target.discord_channel_id
+        )
+
+    def legacy_access(user_id: str) -> bool:
+        if not config.discord_guild_id or not config.discord_channel_id:
+            return False
+        try:
+            app.state.discord.authorize(user_id)
+            return True
+        except HTTPException:
+            return False
+
+    def authenticated(
+        request: Request, mutation: bool = False, require_destination: bool = True
+    ) -> Session:
         with DBSession(engine) as db:
             session = db.get(Session, digest(request.cookies.get("session", "")))
             if not session or session.expires <= time.time():
@@ -82,7 +141,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             ):
                 raise HTTPException(403, "Invalid request. Refresh and try again.")
-            app.state.discord.authorize(session.user_id)
+            if not require_destination:
+                return session
+            saved = db.get(UserSettings, session.user_id)
+            target = (
+                config.model_copy(
+                    update={
+                        "discord_guild_id": saved.guild_id,
+                        "discord_channel_id": saved.channel_id,
+                    }
+                )
+                if saved
+                else config
+            )
+            if not target.discord_guild_id or not target.discord_channel_id:
+                raise HTTPException(
+                    409, "Choose a server and channel in Settings first."
+                )
+            discord = client_for(target)
+            if saved:
+                discord.authorize_destination(session.user_id)
+            else:
+                discord.authorize(session.user_id)
+            request.state.destination = target
+            request.state.discord = discord
             return session
 
     def serialize(event: Event) -> dict[str, Any]:
@@ -95,8 +177,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": event.status,
             "closes_at": event.closes_at,
             "discord_url": (
-                f"https://discord.com/channels/{config.discord_guild_id}/"
-                f"{config.discord_channel_id}/{event.message_id}"
+                f"https://discord.com/channels/{event.guild_id}/"
+                f"{event.channel_id or config.discord_channel_id}/{event.message_id}"
             )
             if event.message_id
             else None,
@@ -121,7 +203,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"configured": config.configured}
 
     @app.get("/api/auth/login")
-    def login() -> Response:
+    def login(return_to: str = "") -> Response:
         if not config.configured:
             raise HTTPException(
                 503, "Complete Discord configuration before signing in."
@@ -138,13 +220,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {
                     "client_id": config.discord_client_id,
                     "response_type": "code",
-                    "scope": "identify",
+                    "scope": "identify guilds",
                     "redirect_uri": config.callback_url,
                     "state": token,
                 }
             )
         )
         cookie(response, "oauth_state", token, 600)
+        cookie(
+            response, "oauth_return", "settings" if return_to == "settings" else "", 600
+        )
         return response
 
     @app.get("/api/auth/callback")
@@ -166,7 +251,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not consumed or not code:
                 raise HTTPException(400, "Login expired or cancelled. Sign in again.")
             user = app.state.discord.identity(code)
-            app.state.discord.authorize(user["id"])
             token = secrets.token_urlsafe(32)
             db.execute(
                 delete(Session).where(
@@ -178,30 +262,118 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     token_hash=digest(token),
                     user_id=user["id"],
                     username=user["username"],
+                    guilds=[
+                        {"id": str(g["id"]), "name": str(g["name"])}
+                        for g in user.get("guilds", [])
+                        if g.get("owner") or int(g.get("permissions", "0")) & (8 | 32)
+                    ],
                     csrf=secrets.token_urlsafe(32),
                     expires=time.time() + 28800,
                 )
             )
             db.commit()
-        response = RedirectResponse(config.public_url)
+        response = RedirectResponse(
+            config.public_url + "/#/settings"
+            if request.cookies.get("oauth_return") == "settings"
+            else config.public_url
+        )
         response.delete_cookie("oauth_state", path="/api")
+        response.delete_cookie("oauth_return", path="/api")
         cookie(response, "session", token, 28800)
         return response
 
     @app.get("/api/me")
-    def me(request: Request) -> dict[str, str]:
-        session = authenticated(request)
-        return {"username": session.username, "csrf": session.csrf}
+    def me(request: Request) -> dict[str, Any]:
+        session = authenticated(request, require_destination=False)
+        with DBSession(engine) as db:
+            saved = db.get(UserSettings, session.user_id)
+            selection = f"{saved.guild_id}:{saved.channel_id}" if saved else "legacy"
+        needs_setup = not saved and not legacy_access(session.user_id)
+        return {
+            "username": session.username,
+            "csrf": session.csrf,
+            "needs_setup": needs_setup,
+            "destination": selection,
+        }
 
     @app.post("/api/auth/logout")
     def logout(request: Request) -> Response:
-        session = authenticated(request, True)
+        session = authenticated(request, True, require_destination=False)
         with DBSession(engine) as db:
             db.execute(delete(Session).where(Session.token_hash == session.token_hash))
             db.commit()
         response = Response(status_code=204)
         response.delete_cookie("session", path="/api")
         return response
+
+    register_settings(app, engine, config, authenticated, legacy_access)
+
+    def discord_name(player_id: str) -> str:
+        discord: DiscordAPI = app.state.discord
+        user = discord.bot("GET", f"/users/{player_id}")
+        name = user.get("global_name") or user.get("username")
+        if not isinstance(name, str) or not name:
+            raise HTTPException(502, "Discord returned an invalid user profile")
+        return name
+
+    def player_data(player_id: str, profile: PlayerProfile | None) -> dict[str, Any]:
+        return {
+            "discord_id": player_id,
+            "discord_name": profile.discord_name
+            if profile
+            else discord_name(player_id),
+            "real_name": profile.real_name if profile else "",
+            "weighting": profile.weighting if profile else 1.0,
+        }
+
+    def valid_player_id(player_id: str) -> None:
+        if not player_id.isascii() or not player_id.isdecimal() or len(player_id) > 32:
+            raise HTTPException(422, "Invalid Discord user ID")
+
+    @app.get("/api/players/{player_id}")
+    def player_profile(player_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            profile = db.get(
+                PlayerProfile, (destination(request).discord_guild_id, player_id)
+            )
+            return player_data(player_id, profile)
+
+    @app.put("/api/players/{player_id}")
+    def save_player_profile(
+        player_id: str, body: PlayerProfileInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            profile = db.get(
+                PlayerProfile, (destination(request).discord_guild_id, player_id)
+            )
+            if profile is None:
+                profile = PlayerProfile(
+                    guild_id=destination(request).discord_guild_id,
+                    discord_id=player_id,
+                    discord_name=discord_name(player_id),
+                    real_name=body.real_name,
+                    weighting=1.0,
+                )
+                db.add(profile)
+            else:
+                profile.real_name = body.real_name
+            try:
+                db.commit()
+            except IntegrityError:
+                # Another moderator may have created this profile concurrently.
+                db.rollback()
+                profile = db.get(
+                    PlayerProfile, (destination(request).discord_guild_id, player_id)
+                )
+                if profile is None:
+                    raise
+                profile.real_name = body.real_name
+                db.commit()
+            return player_data(player_id, profile)
 
     @app.get("/api/events")
     def events(request: Request) -> list[dict[str, Any]]:
@@ -210,9 +382,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return [
                 serialize(event)
                 for event in db.scalars(
-                    select(Event)
-                    .where(Event.guild_id == config.discord_guild_id)
-                    .order_by(Event.starts_at)
+                    select(Event).where(*event_scope(request)).order_by(Event.starts_at)
                 )
             ]
 
@@ -221,13 +391,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         authenticated(request)
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
-            if event is None or event.guild_id != config.discord_guild_id:
+            if event is None or not matches_destination(event, request):
                 raise HTTPException(404, "Event not found")
             message_id = event.message_id
             tables = event.tables
         if not message_id:
             return [{"name": table["name"], "players": []} for table in tables]
-        discord: DiscordAPI = app.state.discord
+        discord = scoped_discord(request)
         return discord.table_signups(message_id, tables)
 
     @app.post("/api/events", status_code=201)
@@ -236,7 +406,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with DBSession(engine) as db:
             event = Event(
                 id=str(uuid.uuid4()),
-                guild_id=config.discord_guild_id,
+                guild_id=destination(request).discord_guild_id,
+                channel_id=destination(request).discord_channel_id,
                 title=body.title.strip(),
                 starts_at=body.starts_at.timestamp(),
                 duration_hours=body.duration_hours,
@@ -256,7 +427,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 update(Event)
                 .where(
                     Event.id == event_id,
-                    Event.guild_id == config.discord_guild_id,
+                    *event_scope(request),
                     Event.status == "draft",
                 )
                 .values(
@@ -286,7 +457,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 delete(Event)
                 .where(
                     Event.id == event_id,
-                    Event.guild_id == config.discord_guild_id,
+                    *event_scope(request),
                     Event.status.in_(["draft", "open"]),
                 )
                 .returning(Event.message_id)
@@ -294,7 +465,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if changed is None:
                 raise HTTPException(409, "Only drafts and open signups can be deleted.")
             if delete_poll and changed.message_id:
-                app.state.discord.delete_poll(changed.message_id)
+                scoped_discord(request).delete_poll(changed.message_id)
             db.commit()
         return Response(status_code=204)
 
@@ -303,7 +474,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         authenticated(request, True)
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
-            if not event or event.guild_id != config.discord_guild_id:
+            if not event or not matches_destination(event, request):
                 raise HTTPException(404, "Event not found")
             if event.starts_at <= time.time() + event.duration_hours * 3600:
                 raise HTTPException(
@@ -320,7 +491,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(409, "Already published or awaiting publish review")
             db.refresh(event)
             try:
-                message = app.state.discord.publish(
+                message = scoped_discord(request).publish(
                     {
                         "content": (
                             f"**{event.title}**\nEvent: <t:{int(event.starts_at)}:F>\n"

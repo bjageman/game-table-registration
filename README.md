@@ -1,4 +1,4 @@
-# Game table registration
+# TableSignup
 
 Run the API and frontend in one terminal from the repository root:
 

@@ -2,7 +2,11 @@
 
 Python/FastAPI API with database-backed Discord login sessions, moderator authorization, event drafts, and guarded native poll publication.
 
-Keep credentials in the ignored root `.env`; `.env.example` lists required variables. Use DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET for the application's OAuth2 credentials. Also set DISCORD_BOT_TOKEN, DISCORD_GUILD_ID (the Discord server ID), DISCORD_CHANNEL_ID, and OWNER_DISCORD_ID. Optional MODERATOR_ROLE_IDS is a comma-separated list. Set PUBLIC_URL to the browser origin and register that origin plus `/api/auth/callback` in Discord's OAuth2 settings. The API rechecks guild membership and owner/role authorization on authenticated requests.
+Keep the shared application's DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, and DISCORD_BOT_TOKEN in the ignored root `.env`. Set PUBLIC_URL to the browser origin and register that origin plus `/api/auth/callback` in Discord's OAuth2 settings. Sign-in requests `identify guilds`; only manageable server IDs and names are retained in the session, not OAuth tokens. The bot must allow Public Bot and Guild Install for other users to install it.
+
+Each user selects an active server and channel under Settings. The Discord install link requests View Channel, Send Messages, Read Message History, and Send Polls, without Administrator. Channel discovery and saves recheck server ownership/Manage Server and effective channel permissions for both the user and bot. Event and profile operations recheck current access; event queries/mutations are scoped to the selected server/channel. Events store their original channel independently of later settings changes. Profiles remain scoped to their server and survive event deletion.
+
+DISCORD_GUILD_ID, DISCORD_CHANNEL_ID, OWNER_DISCORD_ID, and MODERATOR_ROLE_IDS remain optional legacy defaults. Existing events in that default server have their channel captured by the destinations migration; retain those env defaults through that migration. New users can authenticate without belonging to the legacy server and are directed to Settings. Shared bot credentials are never accepted or returned by the settings API.
 
 Requires Python 3.12+ and uv. Run `uv sync --frozen`, `uv run alembic upgrade head`, then `uv run uvicorn app.main:app --app-dir backend --host 127.0.0.1`. Direct development defaults to an ignored SQLite local.db. Compose and CI use PostgreSQL.
 

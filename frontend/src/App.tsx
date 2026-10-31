@@ -10,6 +10,7 @@ import {
   type ModeratorSession,
 } from "./api";
 import Dashboard from "./Dashboard";
+import ConnectionSettings from "./ConnectionSettings";
 
 type AuthState =
   | { kind: "loading" }
@@ -18,6 +19,12 @@ type AuthState =
   | { kind: "error" | "forbidden"; message: string };
 
 export default function App() {
+  const [page, setPage] = useState(() => window.location.hash === "#/settings" ? "settings" : "events");
+  useEffect(() => {
+    const changed = () => setPage(window.location.hash === "#/settings" ? "settings" : "events");
+    window.addEventListener("hashchange", changed);
+    return () => window.removeEventListener("hashchange", changed);
+  }, []);
   const [auth, setAuth] = useState<AuthState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
@@ -27,10 +34,6 @@ export default function App() {
   const onAccessError = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) {
       setAuth({ kind: "signed-out", configured: true });
-      return true;
-    }
-    if (error instanceof ApiError && error.status === 403) {
-      setAuth({ kind: "forbidden", message: errorMessage(error) });
       return true;
     }
     return false;
@@ -93,7 +96,7 @@ export default function App() {
     <div className="app-shell">
       <header className="site-header">
         <div>
-          <h1><a className="home-link" href="/">Gather</a></h1>
+          <h1><a className="home-link" href="/">TableSignup</a></h1>
         </div>
         {auth.kind === "ready" && (
           <div className="account">
@@ -115,6 +118,9 @@ export default function App() {
               anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
               transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
+              <MenuItem component="a" href="#/settings" onClick={() => setAccountAnchor(null)}>
+                Settings
+              </MenuItem>
               <MenuItem
                 disabled={loggingOut}
                 onClick={() => {
@@ -172,7 +178,13 @@ export default function App() {
           </section>
         )}
         {auth.kind === "ready" && (
-          <Dashboard session={auth.session} onAccessError={onAccessError} />
+          page === "settings" || auth.session.needs_setup ? (
+            <ConnectionSettings csrf={auth.session.csrf} onAccessError={onAccessError}
+              onSaved={async () => {
+                const session = await api<ModeratorSession>("/me");
+                setAuth({ kind: "ready", session });
+              }} />
+          ) : <Dashboard key={auth.session.destination ?? "legacy"} session={auth.session} onAccessError={onAccessError} />
         )}
       </main>
       <footer>Made for your next game night.</footer>

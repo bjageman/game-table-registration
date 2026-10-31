@@ -123,3 +123,88 @@ def test_delete_discord_poll_failure_is_reported():
         with pytest.raises(HTTPException) as error:
             api.delete_poll("message")
         assert error.value.status_code == 502
+
+
+def test_channel_picker_respects_user_and_bot_overwrites():
+    from app.connection_settings import POLL_PERMISSIONS
+
+    api = DiscordAPI(Settings(_env_file=None))
+    guild = {"id": "100", "owner_id": "other", "name": "Games"}
+    roles = [
+        {"id": "100", "permissions": str(1 << 10)},
+        {"id": "manager", "permissions": "32"},
+        {"id": "bot-role", "permissions": str(POLL_PERMISSIONS)},
+    ]
+    api.bot = Mock(
+        side_effect=lambda method, path: {
+            "/guilds/100": guild,
+            "/guilds/100/members/user": {"roles": ["manager"]},
+            "/users/@me": {"id": "bot"},
+            "/guilds/100/members/bot": {"roles": ["bot-role"]},
+        }[path]
+    )
+    api.bot_items = Mock(
+        side_effect=lambda path: (
+            roles
+            if path.endswith("roles")
+            else [
+                {"id": "101", "name": "public", "type": 0},
+                {
+                    "id": "102",
+                    "name": "hidden",
+                    "type": 0,
+                    "permission_overwrites": [
+                        {"id": "user", "type": 1, "deny": str(1 << 10), "allow": "0"},
+                    ],
+                },
+                {
+                    "id": "103",
+                    "name": "no-polls",
+                    "type": 0,
+                    "permission_overwrites": [
+                        {
+                            "id": "bot-role",
+                            "type": 0,
+                            "deny": str(1 << 49),
+                            "allow": "0",
+                        },
+                    ],
+                },
+                {"id": "104", "name": "voice", "type": 2},
+            ]
+        )
+    )
+    assert api.destination_channels("user", "100") == (
+        "Games",
+        [{"id": "101", "name": "public"}],
+    )
+    roles[1]["permissions"] = "0"
+    with pytest.raises(HTTPException) as error:
+        api.destination_channels("user", "100")
+    assert error.value.status_code == 403
+
+
+def test_saved_destination_rejects_lost_channel_access():
+    api = DiscordAPI(
+        Settings(_env_file=None, discord_guild_id="100", discord_channel_id="101")
+    )
+    api.manager_context = Mock(
+        return_value=(
+            {"id": "100", "owner_id": "other"},
+            {"roles": ["manager"]},
+            [
+                {"id": "100", "permissions": "1024"},
+                {"id": "manager", "permissions": "32"},
+            ],
+        )
+    )
+    api.bot = Mock(
+        return_value={
+            "guild_id": "100",
+            "permission_overwrites": [
+                {"id": "user", "type": 1, "deny": "1024", "allow": "0"},
+            ],
+        }
+    )
+    with pytest.raises(HTTPException):
+        api.authorize_destination("user")

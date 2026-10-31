@@ -20,9 +20,6 @@ class Settings(BaseSettings):
                 self.discord_client_id,
                 self.discord_client_secret,
                 self.discord_bot_token,
-                self.discord_guild_id,
-                self.discord_channel_id,
-                self.owner_discord_id,
             )
         )
 

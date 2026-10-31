@@ -18,3 +18,13 @@ def test_legacy_discord_environment_names_are_not_supported(monkeypatch):
     assert settings.discord_client_id == ""
     assert settings.discord_client_secret == ""
     assert not settings.configured
+
+
+def test_shared_app_does_not_require_a_default_server():
+    settings = Settings(
+        _env_file=None,
+        discord_client_id="client",
+        discord_client_secret="secret",
+        discord_bot_token="token",
+    )
+    assert settings.configured
