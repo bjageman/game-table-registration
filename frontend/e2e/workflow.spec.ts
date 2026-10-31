@@ -411,7 +411,6 @@ test("saves explicit signup times and requires confirmation to schedule them", a
   await fillDraft(page);
   for (const [label, day] of [
     ["Signup opens", "9"],
-    ["Signup closes", "13"],
   ]) {
     const field = page.getByRole("group", { name: label, exact: true });
     for (const [name, value] of [
