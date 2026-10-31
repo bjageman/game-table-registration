@@ -11,11 +11,13 @@ from app.config import Settings
 from app.discord_api import DiscordAPI
 from app.models import Event
 from app.publication import publish_event
+from app.scheduling import replenish
 
 log = logging.getLogger(__name__)
 
 
 def tick(engine: Engine, discord: DiscordAPI, config: Settings) -> None:
+    replenish(engine, config.discord_guild_id)
     now = time.time()
     with Session(engine) as db:
         db.execute(

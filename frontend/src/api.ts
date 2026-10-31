@@ -100,3 +100,30 @@ export function mutationOptions(csrf: string, body?: unknown): RequestInit {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   };
 }
+
+export interface ScheduleDraft {
+  title: string;
+  timezone: string;
+  first_date: string;
+  event_time: string;
+  opening_days_before: number;
+  opening_time: string;
+  closing_days_before: number;
+  closing_time: string;
+  tables: { name: string; capacity: number }[];
+  skip_dates: string[];
+}
+export interface ScheduleRecord extends ScheduleDraft {
+  id: string;
+  active: boolean;
+  revision: number;
+  last_error: string | null;
+}
+export interface OccurrencePreview {
+  date: string;
+  skipped: boolean;
+  opens_at?: number;
+  signup_closes_at?: number;
+  starts_at?: number;
+  error?: string;
+}

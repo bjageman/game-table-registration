@@ -7,6 +7,7 @@ import {
 } from "./api";
 import EventList from "./EventList";
 import EventForm from "./EventForm";
+import Schedules from "./Schedules";
 
 export interface DashboardProps {
   session: ModeratorSession;
@@ -19,6 +20,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [showSchedules, setShowSchedules] = useState(false);
   const [editing, setEditing] = useState<EventRecord | undefined>();
   const [notice, setNotice] = useState("");
   const noticeElement = useRef<HTMLParagraphElement>(null);
@@ -84,12 +86,22 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
 
   return (
     <section aria-labelledby="events-heading">
+      {showSchedules && (
+        <Schedules
+          csrf={session.csrf}
+          onAccessError={onAccessError}
+          onChanged={refresh}
+        />
+      )}
       <div className="section-heading">
         <div>
           <p className="eyebrow">Your community</p>
           <h2 id="events-heading">Game events</h2>
         </div>
         <div className="form-actions">
+          <button onClick={() => setShowSchedules((v) => !v)}>
+            {showSchedules ? "Hide schedules" : "Manage weekly schedules"}
+          </button>
           <button
             ref={createButton}
             className="primary"

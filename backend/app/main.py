@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.config import Settings
 from app.discord_api import DiscordAPI
-from app.models import Event, LoginState, Session
+from app.models import Event, LoginState, Schedule, Session
 from app.publication import publish_event
+from app.scheduling import ScheduleInput, materialize, preview, schedule_data
 from app.schemas import EventInput
 
 
@@ -67,6 +68,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": event.status,
             "closes_at": event.closes_at,
             "last_error": event.last_error,
+            "schedule_id": event.schedule_id,
+            "occurrence_date": event.occurrence_date,
+            "overridden": event.overridden,
             "discord_url": (
                 f"https://discord.com/channels/{config.discord_guild_id}/"
                 f"{config.discord_channel_id}/{event.message_id}"
@@ -296,6 +300,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             event = db.get(Event, event_id)
             assert event is not None
             return serialize(event)
+
+    @app.get("/api/schedules")
+    def schedules(request: Request) -> list[dict[str, Any]]:
+        authenticated(request)
+        with DBSession(engine) as db:
+            return [
+                schedule_data(s)
+                for s in db.scalars(
+                    select(Schedule)
+                    .where(Schedule.guild_id == config.discord_guild_id)
+                    .order_by(Schedule.title)
+                )
+            ]
+
+    @app.post("/api/schedules/preview")
+    def schedule_preview(body: ScheduleInput, request: Request) -> list[dict[str, Any]]:
+        authenticated(request, True)
+        return preview(body)
+
+    @app.post("/api/schedules", status_code=201)
+    def create_schedule(body: ScheduleInput, request: Request) -> dict[str, Any]:
+        session = authenticated(request, True)
+        rows = preview(body)
+        if any(row.get("error") and not row["skipped"] for row in rows):
+            raise HTTPException(
+                422, "Correct or explicitly skip the invalid dates shown in the preview"
+            )
+        with DBSession(engine) as db:
+            schedule = Schedule(
+                id=str(uuid.uuid4()),
+                guild_id=config.discord_guild_id,
+                title=body.title.strip(),
+                timezone=body.timezone,
+                rule=body.model_dump(
+                    mode="json", exclude={"title", "timezone", "tables"}
+                ),
+                tables=[t.model_dump() for t in body.tables],
+                created_by=session.user_id,
+                active=True,
+            )
+            db.add(schedule)
+            db.flush()
+            materialize(db, schedule)
+            db.commit()
+            return schedule_data(schedule)
 
     return app
 
