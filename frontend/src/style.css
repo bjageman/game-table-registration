@@ -254,9 +254,6 @@ input {
 .date-time-fields {
   min-width: 0;
 }
-.date-time-picker-input {
-  box-sizing: border-box;
-}
 .schedule-value {
   display: block;
   width: 100%;

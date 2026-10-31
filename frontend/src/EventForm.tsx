@@ -1,7 +1,6 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
+import { DateTimePicker } from "@mantine/dates";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
 interface Props {
@@ -19,7 +18,7 @@ export default function EventForm({
 }: Props) {
   const prefix = useId();
   const [title, setTitle] = useState("");
-  const [startsAt, setStartsAt] = useState<Date | null>(null);
+  const [startsAt, setStartsAt] = useState<string | null>(null);
   const [duration, setDuration] = useState("24");
   const [tables, setTables] = useState([{ id: 0, name: "", capacity: "15" }]);
   const nextId = useRef(1);
@@ -41,7 +40,7 @@ export default function EventForm({
     event.preventDefault();
     if (inFlight.current) return;
     setError("");
-    const start = startsAt;
+    const start = startsAt ? new Date(startsAt.replace(" ", "T")) : null;
     const hours = Number(duration);
     if (!title.trim()) {
       setError("Enter an event title.");
@@ -110,23 +109,20 @@ export default function EventForm({
           />
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
-              <label id={`${prefix}-starts-at-label`}>Event starts</label>
-              <DatePicker
-                selected={startsAt}
+              <DateTimePicker
+                label="Event starts"
+                description={`Timezone: ${timezone}. Times are saved with the correct UTC offset.`}
+                value={startsAt}
                 onChange={setStartsAt}
-                showTimeSelect
-                timeIntervals={15}
-                timeCaption="Time"
-                dateFormat="MMMM d, yyyy h:mm aa"
-                placeholderText="Choose a date and time"
-                ariaLabelledBy={`${prefix}-starts-at-label`}
-                ariaDescribedBy={`${prefix}-timezone`}
+                placeholder="Choose a date and time"
+                valueFormat="MMMM D, YYYY h:mm A"
+                timePickerProps={{
+                  format: "12h",
+                  minutesStep: 15,
+                  withDropdown: true,
+                }}
                 required
-                className="date-time-picker-input"
               />
-              <p id={`${prefix}-timezone`} className="help">
-                Timezone: {timezone}. Times are saved with the correct UTC offset.
-              </p>
             </div>
             <div>
               <label htmlFor={`${prefix}-signup-start`}>Signup starts</label>

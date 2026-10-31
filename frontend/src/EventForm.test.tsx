@@ -17,7 +17,7 @@ function fill() {
   fireEvent.change(screen.getByLabelText("Event title"), {
     target: { value: "Friday games" },
   });
-  fireEvent.change(screen.getByLabelText("Event date and time"), {
+  fireEvent.change(screen.getByLabelText("Event starts"), {
     target: { value: "June 14, 2090 7:00 PM" },
   });
   fireEvent.change(screen.getByLabelText("Table 1 name"), {
