@@ -92,8 +92,21 @@ p {
 .account {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  min-width: 0;
   gap: 16px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+.account > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account > button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 main {
   padding: 40px 0;
@@ -130,6 +143,9 @@ footer {
     align-items: flex-start;
     flex-direction: column;
     gap: 16px;
+  }
+  .account {
+    width: 100%;
   }
   main {
     padding: 24px 0;
