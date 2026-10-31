@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
+import TextField from "@mui/material/TextField";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
@@ -145,14 +146,17 @@ export default function EventForm({
       <form onSubmit={(event) => void submit(event)} aria-label="Create event">
         <fieldset disabled={saving}>
           <legend className="sr-only">Event details</legend>
-          <label htmlFor={`${prefix}-title`}>Event title</label>
-          <input
+          <TextField
             id={`${prefix}-title`}
+            label="Event title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             required
-            maxLength={100}
             autoFocus
+            fullWidth
+            variant="outlined"
+            className="event-title-field"
+            slotProps={{ htmlInput: { maxLength: 100 } }}
           />
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
@@ -214,29 +218,29 @@ export default function EventForm({
               )}
             </div>
             <div>
-              <label htmlFor={`${prefix}-signup-start`}>Signup starts</label>
-              <output id={`${prefix}-signup-start`} className="schedule-value">
-                When the event is published
-              </output>
-              <p className="help">Signups open as soon as you publish.</p>
+              <TextField
+                id={`${prefix}-signup-start`}
+                label="Signup starts"
+                value="When the event is published"
+                fullWidth
+                variant="outlined"
+                helperText="Signups open as soon as you publish."
+                slotProps={{ input: { readOnly: true } }}
+              />
             </div>
             <div>
-              <label htmlFor={`${prefix}-duration`}>
-                Signup duration (hours)
-              </label>
-              <input
-                type="number"
+              <TextField
                 id={`${prefix}-duration`}
-                min={1}
-                max={768}
-                step={1}
+                label="Signup duration (hours)"
+                type="number"
                 value={duration}
                 onChange={(event) => setDuration(event.target.value)}
                 required
+                fullWidth
+                variant="outlined"
+                helperText="Starts when you publish. Signups must close before the event."
+                slotProps={{ htmlInput: { min: 1, max: 768, step: 1 } }}
               />
-              <p className="help">
-                Starts when you publish. Signups must close before the event.
-              </p>
             </div>
           </div>
           <div className="section-heading">
@@ -246,34 +250,32 @@ export default function EventForm({
           {tables.map((table, index) => (
             <div className="table-fields" key={table.id}>
               <div>
-                <label htmlFor={`${prefix}-name-${table.id}`}>
-                  Table {index + 1} name
-                </label>
-                <input
+                <TextField
                   id={`${prefix}-name-${table.id}`}
+                  label={`Table ${index + 1} name`}
                   value={table.name}
                   onChange={(event) =>
                     updateTable(table.id, { name: event.target.value })
                   }
                   required
-                  maxLength={35}
+                  fullWidth
+                  variant="outlined"
+                  slotProps={{ htmlInput: { maxLength: 35 } }}
                 />
               </div>
               <div>
-                <label htmlFor={`${prefix}-capacity-${table.id}`}>
-                  Table {index + 1} capacity
-                </label>
-                <input
+                <TextField
                   id={`${prefix}-capacity-${table.id}`}
+                  label={`Table ${index + 1} capacity`}
                   type="number"
-                  min={1}
-                  max={999}
-                  step={1}
                   value={table.capacity}
                   onChange={(event) =>
                     updateTable(table.id, { capacity: event.target.value })
                   }
                   required
+                  fullWidth
+                  variant="outlined"
+                  slotProps={{ htmlInput: { min: 1, max: 999, step: 1 } }}
                 />
               </div>
               <button

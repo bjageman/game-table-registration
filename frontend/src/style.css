@@ -215,27 +215,13 @@ dd {
 .form-panel h3 {
   margin-bottom: 12px;
 }
-fieldset {
+.form-panel > form > fieldset {
   border: 0;
   padding: 0;
   margin: 0;
   min-width: 0;
 }
-label {
-  display: block;
-  font-size: 0.9rem;
-  font-weight: 650;
-  margin-bottom: 6px;
-}
-input {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  border: 1px solid #aebfb2;
-  border-radius: 6px;
-  padding: 10px 12px;
-  color: inherit;
-  background: #fff;
+.event-title-field {
   margin-bottom: 16px;
 }
 .help {
@@ -258,27 +244,11 @@ input {
   display: grid;
   gap: 12px;
 }
-.schedule-value {
-  display: block;
-  width: 100%;
-  min-height: 42px;
-  margin: 0 0 8px;
-  padding: 9px 12px;
-  border: 1px solid #dce3d9;
-  border-radius: 6px;
-  background: #f7f7f2;
-}
-.add-table-button {
-  gap: 8px;
-}
 .table-fields {
   display: grid;
   grid-template-columns: 2fr 1fr auto;
-  align-items: start;
+  align-items: center;
   gap: 16px;
-}
-.table-fields button {
-  margin-top: 27px;
 }
 .form-actions {
   display: flex;
@@ -304,7 +274,6 @@ input {
     margin-bottom: 20px;
   }
   .table-fields button {
-    margin-top: 0;
     grid-column: 1 / -1;
     justify-self: start;
   }
