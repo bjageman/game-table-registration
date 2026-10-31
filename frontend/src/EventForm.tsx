@@ -43,12 +43,8 @@ export default function EventForm({
   onAccessError,
 }: Props) {
   const prefix = useId();
-  const [scheduled, setScheduled] = useState(Boolean(draft?.opens_at));
   const [opening, setOpening] = useState<Dayjs | null>(
-    draft?.opens_at ? dayjs.unix(draft.opens_at) : null,
-  );
-  const [closing, setClosing] = useState<Dayjs | null>(
-    draft?.signup_closes_at ? dayjs.unix(draft.signup_closes_at) : null,
+    draft?.opens_at ? dayjs.unix(draft.opens_at) : initialTime(),
   );
   const [title, setTitle] = useState(draft?.title ?? "");
   const [startsAt, setStartsAt] = useState<Dayjs | null>(
@@ -68,6 +64,7 @@ export default function EventForm({
       : initialTime(),
   );
   const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
+  const closing = opening?.add(Number(duration), "hour") ?? null;
   const [tables, setTables] = useState(
     draft
       ? draft.tables.map((table, id) => ({
@@ -138,22 +135,21 @@ export default function EventForm({
     if (inFlight.current) return;
     setError("");
     const errors = validateEvent({
-      scheduled,
+      scheduled: true,
       title,
       startsAt: startsAtLocal,
       duration,
       tables,
     });
     if (
-      scheduled &&
-      (!opening?.isValid() ||
-        !closing?.isValid() ||
-        !(
-          Date.now() < opening.valueOf() &&
-          opening.valueOf() < closing.valueOf() &&
-          closing.valueOf() < new Date(startsAtLocal).getTime()
-        ) ||
-        closing.diff(opening, "hour", true) > 768)
+      !opening?.isValid() ||
+      !closing?.isValid() ||
+      !(
+        Date.now() < opening.valueOf() &&
+        opening.valueOf() < closing.valueOf() &&
+        closing.valueOf() < new Date(startsAtLocal).getTime()
+      ) ||
+      closing.diff(opening, "hour", true) > 768
     ) {
       errors.window =
         "Require now < signup opening < closing < event start, within 32 days.";
@@ -175,13 +171,9 @@ export default function EventForm({
         draft ? `/events/${draft.id}` : "/events",
         {
           ...mutationOptions(csrf, {
-            ...(scheduled
-              ? {
-                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                  opens_at: opening?.toISOString(),
-                  signup_closes_at: closing?.toISOString(),
-                }
-              : { opens_at: null, signup_closes_at: null }),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            opens_at: opening?.toISOString(),
+            signup_closes_at: closing?.toISOString(),
             title: title.trim(),
             starts_at: start.toISOString(),
             duration_hours: hours,
@@ -250,14 +242,6 @@ export default function EventForm({
               htmlInput: { maxLength: 100 },
             }}
           />
-          <label className="schedule-toggle">
-            <input
-              type="checkbox"
-              checked={scheduled}
-              onChange={(e) => setScheduled(e.target.checked)}
-            />{" "}
-            Schedule signup opening and closing
-          </label>
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
               {isMobile ? (
@@ -317,66 +301,36 @@ export default function EventForm({
               )}
             </div>
             <div>
-              {scheduled ? (
-                <DateTimePicker
-                  label="Signup opens"
-                  value={opening}
-                  onChange={setOpening}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true,
-                      error: Boolean(fieldErrors.window),
-                      slotProps: { inputLabel: { shrink: true } },
-                    },
-                  }}
-                />
-              ) : (
-                <TextField
-                  id={`${prefix}-signup-start`}
-                  label="Signup starts"
-                  value="When the event is published"
-                  fullWidth
-                  variant="outlined"
-                  slotProps={{
-                    input: { readOnly: true },
-                    inputLabel: { shrink: true },
-                  }}
-                />
-              )}
+              <DateTimePicker
+                label="Signup opens"
+                value={opening}
+                onChange={setOpening}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    error: Boolean(fieldErrors.window),
+                    slotProps: { inputLabel: { shrink: true } },
+                  },
+                }}
+              />{" "}
             </div>
             <div>
-              {scheduled ? (
-                <DateTimePicker
-                  label="Signup closes"
-                  value={closing}
-                  onChange={setClosing}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true,
-                      error: Boolean(fieldErrors.window),
-                      helperText: fieldErrors.window,
-                      slotProps: { inputLabel: { shrink: true } },
-                    },
-                  }}
-                />
-              ) : (
-                <TextField
-                  id={`${prefix}-duration`}
-                  error={Boolean(fieldErrors.duration)}
-                  helperText={fieldErrors.duration}
-                  label="Signup duration (hours)"
-                  type="number"
-                  value={duration}
-                  onChange={(event) => setDuration(event.target.value)}
-                  required
-                  fullWidth
-                  variant="outlined"
-                  slotProps={{
-                    inputLabel: { shrink: true },
-                    htmlInput: { min: 1, max: 768, step: 1 },
-                  }}
-                />
-              )}
+              <TextField
+                id={`${prefix}-duration`}
+                error={Boolean(fieldErrors.duration || fieldErrors.window)}
+                helperText={fieldErrors.duration || fieldErrors.window}
+                label="Signup duration (hours)"
+                type="number"
+                value={duration}
+                onChange={(event) => setDuration(event.target.value)}
+                required
+                fullWidth
+                variant="outlined"
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  htmlInput: { min: 1, max: 768, step: 1 },
+                }}
+              />{" "}
             </div>
           </div>
           <div className="section-heading tables-heading">

@@ -38,11 +38,18 @@ async function setDateTime(
     ["Minutes", minutes],
     ["Meridiem", meridiem],
   ]) {
-    await page.getByRole("spinbutton", { name, exact: true }).fill(value);
+    const dateField = page.getByRole("group", { name: /^Event starts/ });
+    const mobileTime = page.getByRole("group", { name: /^Event time/ });
+    const field =
+      ["Hours", "Minutes", "Meridiem"].includes(name) &&
+      (await mobileTime.count())
+        ? mobileTime
+        : dateField;
+    await field.getByRole("spinbutton", { name, exact: true }).fill(value);
   }
 }
 
-test("completes login, draft creation, publication, refresh, and logout", async ({
+test("completes login, timed draft creation, refresh, and logout", async ({
   page,
 }) => {
   let signedIn = false;
@@ -76,7 +83,13 @@ test("completes login, draft creation, publication, refresh, and logout", async 
       expect(body.starts_at).toMatch(/Z$/);
       expect(body.tables).toEqual([{ name: "Clocktower", capacity: 15 }]);
       events = [
-        { ...draft, ...body, starts_at: Date.parse(body.starts_at) / 1000 },
+        {
+          ...draft,
+          ...body,
+          starts_at: Date.parse(body.starts_at) / 1000,
+          opens_at: Date.parse(body.opens_at) / 1000,
+          signup_closes_at: Date.parse(body.signup_closes_at) / 1000,
+        },
       ];
       return route.fulfill({ status: 201, json: events[0] });
     }
@@ -110,15 +123,13 @@ test("completes login, draft creation, publication, refresh, and logout", async 
   await expect(page.getByText("draft", { exact: true })).toBeVisible();
   await expect(page.getByRole("status")).toBeFocused();
   expect(publications).toBe(0);
-  await page.getByRole("button", { name: "Publish to Discord" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
   await expect(
-    page.getByRole("link", { name: /View Discord poll/ }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Publish to Discord" }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Refresh events" }).click();
-  await expect(page.getByText("open", { exact: true })).toBeVisible();
+  await expect(page.getByText("draft", { exact: true })).toBeVisible();
   expect(creations).toBe(1);
-  expect(publications).toBe(1);
+  expect(publications).toBe(0);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -330,6 +341,8 @@ test("edits a draft and requires confirmation before deleting it", async ({
         ...current,
         ...body,
         starts_at: Date.parse(body.starts_at) / 1000,
+        opens_at: Date.parse(body.opens_at) / 1000,
+        signup_closes_at: Date.parse(body.signup_closes_at) / 1000,
       };
       return route.fulfill({ json: current });
     }

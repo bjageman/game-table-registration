@@ -67,14 +67,20 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
   const options = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
   expect(options[0]).toBe("/api/events");
   expect(options[1].headers).toMatchObject({ "X-CSRF-Token": "csrf" });
-  expect(JSON.parse(options[1].body as string)).toEqual({
+  const payload = JSON.parse(options[1].body as string);
+  expect(payload).toEqual({
     title: "Friday games",
-    opens_at: null,
-    signup_closes_at: null,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    opens_at: expect.any(String),
+    signup_closes_at: expect.any(String),
     starts_at: new Date("2090-06-14T19:00").toISOString(),
     duration_hours: 24,
     tables: [{ name: "Clocktower", capacity: 15 }],
   });
+  expect(
+    Date.parse(payload.signup_closes_at) - Date.parse(payload.opens_at),
+  ).toBe(24 * 3600000);
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 });
 it("rejects duplicate table names before making a request", async () => {
   const fetchMock = vi.fn();
@@ -117,9 +123,7 @@ it("limits the editor to ten tables and preserves remaining rows after removal",
   for (let i = 1; i < 10; i++)
     fireEvent.click(screen.getByRole("button", { name: "Add table" }));
   expect(screen.getByRole("button", { name: "Add table" })).toBeDisabled();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Remove table 2" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Remove table 2" }));
   expect(screen.getByRole("button", { name: "Add table" })).not.toBeDisabled();
   expect(screen.getByLabelText(/^Table 1 name/)).toHaveValue("Clocktower");
 });
