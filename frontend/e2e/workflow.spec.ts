@@ -17,9 +17,29 @@ async function signIn(page: Page) {
 }
 async function fillDraft(page: Page) {
   await page.getByRole("button", { name: "Create event", exact: true }).click();
-  await page.getByLabel("Event title", { exact: true }).fill("Friday games");
-  await page.getByLabel("Event date and time").fill("2090-06-14T19:00");
-  await page.getByLabel("Table 1 name").fill("Clocktower");
+  await page.getByLabel(/Event title/).fill("Friday games");
+  await setDateTime(page, "June", "14", "2090", "07", "00", "PM");
+  await page.getByLabel(/Table 1 name/).fill("Clocktower");
+}
+async function setDateTime(
+  page: Page,
+  month: string,
+  day: string,
+  year: string,
+  hours: string,
+  minutes: string,
+  meridiem: string,
+) {
+  for (const [name, value] of [
+    ["Month", month],
+    ["Day", day],
+    ["Year", year],
+    ["Hours", hours],
+    ["Minutes", minutes],
+    ["Meridiem", meridiem],
+  ]) {
+    await page.getByRole("spinbutton", { name, exact: true }).fill(value);
+  }
 }
 
 test("completes login, draft creation, publication, refresh, and logout", async ({
@@ -135,14 +155,14 @@ test("keeps event values and associates backend validation with its field", asyn
   await fillDraft(page);
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByRole("alert")).toContainText("Capacity was rejected");
-  await expect(page.getByLabel("Table 1 capacity")).toHaveAttribute(
+  await expect(page.getByLabel(/Table 1 capacity/)).toHaveAttribute(
     "aria-invalid",
     "true",
   );
-  await expect(page.getByLabel("Table 1 capacity")).toHaveAccessibleDescription(
+  await expect(page.getByLabel(/Table 1 capacity/)).toHaveAccessibleDescription(
     "Capacity was rejected by the server",
   );
-  await expect(page.getByLabel("Event title", { exact: true })).toHaveValue(
+  await expect(page.getByLabel(/Event title/)).toHaveValue(
     "Friday games",
   );
 });
@@ -284,14 +304,14 @@ test("rejects missing and ambiguous local times around daylight saving changes",
   await page.route("**/api/events", (route) => route.fulfill({ json: [] }));
   await page.goto("/");
   await fillDraft(page);
-  await page.getByLabel("Event date and time").fill("2090-03-12T02:30");
+  await setDateTime(page, "March", "12", "2090", "02", "30", "AM");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByLabel("Event date and time")).toHaveAttribute(
+  await expect(page.getByRole("group", { name: /Event starts/ })).toHaveAttribute(
     "aria-invalid",
     "true",
   );
   await expect(page.getByRole("alert")).toContainText("may not exist");
-  await page.getByLabel("Event date and time").fill("2090-11-05T01:30");
+  await setDateTime(page, "November", "5", "2090", "01", "30", "AM");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByRole("alert")).toContainText("occurs twice");
 });
