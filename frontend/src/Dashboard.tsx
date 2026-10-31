@@ -31,6 +31,22 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
     );
   }
 
+  function updated(event: EventRecord) {
+    setEvents((rows) => rows.map((row) => (row.id === event.id ? event : row)));
+    setNotice(`Poll published: ${event.title}.`);
+  }
+
+  function uncertain(event: EventRecord, message: string) {
+    setEvents((rows) =>
+      rows.map((row) =>
+        row.id === event.id ? { ...row, status: "unconfirmed" } : row,
+      ),
+    );
+    setNotice(
+      `${message} Publication could not be confirmed for ${event.title}. Check Discord and refresh the event list before taking further action.`,
+    );
+  }
+
   useEffect(() => {
     const controller = new AbortController();
     api<EventRecord[]>("/events", { signal: controller.signal })
@@ -101,7 +117,13 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
       {!loading &&
         !error &&
         (events.length ? (
-          <EventList events={events} />
+          <EventList
+            events={events}
+            csrf={session.csrf}
+            onUpdated={updated}
+            onUncertain={uncertain}
+            onAccessError={onAccessError}
+          />
         ) : (
           <div className="panel">
             <h3>No events yet</h3>
