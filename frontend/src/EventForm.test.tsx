@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import EventForm from "./EventForm";
 
 const props = {
@@ -13,6 +15,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
+function renderForm() {
+  return render(
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <EventForm {...props} />
+    </LocalizationProvider>,
+  );
+}
 function fill() {
   fireEvent.change(screen.getByLabelText("Event title"), {
     target: { value: "Friday games" },
@@ -30,7 +39,7 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
     async () => new Response(JSON.stringify(result), { status: 201 }),
   );
   vi.stubGlobal("fetch", fetchMock);
-  render(<EventForm {...props} />);
+  renderForm();
   fill();
   fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
   await screen.findByRole("button", { name: "Save draft" });
@@ -48,7 +57,7 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
 it("rejects duplicate table names before making a request", async () => {
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
-  render(<EventForm {...props} />);
+  renderForm();
   fill();
   fireEvent.click(screen.getByRole("button", { name: "Add table" }));
   fireEvent.change(screen.getByLabelText("Table 2 name"), {
@@ -70,7 +79,7 @@ it("retains the form when saving fails", async () => {
         }),
     ),
   );
-  render(<EventForm {...props} />);
+  renderForm();
   fill();
   fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(

@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
-import { DateTimePicker } from "@mantine/dates";
+import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
+import type { Dayjs } from "dayjs";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
 interface Props {
@@ -18,7 +19,7 @@ export default function EventForm({
 }: Props) {
   const prefix = useId();
   const [title, setTitle] = useState("");
-  const [startsAt, setStartsAt] = useState<string | null>(null);
+  const [startsAt, setStartsAt] = useState<Dayjs | null>(null);
   const [duration, setDuration] = useState("24");
   const [tables, setTables] = useState([{ id: 0, name: "", capacity: "15" }]);
   const nextId = useRef(1);
@@ -40,7 +41,7 @@ export default function EventForm({
     event.preventDefault();
     if (inFlight.current) return;
     setError("");
-    const start = startsAt ? new Date(startsAt.replace(" ", "T")) : null;
+    const start = startsAt?.toDate() ?? null;
     const hours = Number(duration);
     if (!title.trim()) {
       setError("Enter an event title.");
@@ -111,17 +112,18 @@ export default function EventForm({
             <div className="date-time-fields">
               <DateTimePicker
                 label="Event starts"
-                description={`Timezone: ${timezone}. Times are saved with the correct UTC offset.`}
                 value={startsAt}
-                onChange={setStartsAt}
-                placeholder="Choose a date and time"
-                valueFormat="MMMM D, YYYY h:mm A"
-                timePickerProps={{
-                  format: "12h",
-                  minutesStep: 15,
-                  withDropdown: true,
+                onChange={(value) => setStartsAt(value)}
+                format="MMMM D, YYYY h:mm A"
+                ampm
+                timeSteps={{ minutes: 15 }}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    required: true,
+                    helperText: `Timezone: ${timezone}. Times are saved with the correct UTC offset.`,
+                  },
                 }}
-                required
               />
             </div>
             <div>
