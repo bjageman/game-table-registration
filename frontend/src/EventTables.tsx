@@ -10,7 +10,10 @@ export default function EventTables({ event }: { event: EventRecord }) {
     <ul className="event-tables" aria-label="Tables">
       {event.tables.map((table) => (
         <li key={table.name} className="event-table">
-          <h3>{table.name} – {table.capacity} seats</h3>
+          <h3>{table.name}</h3>
+          <p className="table-player-count" aria-label={`${table.capacity} of ${table.capacity} seats filled`}>
+            {table.capacity}/{table.capacity}
+          </p>
           <ul className="table-players">
             {Array.from({ length: table.capacity }, (_, index) => (
               <li key={index}>

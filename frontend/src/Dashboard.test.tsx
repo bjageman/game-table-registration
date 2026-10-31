@@ -36,7 +36,7 @@ it("opens event details from a compact event listing", async () => {
   fireEvent.click(item);
   expect(screen.getByRole("dialog", { name: "Friday games" })).toBeVisible();
   expect(screen.getAllByText("draft")).toHaveLength(2);
-  expect(screen.getByText(/15 seats/)).toBeVisible();
+  expect(screen.getByText("15/15")).toBeVisible();
   expect(screen.getByText(/24 hours from publication/)).toBeVisible();
   expect(screen.getAllByRole("listitem").filter((li) => li.parentElement?.className === "table-players")).toHaveLength(15);
   fireEvent.click(screen.getByRole("button", { name: "Close event" }));
