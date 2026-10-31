@@ -85,14 +85,6 @@ h2 {
 p {
   margin: 0 0 16px;
 }
-.eyebrow {
-  color: #52665a;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-weight: 650;
-  margin: 0 0 4px;
-}
 .account {
   display: flex;
   align-items: center;

@@ -89,7 +89,6 @@ export default function App() {
     <div className="app-shell">
       <header className="site-header">
         <div>
-          <p className="eyebrow">Game table registration</p>
           <h1>Gather</h1>
         </div>
         {auth.kind === "ready" && (
@@ -114,7 +113,6 @@ export default function App() {
         )}
         {auth.kind === "signed-out" && (
           <section className="panel sign-in" aria-labelledby="sign-in-heading">
-            <p className="eyebrow">Moderator dashboard</p>
             <h2 id="sign-in-heading">Bring everyone to the table.</h2>
             <p>Sign in with Discord to manage your community’s game events.</p>
             {auth.configured ? (
