@@ -9,3 +9,9 @@ dist/
 .coverage
 playwright-report/
 test-results/
+*.db
+.mypy_cache/
+.ruff_cache/
+*.tsbuildinfo
+
+!.env.*.example

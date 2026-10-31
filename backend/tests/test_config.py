@@ -1,0 +1,20 @@
+from app.config import Settings
+
+
+def test_discord_credentials_use_standard_environment_names(monkeypatch):
+    monkeypatch.setenv("DISCORD_CLIENT_ID", "client")
+    monkeypatch.setenv("DISCORD_CLIENT_SECRET", "secret")
+    settings = Settings(_env_file=None)
+    assert settings.discord_client_id == "client"
+    assert settings.discord_client_secret == "secret"
+
+
+def test_legacy_discord_environment_names_are_not_supported(monkeypatch):
+    monkeypatch.delenv("DISCORD_CLIENT_ID", raising=False)
+    monkeypatch.delenv("DISCORD_CLIENT_SECRET", raising=False)
+    monkeypatch.setenv("DISCORD_BOT_CLIENTID", "legacy-client")
+    monkeypatch.setenv("DISCORD_BOT_CLIENTSECRET", "legacy-secret")
+    settings = Settings(_env_file=None)
+    assert settings.discord_client_id == ""
+    assert settings.discord_client_secret == ""
+    assert not settings.configured

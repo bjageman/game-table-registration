@@ -1,0 +1,3 @@
+name: game-table-registration-dev
+include:
+  - docker-compose.deploy.yml

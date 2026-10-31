@@ -1,0 +1,125 @@
+from unittest.mock import Mock, patch
+
+import httpx
+import pytest
+from fastapi import HTTPException
+
+from app.config import Settings
+from app.discord_api import DiscordAPI
+
+
+def test_member_roles_and_owner():
+    api = DiscordAPI(
+        Settings(_env_file=None, owner_discord_id="owner", moderator_role_ids="mod")
+    )
+    api.bot = Mock(return_value={"roles": []})
+    api.authorize("owner")
+    with pytest.raises(HTTPException) as error:
+        api.authorize("stranger")
+    assert error.value.status_code == 403
+    api.bot.return_value = {"roles": ["mod"]}
+    api.authorize("moderator")
+    api.bot.side_effect = HTTPException(502, "Membership lookup failed")
+    with pytest.raises(HTTPException):
+        api.authorize("owner")
+
+
+def test_wrong_channel_guild_cannot_post():
+    api = DiscordAPI(Settings(_env_file=None, discord_guild_id="right"))
+    api.bot = Mock(return_value={"guild_id": "wrong"})
+    with pytest.raises(HTTPException):
+        api.publish({})
+    assert api.bot.call_count == 1
+
+
+def test_signup_lookup_matches_answer_ids_and_replaces_removed_votes():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    message = {
+        "poll": {
+            "answers": [
+                {"answer_id": 42, "poll_media": {"text": "Table A · 8 seats"}},
+                {"answer_id": 9, "poll_media": {"text": "Table B · 12 seats"}},
+            ]
+        }
+    }
+    api.bot = Mock(
+        side_effect=[
+            message,
+            {"users": [{"id": "1", "username": "mary", "global_name": "Mary"}]},
+            {"users": [{"id": "2", "username": "Dan"}]},
+            message,
+            {"users": []},
+            {"users": [{"id": "2", "username": "Dan"}]},
+        ]
+    )
+    tables = [{"name": "Table A", "capacity": 8}, {"name": "Table B", "capacity": 12}]
+    first = api.table_signups("message", tables)
+    assert first[0]["players"] == [{"id": "1", "name": "Mary"}]
+    assert first[1]["players"] == [{"id": "2", "name": "Dan"}]
+    assert api.bot.call_args_list[1].args[1].endswith("/message/answers/42")
+    second = api.table_signups("message", tables)
+    assert second[0]["players"] == []
+    assert second[1]["players"] == first[1]["players"]
+
+
+def test_signup_pagination_deduplicates_and_excludes_bots():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(
+        side_effect=[
+            {
+                "users": [
+                    {"id": str(i), "username": f"player{i}"} for i in range(1, 101)
+                ]
+            },
+            {
+                "users": [
+                    {"id": "100", "username": "player100"},
+                    {"id": "101", "username": "bot", "bot": True},
+                    {"id": "102", "username": "last"},
+                ]
+            },
+        ]
+    )
+    players = api.voters("message", 42)
+    assert len(players) == 101
+    assert api.bot.call_args.kwargs["params"] == {"limit": 100, "after": "100"}
+
+
+def test_signup_page_failure_does_not_return_partial_players():
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(
+        side_effect=[
+            {"users": [{"id": str(i), "username": "player"} for i in range(1, 101)]},
+            HTTPException(502, "Discord unavailable"),
+        ]
+    )
+    with pytest.raises(HTTPException):
+        api.voters("message", 9)
+
+
+@pytest.mark.parametrize("status", [204, 404])
+def test_delete_discord_poll_accepts_success_and_already_deleted(status):
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    with patch("app.discord_api.httpx.Client") as client:
+        request = client.return_value.__enter__.return_value.request
+        request.return_value = httpx.Response(
+            status, request=httpx.Request("DELETE", "https://discord.com/test")
+        )
+        api.delete_poll("message")
+        assert request.call_args.args == (
+            "DELETE",
+            "https://discord.com/api/v10/channels/channel/messages/message",
+        )
+
+
+def test_delete_discord_poll_failure_is_reported():
+    api = DiscordAPI(Settings(_env_file=None))
+    with patch("app.discord_api.httpx.Client") as client:
+        client.return_value.__enter__.return_value.request.return_value = (
+            httpx.Response(
+                403, request=httpx.Request("DELETE", "https://discord.com/test")
+            )
+        )
+        with pytest.raises(HTTPException) as error:
+            api.delete_poll("message")
+        assert error.value.status_code == 502

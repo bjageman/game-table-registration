@@ -1,0 +1,32 @@
+name: Release dev → main
+on:
+  schedule:
+    # Wednesday 00:00 UTC, matching Tinygrim.
+    - cron: '0 0 * * 3'
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: write
+concurrency:
+  group: release-dev-to-main
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.DEV_TO_MAIN_SECRET || github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Open or reuse the release PR for owner review
+        run: |
+          set -euo pipefail
+          count=$(gh api "repos/$GH_REPO/compare/main...dev" --jq .ahead_by)
+          if [ "$count" -eq 0 ]; then
+            echo "main is already up to date with dev." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          url=$(gh pr list --base main --head dev --state open --json url --jq '.[0].url')
+          if [ -z "$url" ]; then
+            url=$(gh pr create --base main --head dev --title "Release: dev → main" --body "Weekly release PR. Review development and CI, then merge manually to deploy production.")
+          fi
+          echo "Release PR for owner review: $url" >> "$GITHUB_STEP_SUMMARY"
