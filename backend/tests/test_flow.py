@@ -187,3 +187,40 @@ def test_concurrent_publish_claim(client):
 def test_health_and_configuration(client):
     assert client.get("/api/health/ready").status_code == 200
     assert client.get("/api/setup").json() == {"configured": True}
+
+
+def test_edit_and_delete_unpublished_draft(client):
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    body = {
+        **event_body(),
+        "title": "Updated games",
+        "tables": [{"name": "New", "capacity": 123}],
+    }
+    assert client.put(path, json=body).status_code == 403
+    saved = client.put(path, headers=headers, json=body)
+    assert saved.status_code == 200
+    assert saved.json()["title"] == "Updated games"
+    assert saved.json()["tables"] == body["tables"]
+    assert client.app.state.discord.publish.call_count == 0
+    assert client.request("DELETE", path).status_code == 403
+    assert client.delete(path, headers=headers).status_code == 204
+    assert client.get("/api/events").json() == []
+    assert client.post(path + "/publish", headers=headers).status_code == 404
+
+
+@pytest.mark.parametrize("status", ["publishing", "open", "needs_review", "cancelled"])
+def test_published_events_cannot_be_edited_or_deleted(client, status):
+    from app.models import Event
+
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    with DBSession(client.app.state.engine) as db:
+        row = db.get(Event, event["id"])
+        row.status = status
+        db.commit()
+    path = f"/api/events/{event['id']}"
+    assert client.put(path, headers=headers, json=event_body()).status_code == 409
+    assert client.delete(path, headers=headers).status_code == 409
+    assert client.get("/api/events").json()[0]["status"] == status

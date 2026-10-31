@@ -162,9 +162,7 @@ test("keeps event values and associates backend validation with its field", asyn
   await expect(page.getByLabel(/Table 1 capacity/)).toHaveAccessibleDescription(
     "Capacity was rejected by the server",
   );
-  await expect(page.getByLabel(/Event title/)).toHaveValue(
-    "Friday games",
-  );
+  await expect(page.getByLabel(/Event title/)).toHaveValue("Friday games");
 });
 
 for (const status of [401, 403]) {
@@ -306,12 +304,58 @@ test("rejects missing and ambiguous local times around daylight saving changes",
   await fillDraft(page);
   await setDateTime(page, "March", "12", "2090", "02", "30", "AM");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("group", { name: /Event starts/ })).toHaveAttribute(
-    "aria-invalid",
-    "true",
-  );
+  await expect(
+    page.getByRole("group", { name: /Event starts/ }),
+  ).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert")).toContainText("may not exist");
   await setDateTime(page, "November", "5", "2090", "01", "30", "AM");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByRole("alert")).toContainText("occurs twice");
+});
+
+test("edits a draft and requires confirmation before deleting it", async ({
+  page,
+}) => {
+  await signIn(page);
+  let current = { ...draft };
+  let deletions = 0;
+  await page.route("**/api/events", (route) =>
+    route.fulfill({ json: [current] }),
+  );
+  await page.route("**/api/events/event-1", async (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBe(session.csrf);
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON();
+      current = {
+        ...current,
+        ...body,
+        starts_at: Date.parse(body.starts_at) / 1000,
+      };
+      return route.fulfill({ json: current });
+    }
+    expect(route.request().method()).toBe("DELETE");
+    deletions++;
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Edit draft", exact: true }).click();
+  await expect(page.getByLabel(/Table 1 capacity/)).toHaveValue("15");
+  await page.getByLabel(/Event title/).fill("Saturday games");
+  await page.getByLabel(/Table 1 capacity/).fill("123");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Saturday games", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("123 seats", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Delete draft", exact: true }).click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(deletions).toBe(0);
+  await page.getByRole("button", { name: "Delete draft", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Confirm deletion", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "No events yet" }),
+  ).toBeVisible();
+  expect(deletions).toBe(1);
 });

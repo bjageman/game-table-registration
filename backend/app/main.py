@@ -234,6 +234,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             return serialize(event)
 
+    @app.put("/api/events/{event_id}")
+    def edit_event(event_id: str, body: EventInput, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            changed = db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id,
+                    Event.guild_id == config.discord_guild_id,
+                    Event.status == "draft",
+                )
+                .values(
+                    title=body.title.strip(),
+                    starts_at=body.starts_at.timestamp(),
+                    duration_hours=body.duration_hours,
+                    tables=[table.model_dump() for table in body.tables],
+                )
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            if not changed:
+                raise HTTPException(409, "Only unpublished drafts can be edited.")
+            db.commit()
+            event = db.get(Event, event_id)
+            assert event is not None
+            return serialize(event)
+
+    @app.delete("/api/events/{event_id}", status_code=204)
+    def delete_event(event_id: str, request: Request) -> Response:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            changed = db.execute(
+                delete(Event)
+                .where(
+                    Event.id == event_id,
+                    Event.guild_id == config.discord_guild_id,
+                    Event.status == "draft",
+                )
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            if not changed:
+                raise HTTPException(409, "Only unpublished drafts can be deleted.")
+            db.commit()
+        return Response(status_code=204)
+
     @app.post("/api/events/{event_id}/publish")
     def publish(event_id: str, request: Request) -> dict[str, Any]:
         authenticated(request, True)
@@ -254,6 +298,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             if not claimed:
                 raise HTTPException(409, "Already published or awaiting publish review")
+            db.refresh(event)
             try:
                 message = app.state.discord.publish(
                     {
