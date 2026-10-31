@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   errorMessage,
@@ -20,6 +20,12 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState("");
+  const noticeElement = useRef<HTMLParagraphElement>(null);
+  const createButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (notice) noticeElement.current?.focus();
+  }, [notice]);
 
   function created(event: EventRecord) {
     setEvents((rows) =>
@@ -66,6 +72,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   function refresh() {
     setLoading(true);
     setError("");
+    setNotice("");
     setAttempt((value) => value + 1);
   }
 
@@ -78,6 +85,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         </div>
         <div className="form-actions">
           <button
+            ref={createButton}
             className="primary"
             onClick={() => {
               setCreating(true);
@@ -93,7 +101,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         </div>
       </div>
       {notice && (
-        <p role="status" className="notice">
+        <p role="status" className="notice" ref={noticeElement} tabIndex={-1}>
           {notice}
         </p>
       )}
@@ -101,7 +109,10 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         <EventForm
           csrf={session.csrf}
           onCreated={created}
-          onCancel={() => setCreating(false)}
+          onCancel={() => {
+            setCreating(false);
+            requestAnimationFrame(() => createButton.current?.focus());
+          }}
           onAccessError={onAccessError}
         />
       )}

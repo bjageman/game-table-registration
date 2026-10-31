@@ -79,9 +79,7 @@ export default function App() {
       await api<void>("/auth/logout", mutationOptions(auth.session.csrf));
       setAuth({ kind: "signed-out", configured: true });
     } catch (error) {
-      if (error instanceof ApiError && error.status === 401)
-        setAuth({ kind: "signed-out", configured: true });
-      else setLogoutError(errorMessage(error));
+      if (!onAccessError(error)) setLogoutError(errorMessage(error));
     } finally {
       setLoggingOut(false);
     }
