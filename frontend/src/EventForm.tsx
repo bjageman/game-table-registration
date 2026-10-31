@@ -249,55 +249,57 @@ export default function EventForm({
             <h4>Tables</h4>
             <span className="help">{tables.length} of 10</span>
           </div>
-          {tables.map((table, index) => (
-            <div className="table-fields" key={table.id}>
-              <div>
-                <TextField
-                  id={`${prefix}-name-${table.id}`}
-                  label={`Table ${index + 1} name`}
-                  value={table.name}
-                  onChange={(event) =>
-                    updateTable(table.id, { name: event.target.value })
+          <div className="table-list">
+            {tables.map((table, index) => (
+              <div className="table-fields" key={table.id}>
+                <div>
+                  <TextField
+                    id={`${prefix}-name-${table.id}`}
+                    label={`Table ${index + 1} name`}
+                    value={table.name}
+                    onChange={(event) =>
+                      updateTable(table.id, { name: event.target.value })
+                    }
+                    required
+                    fullWidth
+                    variant="outlined"
+                    slotProps={{
+                      inputLabel: { shrink: true },
+                      htmlInput: { maxLength: 35 },
+                    }}
+                  />
+                </div>
+                <div>
+                  <TextField
+                    id={`${prefix}-capacity-${table.id}`}
+                    label={`Table ${index + 1} capacity`}
+                    type="number"
+                    value={table.capacity}
+                    onChange={(event) =>
+                      updateTable(table.id, { capacity: event.target.value })
+                    }
+                    required
+                    fullWidth
+                    variant="outlined"
+                    slotProps={{
+                      inputLabel: { shrink: true },
+                      htmlInput: { min: 1, max: 999, step: 1 },
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={tables.length === 1}
+                  aria-label={`Remove table ${index + 1}`}
+                  onClick={() =>
+                    setTables((rows) => rows.filter((row) => row.id !== table.id))
                   }
-                  required
-                  fullWidth
-                  variant="outlined"
-                  slotProps={{
-                    inputLabel: { shrink: true },
-                    htmlInput: { maxLength: 35 },
-                  }}
-                />
+                >
+                  −
+                </button>
               </div>
-              <div>
-                <TextField
-                  id={`${prefix}-capacity-${table.id}`}
-                  label={`Table ${index + 1} capacity`}
-                  type="number"
-                  value={table.capacity}
-                  onChange={(event) =>
-                    updateTable(table.id, { capacity: event.target.value })
-                  }
-                  required
-                  fullWidth
-                  variant="outlined"
-                  slotProps={{
-                    inputLabel: { shrink: true },
-                    htmlInput: { min: 1, max: 999, step: 1 },
-                  }}
-                />
-              </div>
-              <button
-                type="button"
-                disabled={tables.length === 1}
-                aria-label={`Remove table ${index + 1}`}
-                onClick={() =>
-                  setTables((rows) => rows.filter((row) => row.id !== table.id))
-                }
-              >
-                −
-              </button>
-            </div>
-          ))}
+            ))}
+          </div>
           <button
             className="add-table-button"
             type="button"

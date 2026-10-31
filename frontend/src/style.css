@@ -240,6 +240,12 @@ dd {
 .tables-heading {
   margin-top: 28px;
 }
+.table-list {
+  display: grid;
+  gap: 16px;
+  margin-block: 12px;
+  padding-block: 8px;
+}
 .mobile-date-time-fields {
   display: grid;
   gap: 12px;
@@ -271,7 +277,6 @@ dd {
   .table-fields {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 8px 12px;
-    margin-bottom: 20px;
   }
   .table-fields button {
     grid-column: 1 / -1;
