@@ -155,8 +155,11 @@ export default function EventForm({
             autoFocus
             fullWidth
             variant="outlined"
-            className="event-title-field"
-            slotProps={{ htmlInput: { maxLength: 100 } }}
+            sx={{ mb: 3 }}
+            slotProps={{
+              inputLabel: { shrink: true },
+              htmlInput: { maxLength: 100 },
+            }}
           />
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
@@ -172,6 +175,7 @@ export default function EventForm({
                         fullWidth: true,
                         required: true,
                         helperText: `Timezone: ${timezone}`,
+                        slotProps: { inputLabel: { shrink: true } },
                       },
                     }}
                   />
@@ -190,6 +194,7 @@ export default function EventForm({
                         fullWidth: true,
                         required: true,
                         helperText: "Defaults to the current time.",
+                        slotProps: { inputLabel: { shrink: true } },
                       },
                     }}
                   />
@@ -212,6 +217,7 @@ export default function EventForm({
                       fullWidth: true,
                       required: true,
                       helperText: `Timezone: ${timezone}. Times are saved with the correct UTC offset.`,
+                      slotProps: { inputLabel: { shrink: true } },
                     },
                   }}
                 />
@@ -225,7 +231,10 @@ export default function EventForm({
                 fullWidth
                 variant="outlined"
                 helperText="Signups open as soon as you publish."
-                slotProps={{ input: { readOnly: true } }}
+                slotProps={{
+                  input: { readOnly: true },
+                  inputLabel: { shrink: true },
+                }}
               />
             </div>
             <div>
@@ -239,7 +248,10 @@ export default function EventForm({
                 fullWidth
                 variant="outlined"
                 helperText="Starts when you publish. Signups must close before the event."
-                slotProps={{ htmlInput: { min: 1, max: 768, step: 1 } }}
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  htmlInput: { min: 1, max: 768, step: 1 },
+                }}
               />
             </div>
           </div>
@@ -260,7 +272,10 @@ export default function EventForm({
                   required
                   fullWidth
                   variant="outlined"
-                  slotProps={{ htmlInput: { maxLength: 35 } }}
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    htmlInput: { maxLength: 35 },
+                  }}
                 />
               </div>
               <div>
@@ -275,7 +290,10 @@ export default function EventForm({
                   required
                   fullWidth
                   variant="outlined"
-                  slotProps={{ htmlInput: { min: 1, max: 999, step: 1 } }}
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    htmlInput: { min: 1, max: 999, step: 1 },
+                  }}
                 />
               </div>
               <button
@@ -286,7 +304,7 @@ export default function EventForm({
                   setTables((rows) => rows.filter((row) => row.id !== table.id))
                 }
               >
-                Remove
+                −
               </button>
             </div>
           ))}

@@ -221,9 +221,6 @@ dd {
   margin: 0;
   min-width: 0;
 }
-.event-title-field {
-  margin-bottom: 16px;
-}
 .help {
   color: #52665a;
   font-size: 0.875rem;
