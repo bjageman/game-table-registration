@@ -97,11 +97,6 @@ export default function PublishEvent({
           onCancel={() => setConfirming(false)}
           onConfirm={() => void publish()}
         >
-          <p id={`publish-description-${event.id}`}>
-            This posts a signup poll to your configured Discord channel. Signups
-            open immediately for {event.duration_hours} hours. Table options and
-            capacities cannot be edited after publication.
-          </p>
           <ul className="table-summary">
             {event.tables.map((table) => (
               <li key={table.name}>
