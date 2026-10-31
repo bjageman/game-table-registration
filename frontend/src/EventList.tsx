@@ -92,6 +92,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
           {event.status.replaceAll("_", " ")}
         </span>
         <div className="event-header-actions">
+          {event.status !== "draft" && (
           <button type="button" className="event-icon-action"
             aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
             title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
@@ -99,6 +100,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
             onClick={() => setRefreshToken((value) => value + 1)}>
             <RefreshCw size={18} aria-hidden="true" />
           </button>
+          )}
           {event.discord_url && (
             <a className="button event-icon-action" href={event.discord_url} target="_blank" rel="noreferrer"
               aria-label={`View Discord poll for ${event.title} (opens in a new tab)`} title="View Discord Poll">
