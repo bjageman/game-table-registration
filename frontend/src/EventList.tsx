@@ -46,6 +46,18 @@ export default function EventList({
                   </time>
                 </dd>
               </div>
+              {event.opens_at && (
+                <div>
+                  <dt>Signups open</dt>
+                  <dd>{formatTime(event.opens_at)}</dd>
+                </div>
+              )}
+              {event.signup_closes_at && (
+                <div>
+                  <dt>Signups close</dt>
+                  <dd>{formatTime(event.signup_closes_at)}</dd>
+                </div>
+              )}
               <div>
                 <dt>Signup duration</dt>
                 <dd>{event.duration_hours} hours from publication</dd>
@@ -80,7 +92,7 @@ export default function EventList({
             )}
             {event.status === "draft" && (
               <div className="form-actions draft-actions">
-                <PublishEvent event={event} {...actions} />
+                {!event.opens_at && <PublishEvent event={event} {...actions} />}
                 <DraftActions
                   event={event}
                   csrf={actions.csrf}

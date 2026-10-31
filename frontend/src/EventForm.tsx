@@ -43,6 +43,13 @@ export default function EventForm({
   onAccessError,
 }: Props) {
   const prefix = useId();
+  const [scheduled, setScheduled] = useState(Boolean(draft?.opens_at));
+  const [opening, setOpening] = useState<Dayjs | null>(
+    draft?.opens_at ? dayjs.unix(draft.opens_at) : null,
+  );
+  const [closing, setClosing] = useState<Dayjs | null>(
+    draft?.signup_closes_at ? dayjs.unix(draft.signup_closes_at) : null,
+  );
   const [title, setTitle] = useState(draft?.title ?? "");
   const [startsAt, setStartsAt] = useState<Dayjs | null>(
     draft ? dayjs.unix(draft.starts_at) : null,
@@ -131,11 +138,26 @@ export default function EventForm({
     if (inFlight.current) return;
     setError("");
     const errors = validateEvent({
+      scheduled,
       title,
       startsAt: startsAtLocal,
       duration,
       tables,
     });
+    if (
+      scheduled &&
+      (!opening?.isValid() ||
+        !closing?.isValid() ||
+        !(
+          Date.now() < opening.valueOf() &&
+          opening.valueOf() < closing.valueOf() &&
+          closing.valueOf() < new Date(startsAtLocal).getTime()
+        ) ||
+        closing.diff(opening, "hour", true) > 768)
+    ) {
+      errors.window =
+        "Require now < signup opening < closing < event start, within 32 days.";
+    }
     setFieldErrors(errors);
     if (Object.keys(errors).length) {
       setError([...new Set(Object.values(errors))].join(" "));
@@ -153,6 +175,13 @@ export default function EventForm({
         draft ? `/events/${draft.id}` : "/events",
         {
           ...mutationOptions(csrf, {
+            ...(scheduled
+              ? {
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  opens_at: opening?.toISOString(),
+                  signup_closes_at: closing?.toISOString(),
+                }
+              : { opens_at: null, signup_closes_at: null }),
             title: title.trim(),
             starts_at: start.toISOString(),
             duration_hours: hours,
@@ -221,6 +250,14 @@ export default function EventForm({
               htmlInput: { maxLength: 100 },
             }}
           />
+          <label className="schedule-toggle">
+            <input
+              type="checkbox"
+              checked={scheduled}
+              onChange={(e) => setScheduled(e.target.checked)}
+            />{" "}
+            Schedule signup opening and closing
+          </label>
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
               {isMobile ? (
@@ -280,35 +317,66 @@ export default function EventForm({
               )}
             </div>
             <div>
-              <TextField
-                id={`${prefix}-signup-start`}
-                label="Signup starts"
-                value="When the event is published"
-                fullWidth
-                variant="outlined"
-                slotProps={{
-                  input: { readOnly: true },
-                  inputLabel: { shrink: true },
-                }}
-              />
+              {scheduled ? (
+                <DateTimePicker
+                  label="Signup opens"
+                  value={opening}
+                  onChange={setOpening}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      error: Boolean(fieldErrors.window),
+                      slotProps: { inputLabel: { shrink: true } },
+                    },
+                  }}
+                />
+              ) : (
+                <TextField
+                  id={`${prefix}-signup-start`}
+                  label="Signup starts"
+                  value="When the event is published"
+                  fullWidth
+                  variant="outlined"
+                  slotProps={{
+                    input: { readOnly: true },
+                    inputLabel: { shrink: true },
+                  }}
+                />
+              )}
             </div>
             <div>
-              <TextField
-                id={`${prefix}-duration`}
-                error={Boolean(fieldErrors.duration)}
-                helperText={fieldErrors.duration}
-                label="Signup duration (hours)"
-                type="number"
-                value={duration}
-                onChange={(event) => setDuration(event.target.value)}
-                required
-                fullWidth
-                variant="outlined"
-                slotProps={{
-                  inputLabel: { shrink: true },
-                  htmlInput: { min: 1, max: 768, step: 1 },
-                }}
-              />
+              {scheduled ? (
+                <DateTimePicker
+                  label="Signup closes"
+                  value={closing}
+                  onChange={setClosing}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      error: Boolean(fieldErrors.window),
+                      helperText: fieldErrors.window,
+                      slotProps: { inputLabel: { shrink: true } },
+                    },
+                  }}
+                />
+              ) : (
+                <TextField
+                  id={`${prefix}-duration`}
+                  error={Boolean(fieldErrors.duration)}
+                  helperText={fieldErrors.duration}
+                  label="Signup duration (hours)"
+                  type="number"
+                  value={duration}
+                  onChange={(event) => setDuration(event.target.value)}
+                  required
+                  fullWidth
+                  variant="outlined"
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    htmlInput: { min: 1, max: 768, step: 1 },
+                  }}
+                />
+              )}
             </div>
           </div>
           <div className="section-heading tables-heading">

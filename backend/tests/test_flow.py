@@ -224,3 +224,28 @@ def test_published_events_cannot_be_edited_or_deleted(client, status):
     assert client.put(path, headers=headers, json=event_body()).status_code == 409
     assert client.delete(path, headers=headers).status_code == 409
     assert client.get("/api/events").json()[0]["status"] == status
+
+
+def test_explicit_signup_window(client):
+    headers = login(client)
+    now = datetime.now(UTC)
+    body = {
+        **event_body(),
+        "timezone": "America/New_York",
+        "opens_at": (now + timedelta(days=1)).isoformat(),
+        "signup_closes_at": (now + timedelta(days=2)).isoformat(),
+    }
+    response = client.post("/api/events", headers=headers, json=body)
+    assert response.status_code == 201
+    assert response.json()["timezone"] == "America/New_York"
+    assert response.json()["opens_at"] < response.json()["signup_closes_at"]
+    assert (
+        client.post(
+            f"/api/events/{response.json()['id']}/publish", headers=headers
+        ).status_code
+        == 409
+    )
+    body["signup_closes_at"] = body["opens_at"]
+    assert client.post("/api/events", headers=headers, json=body).status_code == 422
+    body["timezone"] = "Not/AZone"
+    assert client.post("/api/events", headers=headers, json=body).status_code == 422

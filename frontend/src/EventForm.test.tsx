@@ -69,6 +69,8 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
   expect(options[1].headers).toMatchObject({ "X-CSRF-Token": "csrf" });
   expect(JSON.parse(options[1].body as string)).toEqual({
     title: "Friday games",
+    opens_at: null,
+    signup_closes_at: null,
     starts_at: new Date("2090-06-14T19:00").toISOString(),
     duration_hours: 24,
     tables: [{ name: "Clocktower", capacity: 15 }],

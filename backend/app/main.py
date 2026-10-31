@@ -8,48 +8,17 @@ from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import create_engine, delete, select, text, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import Settings
 from app.discord_api import DiscordAPI
 from app.models import Event, LoginState, Session
+from app.schemas import EventInput
 
 
 def digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-class TableInput(BaseModel):
-    name: str = Field(min_length=1, max_length=35)
-    capacity: int = Field(default=15, ge=1, le=999)
-
-    @field_validator("name")
-    @classmethod
-    def clean_name(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("Table name cannot be blank")
-        return value.strip()
-
-
-class EventInput(BaseModel):
-    title: str = Field(min_length=1, max_length=100)
-    starts_at: datetime
-    duration_hours: int = Field(ge=1, le=768)
-    tables: list[TableInput] = Field(min_length=1, max_length=10)
-
-    @model_validator(mode="after")
-    def validate_event(self) -> "EventInput":
-        if not self.title.strip():
-            raise ValueError("Event title cannot be blank")
-        if self.starts_at.tzinfo is None:
-            raise ValueError("Event time must include a timezone")
-        if self.starts_at.timestamp() <= time.time() + self.duration_hours * 3600:
-            raise ValueError("Event must start after the signup window ends")
-        if len({table.name.casefold() for table in self.tables}) != len(self.tables):
-            raise ValueError("Table names must be unique")
-        return self
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -90,6 +59,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "id": event.id,
             "title": event.title,
             "starts_at": event.starts_at,
+            "timezone": event.timezone,
+            "opens_at": event.opens_at,
+            "signup_closes_at": event.signup_closes_at,
             "duration_hours": event.duration_hours,
             "tables": event.tables,
             "status": event.status,
@@ -229,6 +201,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 tables=[table.model_dump() for table in body.tables],
                 created_by=session.user_id,
                 status="draft",
+                timezone=body.timezone,
+                opens_at=body.opens_at.timestamp() if body.opens_at else None,
+                signup_closes_at=body.signup_closes_at.timestamp()
+                if body.signup_closes_at
+                else None,
             )
             db.add(event)
             db.commit()
@@ -246,6 +223,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     Event.status == "draft",
                 )
                 .values(
+                    timezone=body.timezone,
+                    opens_at=body.opens_at.timestamp() if body.opens_at else None,
+                    signup_closes_at=body.signup_closes_at.timestamp()
+                    if body.signup_closes_at
+                    else None,
                     title=body.title.strip(),
                     starts_at=body.starts_at.timestamp(),
                     duration_hours=body.duration_hours,
@@ -285,6 +267,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             event = db.get(Event, event_id)
             if not event or event.guild_id != config.discord_guild_id:
                 raise HTTPException(404, "Event not found")
+            if event.opens_at is not None:
+                raise HTTPException(
+                    409, "Use Schedule signups for events with explicit signup times"
+                )
             if event.starts_at <= time.time() + event.duration_hours * 3600:
                 raise HTTPException(
                     400, "Signup window would end after the event starts"

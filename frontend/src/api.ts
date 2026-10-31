@@ -80,6 +80,9 @@ export interface EventRecord {
   id: string;
   title: string;
   starts_at: number;
+  timezone?: string;
+  opens_at?: number | null;
+  signup_closes_at?: number | null;
   duration_hours: number;
   tables: { name: string; capacity: number }[];
   status: string;

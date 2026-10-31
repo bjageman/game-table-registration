@@ -4,6 +4,7 @@ export interface TableDraft {
   capacity: string;
 }
 export interface EventDraft {
+  scheduled?: boolean;
   title: string;
   startsAt: string;
   duration: string;
@@ -48,7 +49,7 @@ export function validateEvent(
     ) {
       errors.start =
         "This local time occurs twice when the clocks change. Choose an unambiguous time.";
-    } else if (start.getTime() <= now + hours * 3600000) {
+    } else if (!draft.scheduled && start.getTime() <= now + hours * 3600000) {
       errors.start =
         "The event must start after the signup window ends. Choose a later time or a shorter signup duration.";
     }
