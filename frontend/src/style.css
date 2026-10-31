@@ -418,3 +418,6 @@ dd {
   overflow-wrap: anywhere;
 }
 .player-name:hover { background: transparent; color: #19432f; }
+
+.player-discord-name { margin-bottom: 24px; }
+.player-weighting { margin-top: 24px; margin-bottom: 8px; }

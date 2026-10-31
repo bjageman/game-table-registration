@@ -298,3 +298,72 @@ def test_cross_guild_signup_cannot_be_deleted(client):
         == 409
     )
     client.app.state.discord.delete_poll.assert_not_called()
+
+
+def test_player_profile_survives_event_and_poll_deletion(client):
+    headers = login(client)
+    client.app.state.discord.bot.return_value = {
+        "username": "mary",
+        "global_name": "Mary",
+    }
+    path = "/api/players/123"
+    assert client.get(path).json() == {
+        "discord_id": "123",
+        "discord_name": "Mary",
+        "real_name": "",
+        "weighting": 1.0,
+    }
+    assert client.put(path, json={"real_name": "Mary Smith"}).status_code == 403
+    saved = client.put(path, headers=headers, json={"real_name": " Mary Smith "})
+    assert saved.status_code == 200
+    assert saved.json()["real_name"] == "Mary Smith"
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    event_path = f"/api/events/{event['id']}"
+    client.post(event_path + "/publish", headers=headers)
+    assert (
+        client.delete(event_path + "?delete_poll=true", headers=headers).status_code
+        == 204
+    )
+    assert client.get(path).json() == saved.json()
+    client.app.state.discord.delete_poll.assert_called_once_with("message")
+    client.app.state.discord.bot.reset_mock()
+    assert client.get(path).json()["discord_name"] == "Mary"
+    client.app.state.discord.bot.assert_not_called()
+
+
+def test_player_profiles_are_scoped_to_guild_and_weighting_is_read_only(client):
+    from app.models import PlayerProfile
+
+    headers = login(client)
+    client.app.state.discord.bot.return_value = {"username": "mary"}
+    with DBSession(client.app.state.engine) as db:
+        db.add(
+            PlayerProfile(
+                guild_id="other",
+                discord_id="123",
+                discord_name="Other",
+                real_name="Private",
+                weighting=2.0,
+            )
+        )
+        db.commit()
+    assert client.get("/api/players/123").json()["real_name"] == ""
+    assert (
+        client.put(
+            "/api/players/123",
+            headers=headers,
+            json={"real_name": "Mary", "weighting": 5},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.put(
+            "/api/players/123", headers=headers, json={"real_name": "x" * 101}
+        ).status_code
+        == 422
+    )
+    assert client.get("/api/players/invalid").status_code == 422
+    saved = client.put("/api/players/123", headers=headers, json={"real_name": "Mary"})
+    assert saved.json()["weighting"] == 1.0
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(PlayerProfile, ("other", "123")).real_name == "Private"

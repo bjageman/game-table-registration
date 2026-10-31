@@ -152,7 +152,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
                 </div>
               )}
             </dl>
-            <EventTables key={`${event.id}:${event.discord_url}`} event={event} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}`} event={event} csrf={actions.csrf} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (

@@ -10,11 +10,12 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import create_engine, delete, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import Settings
 from app.discord_api import DiscordAPI
-from app.models import Event, LoginState, Session
+from app.models import Event, LoginState, PlayerProfile, Session
 
 
 def digest(token: str) -> str:
@@ -50,6 +51,16 @@ class EventInput(BaseModel):
         if len({table.name.casefold() for table in self.tables}) != len(self.tables):
             raise ValueError("Table names must be unique")
         return self
+
+
+class PlayerProfileInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    real_name: str = Field(max_length=100)
+
+    @field_validator("real_name")
+    @classmethod
+    def clean_real_name(cls, value: str) -> str:
+        return value.strip()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -202,6 +213,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = Response(status_code=204)
         response.delete_cookie("session", path="/api")
         return response
+
+    def discord_name(player_id: str) -> str:
+        discord: DiscordAPI = app.state.discord
+        user = discord.bot("GET", f"/users/{player_id}")
+        name = user.get("global_name") or user.get("username")
+        if not isinstance(name, str) or not name:
+            raise HTTPException(502, "Discord returned an invalid user profile")
+        return name
+
+    def player_data(player_id: str, profile: PlayerProfile | None) -> dict[str, Any]:
+        return {
+            "discord_id": player_id,
+            "discord_name": profile.discord_name
+            if profile
+            else discord_name(player_id),
+            "real_name": profile.real_name if profile else "",
+            "weighting": profile.weighting if profile else 1.0,
+        }
+
+    def valid_player_id(player_id: str) -> None:
+        if not player_id.isascii() or not player_id.isdecimal() or len(player_id) > 32:
+            raise HTTPException(422, "Invalid Discord user ID")
+
+    @app.get("/api/players/{player_id}")
+    def player_profile(player_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            profile = db.get(PlayerProfile, (config.discord_guild_id, player_id))
+            return player_data(player_id, profile)
+
+    @app.put("/api/players/{player_id}")
+    def save_player_profile(
+        player_id: str, body: PlayerProfileInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            profile = db.get(PlayerProfile, (config.discord_guild_id, player_id))
+            if profile is None:
+                profile = PlayerProfile(
+                    guild_id=config.discord_guild_id,
+                    discord_id=player_id,
+                    discord_name=discord_name(player_id),
+                    real_name=body.real_name,
+                    weighting=1.0,
+                )
+                db.add(profile)
+            else:
+                profile.real_name = body.real_name
+            try:
+                db.commit()
+            except IntegrityError:
+                # Another moderator may have created this profile concurrently.
+                db.rollback()
+                profile = db.get(PlayerProfile, (config.discord_guild_id, player_id))
+                if profile is None:
+                    raise
+                profile.real_name = body.real_name
+                db.commit()
+            return player_data(player_id, profile)
 
     @app.get("/api/events")
     def events(request: Request) -> list[dict[str, Any]]:

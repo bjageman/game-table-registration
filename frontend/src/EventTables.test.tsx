@@ -26,12 +26,12 @@ it("refreshes names and counts when votes are added and removed, and stops on cl
     ])))
     .mockRejectedValueOnce(new Error("Discord unavailable"));
   vi.stubGlobal("fetch", fetchMock);
-  const view = render(<EventTables event={event} onAccessError={() => false} />);
+  const view = render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(screen.getByText("0/8")).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
   expect(screen.getByText("Mary")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Mary" })).toHaveAttribute("aria-disabled", "true");
+  expect(screen.getByRole("button", { name: "Mary" })).toHaveAttribute("aria-haspopup", "dialog");
   expect(screen.getByText("1/8")).toBeVisible();
   expect(screen.getByText("Dan")).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(15000); });

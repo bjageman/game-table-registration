@@ -36,3 +36,12 @@ class Event(Base):
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     closes_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+
+
+class PlayerProfile(Base):
+    __tablename__ = "player_profiles"
+    guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    discord_name: Mapped[str] = mapped_column(String(100), default="")
+    real_name: Mapped[str] = mapped_column(String(100), default="")
+    weighting: Mapped[float] = mapped_column(Float, default=1.0)
