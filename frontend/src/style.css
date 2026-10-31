@@ -383,6 +383,6 @@ dd {
 .event-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .event-icon-action { padding: 8px; }
 @media (max-width: 600px) {
-  .event-modal-header { gap: 8px; }
-  .event-header-actions { gap: 4px; }
+  .event-modal-header { gap: 8px; flex-wrap: wrap; }
+  .event-header-actions { gap: 4px; order: 1; flex-basis: 100%; }
 }
