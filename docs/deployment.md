@@ -22,7 +22,8 @@ Register these OAuth redirect URLs in the respective Discord applications:
 - `https://signups.brodin.rocks/api/auth/callback`
 
 Add repository Actions secrets `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_KEY`,
-just as in Tinygrim. These secrets are repository scoped and must be configured
+just as in Tinygrim. Add `DEV_TO_MAIN_SECRET` with a token allowed to create
+pull requests so release PRs trigger the normal CI checks. These secrets are repository scoped and must be configured
 here even when their values match Tinygrim. The key must allow SSH to this server.
 
 ## Review and release
@@ -30,7 +31,11 @@ here even when their values match Tinygrim. The key must allow SSH to this serve
 1. Branch from `dev`, make changes, and open a feature PR targeting `dev`.
 2. Review CI and merge the PR manually. The push to `dev` deploys development.
 3. Test the dev website and Discord flow.
-4. Open a PR from `dev` into `main`. The source-branch workflow rejects other sources.
+4. Open a PR from `dev` into `main`, or use **Release dev → main** in Actions.
+   Like Tinygrim, it also runs Wednesdays at 00:00 UTC and opens/reuses the release
+   PR. Scheduled workflows start once the workflow reaches the default branch.
+   Unlike Tinygrim, merges remain manual as required by this repository’s AGENTS.md.
+   The source-branch workflow rejects other sources.
 5. Review checks and merge manually. The push to `main` deploys production.
 
 Configure GitHub branch protection on both branches to require PRs and passing
