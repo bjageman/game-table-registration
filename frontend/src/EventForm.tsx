@@ -1,6 +1,9 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
+import { TimePicker } from "@mui/x-date-pickers/TimePicker";
 import type { Dayjs } from "dayjs";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
@@ -27,6 +30,38 @@ export default function EventForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const isMobile = useMediaQuery("(max-width: 600px)");
+  const [mobileTimeSelected, setMobileTimeSelected] = useState(false);
+
+  function updateStart(value: Dayjs | null) {
+    setStartsAt(value);
+    setMobileTimeSelected(value !== null);
+  }
+
+  function updateMobileDate(value: Dayjs | null) {
+    if (!value) {
+      setStartsAt(null);
+      setMobileTimeSelected(false);
+      return;
+    }
+    setStartsAt((current) =>
+      value
+        .hour(current?.hour() ?? 0)
+        .minute(current?.minute() ?? 0)
+        .second(0),
+    );
+  }
+
+  function updateMobileTime(value: Dayjs | null) {
+    if (!value) {
+      setMobileTimeSelected(false);
+      return;
+    }
+    setStartsAt((current) =>
+      current?.hour(value.hour()).minute(value.minute()).second(0) ?? null,
+    );
+    setMobileTimeSelected(true);
+  }
 
   function updateTable(
     id: number,
@@ -47,7 +82,7 @@ export default function EventForm({
       setError("Enter an event title.");
       return;
     }
-    if (!start || Number.isNaN(start.getTime())) {
+    if (!start || Number.isNaN(start.getTime()) || (isMobile && !mobileTimeSelected)) {
       setError("Enter a valid event date and time.");
       return;
     }
@@ -110,21 +145,50 @@ export default function EventForm({
           />
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
-              <DateTimePicker
-                label="Event starts"
-                value={startsAt}
-                onChange={(value) => setStartsAt(value)}
-                format="MMMM D, YYYY h:mm A"
-                ampm
-                timeSteps={{ minutes: 15 }}
-                slotProps={{
-                  textField: {
-                    fullWidth: true,
-                    required: true,
-                    helperText: `Timezone: ${timezone}. Times are saved with the correct UTC offset.`,
-                  },
-                }}
-              />
+              {isMobile ? (
+                <div className="mobile-date-time-fields">
+                  <DatePicker
+                    label="Event starts"
+                    value={startsAt}
+                    onChange={updateMobileDate}
+                    format="MMMM D, YYYY"
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        required: true,
+                        helperText: `Timezone: ${timezone}`,
+                      },
+                    }}
+                  />
+                  <TimePicker
+                    label="Event time"
+                    value={mobileTimeSelected ? startsAt : null}
+                    onChange={updateMobileTime}
+                    ampm
+                    timeSteps={{ minutes: 15 }}
+                    disabled={!startsAt}
+                    slotProps={{
+                      textField: { fullWidth: true, required: true },
+                    }}
+                  />
+                </div>
+              ) : (
+                <DateTimePicker
+                  label="Event starts"
+                  value={startsAt}
+                  onChange={updateStart}
+                  format="MMMM D, YYYY h:mm A"
+                  ampm
+                  timeSteps={{ minutes: 15 }}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      required: true,
+                      helperText: `Timezone: ${timezone}. Times are saved with the correct UTC offset.`,
+                    },
+                  }}
+                />
+              )}
             </div>
             <div>
               <label htmlFor={`${prefix}-signup-start`}>Signup starts</label>

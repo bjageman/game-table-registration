@@ -254,6 +254,10 @@ input {
 .date-time-fields {
   min-width: 0;
 }
+.mobile-date-time-fields {
+  display: grid;
+  gap: 12px;
+}
 .schedule-value {
   display: block;
   width: 100%;
