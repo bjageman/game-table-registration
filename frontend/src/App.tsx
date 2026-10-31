@@ -94,7 +94,7 @@ export default function App() {
         {auth.kind === "ready" && (
           <div className="account">
             <span>
-              Signed in as <strong>{auth.session.username}</strong>
+              <strong>{auth.session.username}</strong>
             </span>
             <button onClick={() => void logout()} disabled={loggingOut}>
               {loggingOut ? "Signing out…" : "Log out"}
