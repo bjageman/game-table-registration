@@ -254,9 +254,14 @@ input {
 .date-time-fields {
   min-width: 0;
 }
-.mobile-date-time-fields {
-  display: grid;
-  gap: 12px;
+.time-picker-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+.time-picker-field m-button {
+  width: 100%;
 }
 .schedule-value {
   display: block;

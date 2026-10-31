@@ -1,10 +1,6 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
-import useMediaQuery from "@mui/material/useMediaQuery";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
-import { TimePicker } from "@mui/x-date-pickers/TimePicker";
-import type { Dayjs } from "dayjs";
+import { Button, Datepicker, Timepicker } from "material/react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
 interface Props {
@@ -12,6 +8,42 @@ interface Props {
   onCreated: (event: EventRecord) => void;
   onCancel: () => void;
   onAccessError: (error: unknown) => boolean;
+}
+
+function initialTime() {
+  const date = new Date();
+  const minute =
+    date.getMinutes() + Number(date.getSeconds() > 0 || date.getMilliseconds() > 0);
+  date.setMinutes(Math.ceil(minute / 15) * 15, 0, 0);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function displayTime(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(2000, 0, 1, hours, minutes));
+}
+
+function useIsMobile() {
+  const query = "(max-width: 600px)";
+  const [isMobile, setIsMobile] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia(query);
+    const update = (event: MediaQueryListEvent) => setIsMobile(event.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return isMobile;
 }
 
 export default function EventForm({
@@ -22,7 +54,9 @@ export default function EventForm({
 }: Props) {
   const prefix = useId();
   const [title, setTitle] = useState("");
-  const [startsAt, setStartsAt] = useState<Dayjs | null>(null);
+  const [eventDate, setEventDate] = useState("");
+  const [eventTime, setEventTime] = useState(initialTime);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [duration, setDuration] = useState("24");
   const [tables, setTables] = useState([{ id: 0, name: "", capacity: "15" }]);
   const nextId = useRef(1);
@@ -30,38 +64,7 @@ export default function EventForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const isMobile = useMediaQuery("(max-width: 600px)");
-  const [mobileTimeSelected, setMobileTimeSelected] = useState(false);
-
-  function updateStart(value: Dayjs | null) {
-    setStartsAt(value);
-    setMobileTimeSelected(value !== null);
-  }
-
-  function updateMobileDate(value: Dayjs | null) {
-    if (!value) {
-      setStartsAt(null);
-      setMobileTimeSelected(false);
-      return;
-    }
-    setStartsAt((current) =>
-      value
-        .hour(current?.hour() ?? 0)
-        .minute(current?.minute() ?? 0)
-        .second(0),
-    );
-  }
-
-  function updateMobileTime(value: Dayjs | null) {
-    if (!value) {
-      setMobileTimeSelected(false);
-      return;
-    }
-    setStartsAt((current) =>
-      current?.hour(value.hour()).minute(value.minute()).second(0) ?? null,
-    );
-    setMobileTimeSelected(true);
-  }
+  const isMobile = useIsMobile();
 
   function updateTable(
     id: number,
@@ -76,13 +79,16 @@ export default function EventForm({
     event.preventDefault();
     if (inFlight.current) return;
     setError("");
-    const start = startsAt?.toDate() ?? null;
+    const start =
+      eventDate && eventTime
+        ? new Date(`${eventDate}T${eventTime}:00`)
+        : null;
     const hours = Number(duration);
     if (!title.trim()) {
       setError("Enter an event title.");
       return;
     }
-    if (!start || Number.isNaN(start.getTime()) || (isMobile && !mobileTimeSelected)) {
+    if (!start || Number.isNaN(start.getTime())) {
       setError("Enter a valid event date and time.");
       return;
     }
@@ -145,50 +151,37 @@ export default function EventForm({
           />
           <div className="form-grid event-schedule-fields">
             <div className="date-time-fields">
-              {isMobile ? (
-                <div className="mobile-date-time-fields">
-                  <DatePicker
-                    label="Event starts"
-                    value={startsAt}
-                    onChange={updateMobileDate}
-                    format="MMMM D, YYYY"
-                    slotProps={{
-                      textField: {
-                        fullWidth: true,
-                        required: true,
-                        helperText: `Timezone: ${timezone}`,
-                      },
-                    }}
-                  />
-                  <TimePicker
-                    label="Event time"
-                    value={mobileTimeSelected ? startsAt : null}
-                    onChange={updateMobileTime}
-                    ampm
-                    timeSteps={{ minutes: 15 }}
-                    disabled={!startsAt}
-                    slotProps={{
-                      textField: { fullWidth: true, required: true },
-                    }}
-                  />
-                </div>
-              ) : (
-                <DateTimePicker
-                  label="Event starts"
-                  value={startsAt}
-                  onChange={updateStart}
-                  format="MMMM D, YYYY h:mm A"
-                  ampm
-                  timeSteps={{ minutes: 15 }}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true,
-                      required: true,
-                      helperText: `Timezone: ${timezone}. Times are saved with the correct UTC offset.`,
-                    },
-                  }}
-                />
-              )}
+              <Datepicker
+                label="Event starts"
+                value={eventDate}
+                onChange={(change) => setEventDate(change.detail.value)}
+                variant={isMobile ? "fullscreen" : "docked"}
+                dateFormat="MMMM D, YYYY"
+                supportingText={`Timezone: ${timezone}`}
+                required
+              />
+            </div>
+            <div className="time-picker-field">
+              <span className="time-picker-label">Event time</span>
+              <Button
+                variant="outlined"
+                type="button"
+                disabled={saving}
+                aria-label={`Event time, ${displayTime(eventTime)}`}
+                onClick={() => setTimePickerOpen(true)}
+              >
+                {displayTime(eventTime)}
+              </Button>
+              <Timepicker
+                title="Event time"
+                value={eventTime}
+                open={timePickerOpen}
+                onChange={(change) => setEventTime(change.detail.value)}
+                onConfirm={(change) => setEventTime(change.detail.value)}
+                onClose={() => setTimePickerOpen(false)}
+                format="12h"
+                step={900}
+              />
             </div>
             <div>
               <label htmlFor={`${prefix}-signup-start`}>Signup starts</label>

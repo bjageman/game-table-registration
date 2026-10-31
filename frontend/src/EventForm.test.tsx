@@ -1,7 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import EventForm from "./EventForm";
 
 const props = {
@@ -16,19 +14,28 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 function renderForm() {
-  return render(
-    <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <EventForm {...props} />
-    </LocalizationProvider>,
-  );
+  return render(<EventForm {...props} />);
 }
 function fill() {
   fireEvent.change(screen.getByLabelText("Event title"), {
     target: { value: "Friday games" },
   });
-  fireEvent.change(screen.getByLabelText("Event starts"), {
-    target: { value: "June 14, 2090 7:00 PM" },
-  });
+  fireEvent(
+    document.querySelector("m-datepicker")!,
+    new CustomEvent("change", {
+      bubbles: true,
+      composed: true,
+      detail: { value: "2090-06-14", date: new Date(2090, 5, 14) },
+    }),
+  );
+  fireEvent(
+    document.querySelector("m-timepicker")!,
+    new CustomEvent("change", {
+      bubbles: true,
+      composed: true,
+      detail: { value: "19:00" },
+    }),
+  );
   fireEvent.change(screen.getByLabelText("Table 1 name"), {
     target: { value: "Clocktower" },
   });
