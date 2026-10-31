@@ -22,18 +22,25 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("loads event dates, tables, and publication status", async () => {
+it("opens event details from a compact event listing", async () => {
+  vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function () { this.setAttribute("open", ""); });
+  vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function () { this.removeAttribute("open"); });
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(JSON.stringify([draft]))),
   );
   render(<Dashboard {...props} />);
-  expect(
-    await screen.findByRole("heading", { name: "Friday games" }),
-  ).toBeVisible();
+  const item = await screen.findByRole("button", { name: "Friday games 1 table" });
+  expect(item).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(item);
+  expect(screen.getByRole("dialog", { name: "Friday games" })).toBeVisible();
   expect(screen.getByText("draft")).toBeVisible();
   expect(screen.getByText(/15 seats/)).toBeVisible();
   expect(screen.getByText(/24 hours from publication/)).toBeVisible();
+  expect(screen.getAllByRole("listitem").filter((li) => li.parentElement?.className === "table-players")).toHaveLength(15);
+  fireEvent.click(screen.getByRole("button", { name: "Close event" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it("offers retry after a failed request instead of showing an empty list", async () => {

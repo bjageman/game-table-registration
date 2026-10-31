@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 import EventTables from "./EventTables";
 import DraftActions from "./DraftActions";
 import type { EventRecord } from "./api";
@@ -20,16 +22,62 @@ export default function EventList({
   onEdit: (event: EventRecord) => void;
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = events.find((event) => event.id === selectedId);
   return (
-    <ul className="event-list">
-      {events.map((event) => (
-        <li key={event.id}>
-          <article
-            className="panel event-card"
-            aria-labelledby={`event-${event.id}`}
-          >
+    <>
+      <ul className="event-list">
+        {events.map((event) => (
+          <li key={event.id}>
+            <button
+              type="button"
+              className="event-list-item"
+              aria-haspopup="dialog"
+              onClick={() => setSelectedId(event.id)}
+            >
+              <span className="event-list-title">{event.title}</span>
+              <span className="help">{event.tables.length} {event.tables.length === 1 ? "table" : "tables"}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {selected && <EventDetails
+        event={selected}
+        onClose={() => setSelectedId(null)}
+        onEdit={onEdit}
+        onDeleted={onDeleted}
+        {...actions}
+      />}
+    </>
+  );
+}
+
+function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
+  event: EventRecord;
+  onClose: () => void;
+  onEdit: (event: EventRecord) => void;
+  onDeleted: (event: EventRecord) => void;
+} & PublicationActions) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const modal = dialog.current;
+    const trigger = document.activeElement;
+    modal?.showModal();
+    return () => {
+      modal?.close();
+      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
+    };
+  }, []);
+  return (
+    <dialog ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
+      onCancel={(event) => { event.preventDefault(); onClose(); }}>
+      <div className="event-modal-close">
+        <button type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
+          <X size={18} aria-hidden="true" />
+        </button>
+      </div>
             <div className="section-heading">
-              <h3 id={`event-${event.id}`}>{event.title}</h3>
+              <h2 id={`event-${event.id}`}>{event.title}</h2>
               <span
                 className={`badge ${event.status === "draft" ? "draft" : ""}`}
               >
@@ -79,7 +127,7 @@ export default function EventList({
                 <DraftActions
                   event={event}
                   csrf={actions.csrf}
-                  onEdit={onEdit}
+                  onEdit={(edited) => { onClose(); onEdit(edited); }}
                   onDeleted={onDeleted}
                   onAccessError={actions.onAccessError}
                 />
@@ -99,9 +147,6 @@ export default function EventList({
                 </span>
               </a>
             )}
-          </article>
-        </li>
-      ))}
-    </ul>
+    </dialog>
   );
 }
