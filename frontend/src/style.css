@@ -386,3 +386,7 @@ dd {
   .event-modal-header { gap: 8px; flex-wrap: wrap; }
   .event-header-actions { gap: 4px; order: 1; flex-basis: 100%; }
 }
+
+.confirmation-actions {
+  justify-content: center;
+}

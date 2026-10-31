@@ -111,7 +111,7 @@ test("completes login, draft creation, publication, refresh, and logout", async 
   await expect(page.getByRole("status")).toBeFocused();
   expect(publications).toBe(0);
   await page.getByRole("button", { name: "Publish to Discord" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
     page.getByRole("link", { name: /View Discord poll/ }),
   ).toBeVisible();
@@ -249,7 +249,7 @@ for (const outcome of ["network", "conflict"] as const) {
     });
     await page.goto("/");
     await page.getByRole("button", { name: "Publish to Discord" }).click();
-    await page.getByRole("button", { name: "Confirm publication" }).click();
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page.getByText("unconfirmed", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Publish to Discord" }),
@@ -283,9 +283,9 @@ test("blocks repeat confirmation and Escape while a publication is pending", asy
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Publish to Discord" }).click();
-  await page.getByRole("button", { name: "Confirm publication" }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Publishing…", exact: true }),
+    page.getByRole("button", { name: "Confirm", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -353,7 +353,7 @@ test("edits a draft and requires confirmation before deleting it", async ({
   expect(deletions).toBe(0);
   await page.getByRole("button", { name: "Delete draft", exact: true }).click();
   await page
-    .getByRole("button", { name: "Confirm deletion", exact: true })
+    .getByRole("button", { name: "Confirm", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "No Events Yet" }),

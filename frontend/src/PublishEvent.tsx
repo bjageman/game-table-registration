@@ -1,3 +1,4 @@
+import ConfirmationDialog from "./ConfirmationDialog";
 import { useEffect, useRef, useState } from "react";
 import {
   api,
@@ -25,9 +26,6 @@ export default function PublishEvent({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const inFlight = useRef(false);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(Date.now);
   const expired =
     event.starts_at * 1000 <= now + event.duration_hours * 3600000;
@@ -36,18 +34,6 @@ export default function PublishEvent({
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    if (!confirming) return;
-    const modal = dialog.current;
-    const returnFocus = trigger.current;
-    modal?.showModal();
-    cancel.current?.focus();
-    return () => {
-      modal?.close();
-      returnFocus?.focus();
-    };
-  }, [confirming]);
 
   async function publish() {
     if (inFlight.current) return;
@@ -81,7 +67,6 @@ export default function PublishEvent({
   return (
     <>
       <button
-        ref={trigger}
         className="primary"
         disabled={expired}
         onClick={() => {
@@ -98,16 +83,14 @@ export default function PublishEvent({
         </p>
       )}
       {confirming && (
-        <dialog
-          ref={dialog}
-          aria-labelledby={`publish-title-${event.id}`}
-          aria-describedby={`publish-description-${event.id}`}
-          onCancel={(escape) => {
-            if (inFlight.current) escape.preventDefault();
-            else setConfirming(false);
-          }}
+        <ConfirmationDialog
+          title={`Publish ${event.title}?`}
+          busy={busy}
+          error={error}
+          status="Publishing… Keep this page open while the request completes."
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void publish()}
         >
-          <h2 id={`publish-title-${event.id}`}>Publish {event.title}?</h2>
           <p id={`publish-description-${event.id}`}>
             This posts a signup poll to your configured Discord channel. Signups
             open immediately for {event.duration_hours} hours. Table options and
@@ -120,33 +103,7 @@ export default function PublishEvent({
               </li>
             ))}
           </ul>
-          {error && (
-            <p role="alert" className="error">
-              {error}
-            </p>
-          )}
-          {busy && (
-            <p role="status">
-              Publishing… Keep this page open while the request completes.
-            </p>
-          )}
-          <div className="form-actions">
-            <button
-              ref={cancel}
-              onClick={() => setConfirming(false)}
-              disabled={busy}
-            >
-              Cancel
-            </button>
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() => void publish()}
-            >
-              {busy ? "Publishing…" : "Confirm publication"}
-            </button>
-          </div>
-        </dialog>
+        </ConfirmationDialog>
       )}
     </>
   );
