@@ -1,0 +1,20 @@
+name: Repository basics
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+permissions:
+  contents: read
+jobs:
+  basics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Check changed files for whitespace errors
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: git diff --check "$BASE_SHA" HEAD
+      - name: Ensure local credentials are untracked
+        run: test -z "$(git ls-files '.env' '**/.env' '.env.local' '**/.env.local')"
