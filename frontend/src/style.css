@@ -307,3 +307,15 @@ dd {
   order: 1;
   margin: 0;
 }
+
+@media (max-width: 600px) {
+  .draft-actions {
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+  }
+  .draft-actions > .primary,
+  .draft-actions > .help {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
