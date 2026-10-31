@@ -1,4 +1,3 @@
-from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,16 +5,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     database_url: str = "sqlite:///./local.db"
     public_url: str = "http://localhost:5180"
-    discord_client_id: str = Field(
-        default="",
-        validation_alias=AliasChoices("DISCORD_CLIENT_ID", "DISCORD_BOT_CLIENTID"),
-    )
-    discord_client_secret: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "DISCORD_CLIENT_SECRET", "DISCORD_BOT_CLIENTSECRET"
-        ),
-    )
+    discord_client_id: str = ""
+    discord_client_secret: str = ""
     discord_bot_token: str = ""
     discord_guild_id: str = ""
     discord_channel_id: str = ""
