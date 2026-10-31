@@ -163,7 +163,9 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
                 setEditing(undefined);
                 setCreating(false);
               }
-              setNotice(`Draft deleted: ${event.title}.`);
+              setNotice(
+                `${event.status === "draft" ? "Draft deleted" : "Event cancelled"}: ${event.title}.`,
+              );
             }}
             csrf={session.csrf}
             onUpdated={updated}

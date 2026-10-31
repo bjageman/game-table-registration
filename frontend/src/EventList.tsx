@@ -90,9 +90,13 @@ export default function EventList({
                 been confirmed; this event will not be retried automatically.
               </p>
             )}
-            {event.status === "draft" && (
+            {["draft", "scheduled", "paused", "open"].includes(
+              event.status,
+            ) && (
               <div className="form-actions draft-actions">
-                <PublishEvent event={event} {...actions} />
+                {event.status === "draft" && (
+                  <PublishEvent event={event} {...actions} />
+                )}
                 <DraftActions
                   event={event}
                   csrf={actions.csrf}

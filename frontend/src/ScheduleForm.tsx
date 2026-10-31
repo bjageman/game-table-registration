@@ -15,27 +15,31 @@ import {
 
 export default function ScheduleForm({
   csrf,
+  initial,
   onSaved,
   onCancel,
   onAccessError,
 }: {
   csrf: string;
+  initial?: ScheduleRecord;
   onSaved: (value: ScheduleRecord) => void;
   onCancel: () => void;
   onAccessError: (error: unknown) => boolean;
 }) {
-  const [draft, setDraft] = useState<ScheduleDraft>({
-    title: "",
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    first_date: dayjs().add(14, "day").format("YYYY-MM-DD"),
-    event_time: "19:00",
-    opening_days_before: 7,
-    opening_time: "12:00",
-    closing_days_before: 1,
-    closing_time: "12:00",
-    tables: [{ name: "", capacity: 15 }],
-    skip_dates: [],
-  });
+  const [draft, setDraft] = useState<ScheduleDraft>(
+    initial ?? {
+      title: "",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      first_date: dayjs().add(14, "day").format("YYYY-MM-DD"),
+      event_time: "19:00",
+      opening_days_before: 7,
+      opening_time: "12:00",
+      closing_days_before: 1,
+      closing_time: "12:00",
+      tables: [{ name: "", capacity: 15 }],
+      skip_dates: [],
+    },
+  );
   const [rows, setRows] = useState<OccurrencePreview[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -50,13 +54,25 @@ export default function ScheduleForm({
     try {
       if (save)
         onSaved(
-          await api<ScheduleRecord>("/schedules", mutationOptions(csrf, draft)),
+          await api<ScheduleRecord>(
+            initial ? `/schedules/${initial.id}` : "/schedules",
+            {
+              ...mutationOptions(csrf, {
+                ...draft,
+                ...(initial ? { revision: initial.revision } : {}),
+              }),
+              method: initial ? "PUT" : "POST",
+            },
+          ),
         );
       else
         setRows(
           await api<OccurrencePreview[]>(
-            "/schedules/preview",
-            mutationOptions(csrf, draft),
+            initial ? `/schedules/${initial.id}/preview` : "/schedules/preview",
+            mutationOptions(csrf, {
+              ...draft,
+              ...(initial ? { revision: initial.revision } : {}),
+            }),
           ),
         );
     } catch (failure) {
@@ -78,8 +94,10 @@ export default function ScheduleForm({
     <section className="panel form-panel" aria-label="Weekly schedule editor">
       <h3>Weekly schedule</h3>
       <p>
-        Confirming activates automatic Discord publication. Times follow the
-        selected timezone each week.
+        {initial
+          ? "Changes apply to future unpublished occurrences; individual overrides are preserved."
+          : "Confirming activates automatic Discord publication."}{" "}
+        Times follow the selected timezone each week.
       </p>
       <fieldset disabled={busy} className="schedule-fields">
         <div className="form-grid">
@@ -234,7 +252,9 @@ export default function ScheduleForm({
           <h4>Next eight weeks · {draft.timezone}</h4>
           {rows.map((r) => (
             <div key={r.date} className="notice">
-              <strong>{r.date}</strong>
+              <strong>
+                {r.date} {r.action ? `· ${r.action}` : ""}
+              </strong>
               {r.skipped ? (
                 <p>Skipped</p>
               ) : (
@@ -248,7 +268,7 @@ export default function ScheduleForm({
                 <input
                   type="checkbox"
                   checked={r.skipped}
-                  disabled={busy}
+                  disabled={busy || ["preserved", "cancel"].includes(r.action ?? "")}
                   onChange={(e) => {
                     const skipped = e.target.checked;
                     setDraft((d) => ({
@@ -278,10 +298,15 @@ export default function ScheduleForm({
           <button
             type="button"
             className="primary"
-            disabled={busy || rows.some((r) => r.error && !r.skipped)}
+            disabled={
+              busy ||
+              rows.some(
+                (r) => r.error && !r.skipped && r.action !== "preserved",
+              )
+            }
             onClick={() => void act(true)}
           >
-            Confirm weekly schedule
+            {initial ? "Confirm future changes" : "Confirm weekly schedule"}
           </button>
         )}
         <button type="button" disabled={busy} onClick={onCancel}>

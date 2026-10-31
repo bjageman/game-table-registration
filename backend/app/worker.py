@@ -24,7 +24,7 @@ def tick(engine: Engine, discord: DiscordAPI, config: Settings) -> None:
             update(Event)
             .where(
                 Event.guild_id == config.discord_guild_id,
-                Event.status.in_(["publishing", "closing"]),
+                Event.status.in_(["publishing", "closing", "cancelling"]),
                 Event.operation_started_at < now - 120,
             )
             .values(

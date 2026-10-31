@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, errorMessage, type ScheduleRecord } from "./api";
+import { api, mutationOptions, errorMessage, type ScheduleRecord } from "./api";
 import ScheduleForm from "./ScheduleForm";
 
 export default function Schedules({
@@ -13,6 +13,8 @@ export default function Schedules({
 }) {
   const [rows, setRows] = useState<ScheduleRecord[]>([]);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<ScheduleRecord>();
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -34,7 +36,10 @@ export default function Schedules({
         <button
           type="button"
           disabled={creating}
-          onClick={() => setCreating(true)}
+          onClick={() => {
+            setEditing(undefined);
+            setCreating(true);
+          }}
         >
           Create weekly schedule
         </button>
@@ -54,11 +59,13 @@ export default function Schedules({
       )}
       {creating && (
         <ScheduleForm
+          key={editing?.id ?? "new"}
+          initial={editing}
           csrf={csrf}
           onAccessError={onAccessError}
           onCancel={() => setCreating(false)}
           onSaved={(row) => {
-            setRows((rs) => [...rs, row]);
+            setRows((rs) => [...rs.filter((r) => r.id !== row.id), row]);
             setCreating(false);
             onChanged();
           }}
@@ -72,6 +79,49 @@ export default function Schedules({
             {r.first_date} at {r.event_time}
           </p>
           {r.last_error && <p className="error">{r.last_error}</p>}
+          <div className="form-actions">
+            <button
+              disabled={creating || busy}
+              onClick={() => {
+                setEditing(r);
+                setCreating(true);
+              }}
+            >
+              Edit future occurrences
+            </button>
+            <button
+              disabled={creating || busy}
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    `${r.active ? "Pause" : "Resume"} ${r.title}? ${r.active ? "Unpublished occurrences will stop opening; published polls keep their closing jobs." : "Future signup jobs will resume. Expired windows require review."}`,
+                  )
+                )
+                  return;
+                setBusy(true);
+                setError("");
+                try {
+                  const updated = await api<ScheduleRecord>(
+                    `/schedules/${r.id}/active`,
+                    mutationOptions(csrf, {
+                      active: !r.active,
+                      revision: r.revision,
+                    }),
+                  );
+                  setRows((rs) =>
+                    rs.map((v) => (v.id === updated.id ? updated : v)),
+                  );
+                  onChanged();
+                } catch (failure) {
+                  if (!onAccessError(failure)) setError(errorMessage(failure));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {r.active ? "Pause schedule" : "Resume schedule"}
+            </button>
+          </div>
         </article>
       ))}
     </section>

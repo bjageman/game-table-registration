@@ -254,6 +254,7 @@ export default function EventForm({
             <input
               type="checkbox"
               checked={scheduled}
+              disabled={Boolean(draft && draft.status !== "draft")}
               onChange={(e) => setScheduled(e.target.checked)}
             />{" "}
             Schedule signup opening and closing

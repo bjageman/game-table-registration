@@ -14,7 +14,15 @@ from app.config import Settings
 from app.discord_api import DiscordAPI
 from app.models import Event, LoginState, Schedule, Session
 from app.publication import publish_event
-from app.scheduling import ScheduleInput, materialize, preview, schedule_data
+from app.scheduling import (
+    ScheduleActivation,
+    ScheduleEditInput,
+    ScheduleInput,
+    materialize,
+    preview,
+    schedule_data,
+    update_occurrences,
+)
 from app.schemas import EventInput
 
 
@@ -220,14 +228,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def edit_event(event_id: str, body: EventInput, request: Request) -> dict[str, Any]:
         authenticated(request, True)
         with DBSession(engine) as db:
+            current = db.get(Event, event_id)
+            if (
+                current
+                and current.status in ("scheduled", "paused")
+                and body.opens_at is None
+            ):
+                raise HTTPException(
+                    409, "Scheduled events must retain explicit signup times"
+                )
             changed = db.execute(
                 update(Event)
                 .where(
                     Event.id == event_id,
                     Event.guild_id == config.discord_guild_id,
-                    Event.status == "draft",
+                    Event.status.in_(["draft", "scheduled", "paused"]),
                 )
                 .values(
+                    overridden=Event.schedule_id.is_not(None),
                     timezone=body.timezone,
                     opens_at=body.opens_at.timestamp() if body.opens_at else None,
                     signup_closes_at=body.signup_closes_at.timestamp()
@@ -345,6 +363,183 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             materialize(db, schedule)
             db.commit()
             return schedule_data(schedule)
+
+    @app.post("/api/schedules/{schedule_id}/preview")
+    def edit_schedule_preview(
+        schedule_id: str, body: ScheduleEditInput, request: Request
+    ) -> list[dict[str, Any]]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            schedule = db.get(Schedule, schedule_id)
+            if not schedule or schedule.guild_id != config.discord_guild_id:
+                raise HTTPException(404, "Schedule not found")
+            if schedule.revision != body.revision:
+                raise HTTPException(409, "Schedule changed; refresh before editing")
+            rows = preview(body)
+            existing = {
+                e.occurrence_date: e
+                for e in db.scalars(
+                    select(Event).where(Event.schedule_id == schedule_id)
+                )
+            }
+            for row in rows:
+                event = existing.get(row["date"])
+                row["action"] = (
+                    "preserved"
+                    if event
+                    and (
+                        event.overridden
+                        or event.status not in ("scheduled", "paused", "cancelled")
+                    )
+                    else ("skip" if row["skipped"] else "update" if event else "create")
+                )
+            for day, event in existing.items():
+                if day not in {r["date"] for r in rows} and event.status in (
+                    "scheduled",
+                    "paused",
+                ):
+                    rows.append(
+                        {
+                            "date": day,
+                            "skipped": False,
+                            "action": "preserved" if event.overridden else "cancel",
+                        }
+                    )
+            return rows
+
+    @app.put("/api/schedules/{schedule_id}")
+    def edit_schedule(
+        schedule_id: str, body: ScheduleEditInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            schedule = db.scalar(
+                select(Schedule)
+                .where(
+                    Schedule.id == schedule_id,
+                    Schedule.guild_id == config.discord_guild_id,
+                )
+                .with_for_update()
+            )
+            if not schedule:
+                raise HTTPException(404, "Schedule not found")
+            if schedule.revision != body.revision:
+                raise HTTPException(409, "Schedule changed; refresh before editing")
+            protected = set(
+                db.scalars(
+                    select(Event.occurrence_date).where(
+                        Event.schedule_id == schedule_id,
+                        (
+                            Event.overridden.is_(True)
+                            | Event.status.not_in(["scheduled", "paused", "cancelled"])
+                        ),
+                    )
+                )
+            )
+            if any(
+                row.get("error") and not row["skipped"] and row["date"] not in protected
+                for row in preview(body)
+            ):
+                raise HTTPException(422, "Correct or skip invalid preview dates")
+            schedule.title = body.title.strip()
+            schedule.timezone = body.timezone
+            schedule.rule = body.model_dump(
+                mode="json", exclude={"title", "timezone", "tables", "revision"}
+            )
+            schedule.tables = [t.model_dump() for t in body.tables]
+            schedule.revision += 1
+            update_occurrences(db, schedule)
+            db.commit()
+            return schedule_data(schedule)
+
+    @app.post("/api/schedules/{schedule_id}/active")
+    def toggle_schedule(
+        schedule_id: str, body: ScheduleActivation, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            schedule = db.scalar(
+                select(Schedule)
+                .where(
+                    Schedule.id == schedule_id,
+                    Schedule.guild_id == config.discord_guild_id,
+                )
+                .with_for_update()
+            )
+            if not schedule:
+                raise HTTPException(404, "Schedule not found")
+            if schedule.revision != body.revision:
+                raise HTTPException(409, "Schedule changed; refresh before editing")
+            schedule.active = body.active
+            schedule.revision += 1
+            db.execute(
+                update(Event)
+                .where(
+                    Event.schedule_id == schedule_id,
+                    Event.status == ("paused" if schedule.active else "scheduled"),
+                )
+                .values(status="scheduled" if schedule.active else "paused")
+            )
+            if schedule.active:
+                materialize(db, schedule)
+            db.commit()
+            return schedule_data(schedule)
+
+    @app.post("/api/events/{event_id}/cancel")
+    def cancel_occurrence(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if not event or event.guild_id != config.discord_guild_id:
+                raise HTTPException(404, "Event not found")
+            status = event.status
+            if status not in ("draft", "scheduled", "paused", "open"):
+                raise HTTPException(
+                    409, "This event cannot be cancelled safely; check its status"
+                )
+            claimed = db.execute(
+                update(Event)
+                .where(Event.id == event_id, Event.status == status)
+                .values(
+                    status="cancelling",
+                    operation_started_at=time.time(),
+                    overridden=True,
+                )
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            db.commit()
+            if not claimed:
+                raise HTTPException(409, "Event changed; refresh before cancelling")
+            db.refresh(event)
+            try:
+                if (
+                    status == "open"
+                    and event.message_id
+                    and event.closes_at
+                    and event.closes_at > time.time()
+                ):
+                    app.state.discord.bot(
+                        "POST",
+                        f"/channels/{config.discord_channel_id}/polls/{event.message_id}/expire",
+                    )
+                event.status = "cancelled"
+                event.operation_started_at = None
+                db.commit()
+            except Exception:
+                db.rollback()
+                db.execute(
+                    update(Event)
+                    .where(Event.id == event_id)
+                    .values(
+                        status="needs_review",
+                        last_error="Cancellation uncertain; check Discord.",
+                    )
+                )
+                db.commit()
+                raise HTTPException(
+                    502, "Cancellation could not be confirmed; check Discord"
+                ) from None
+            return serialize(event)
 
     return app
 

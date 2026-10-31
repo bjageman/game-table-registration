@@ -80,6 +80,10 @@ export interface EventRecord {
   id: string;
   title: string;
   starts_at: number;
+  schedule_id?: string | null;
+  occurrence_date?: string | null;
+  overridden?: boolean;
+  last_error?: string | null;
   timezone?: string;
   opens_at?: number | null;
   signup_closes_at?: number | null;
@@ -120,6 +124,7 @@ export interface ScheduleRecord extends ScheduleDraft {
   last_error: string | null;
 }
 export interface OccurrencePreview {
+  action?: string;
   date: string;
   skipped: boolean;
   opens_at?: number;

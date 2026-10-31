@@ -139,7 +139,7 @@ def materialize(db: Session, schedule: Schedule, now: float | None = None) -> No
                     (row["signup_closes_at"] - row["opens_at"]) / 3600
                 ),
                 tables=[dict(t) for t in schedule.tables],
-                status="scheduled",
+                status="scheduled" if schedule.active else "paused",
                 created_by=schedule.created_by,
             )
         )
@@ -170,3 +170,54 @@ def replenish(engine: Engine, guild_id: str) -> None:
                 db.commit()
             except IntegrityError:
                 db.rollback()
+
+
+class ScheduleEditInput(ScheduleInput):
+    revision: int = Field(ge=1)
+
+
+def update_occurrences(db: Session, schedule: Schedule) -> None:
+    from sqlalchemy import update
+
+    body = ScheduleInput.model_validate(schedule_data(schedule))
+    rows = {r["date"]: r for r in preview(body)}
+    events = list(
+        db.scalars(
+            select(Event).where(
+                Event.schedule_id == schedule.id,
+                Event.status.in_(["scheduled", "paused", "cancelled"]),
+                Event.overridden.is_(False),
+            )
+        )
+    )
+    for event in events:
+        row = rows.get(event.occurrence_date or "")
+        values: dict[str, Any] = {"status": "cancelled"}
+        if row and not row["skipped"] and not row.get("error"):
+            values = {
+                "status": "scheduled" if schedule.active else "paused",
+                "title": schedule.title,
+                "timezone": schedule.timezone,
+                "opens_at": row["opens_at"],
+                "signup_closes_at": row["signup_closes_at"],
+                "starts_at": row["starts_at"],
+                "tables": [dict(t) for t in schedule.tables],
+                "duration_hours": math.ceil(
+                    (row["signup_closes_at"] - row["opens_at"]) / 3600
+                ),
+            }
+        db.execute(
+            update(Event)
+            .where(
+                Event.id == event.id,
+                Event.status.in_(["scheduled", "paused", "cancelled"]),
+                Event.overridden.is_(False),
+            )
+            .values(**values)
+        )
+    materialize(db, schedule)
+
+
+class ScheduleActivation(BaseModel):
+    active: bool
+    revision: int = Field(ge=1)

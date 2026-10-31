@@ -249,3 +249,94 @@ def test_explicit_signup_window(client):
     assert client.post("/api/events", headers=headers, json=body).status_code == 422
     body["timezone"] = "Not/AZone"
     assert client.post("/api/events", headers=headers, json=body).status_code == 422
+
+
+def schedule_body():
+    return {
+        "title": "Weekly games",
+        "timezone": "UTC",
+        "first_date": (datetime.now(UTC) + timedelta(days=14)).date().isoformat(),
+        "event_time": "19:00",
+        "opening_days_before": 7,
+        "opening_time": "12:00",
+        "closing_days_before": 1,
+        "closing_time": "12:00",
+        "tables": [{"name": "A", "capacity": 15}],
+    }
+
+
+def test_schedule_edits_preserve_published_and_overridden_occurrences(client):
+    from app.models import Event
+
+    headers = login(client)
+    body = schedule_body()
+    assert client.post("/api/schedules", json=body).status_code == 403
+    schedule = client.post("/api/schedules", headers=headers, json=body).json()
+    events = client.get("/api/events").json()
+    assert len(events) == 8
+    first, second, third = events[:3]
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, first["id"]).status = "open"
+        db.commit()
+    override = {
+        **event_body(),
+        "title": "Special week",
+        "opens_at": datetime.fromtimestamp(second["opens_at"], UTC).isoformat(),
+        "signup_closes_at": datetime.fromtimestamp(
+            second["signup_closes_at"], UTC
+        ).isoformat(),
+        "starts_at": datetime.fromtimestamp(second["starts_at"], UTC).isoformat(),
+    }
+    assert (
+        client.put(
+            f"/api/events/{second['id']}", headers=headers, json=override
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(f"/api/events/{third['id']}/cancel", headers=headers).status_code
+        == 200
+    )
+    changed = {
+        **body,
+        "revision": schedule["revision"],
+        "title": "New weekly games",
+        "tables": [{"name": "B", "capacity": 20}],
+    }
+    preview = client.post(
+        f"/api/schedules/{schedule['id']}/preview", headers=headers, json=changed
+    ).json()
+    assert sum(r["action"] == "preserved" for r in preview) == 3
+    saved = client.put(
+        f"/api/schedules/{schedule['id']}", headers=headers, json=changed
+    )
+    assert saved.status_code == 200
+    assert (
+        client.put(
+            f"/api/schedules/{schedule['id']}", headers=headers, json=changed
+        ).status_code
+        == 409
+    )
+    updated = client.get("/api/events").json()
+    by_id = {e["id"]: e for e in updated}
+    assert by_id[first["id"]]["tables"] == first["tables"]
+    assert by_id[second["id"]]["title"] == "Special week"
+    assert by_id[third["id"]]["status"] == "cancelled"
+    assert updated[-1]["tables"] == [{"name": "B", "capacity": 20}]
+    revision = saved.json()["revision"]
+    path = f"/api/schedules/{schedule['id']}/active"
+    paused = client.post(
+        path, headers=headers, json={"active": False, "revision": revision}
+    )
+    assert paused.status_code == 200
+    assert (
+        client.post(
+            path, headers=headers, json={"active": False, "revision": revision}
+        ).status_code
+        == 409
+    )
+    assert {e["status"] for e in client.get("/api/events").json()} == {
+        "open",
+        "paused",
+        "cancelled",
+    }
