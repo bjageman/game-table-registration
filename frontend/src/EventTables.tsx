@@ -6,8 +6,10 @@ interface TableSignups {
   players: { id: string; name: string }[];
 }
 
-export default function EventTables({ event, onAccessError }: {
+export default function EventTables({ event, onAccessError, refreshToken = 0, onRefreshingChange }: {
   event: EventRecord;
+  refreshToken?: number;
+  onRefreshingChange?: (refreshing: boolean) => void;
   onAccessError: (error: unknown) => boolean;
 }) {
   const [rows, setRows] = useState<TableSignups[]>();
@@ -18,18 +20,22 @@ export default function EventTables({ event, onAccessError }: {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
+      onRefreshingChange?.(true);
       try {
         const result = await api<TableSignups[]>(`/events/${encodeURIComponent(event.id)}/signups`, { signal: controller.signal });
         if (!controller.signal.aborted) { setRows(result); setError(""); }
       } catch (failure) {
         if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure));
       } finally {
-        if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), 15000);
+        if (!controller.signal.aborted) {
+          onRefreshingChange?.(false);
+          timer = setTimeout(() => void refresh(), 15000);
+        }
       }
     }
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [event.id, event.discord_url, attempt, onAccessError]);
+  }, [event.id, event.discord_url, attempt, refreshToken, onAccessError, onRefreshingChange]);
   return <>
     {error && <p role="alert" className="error">
       Could not refresh signups. {rows ? "Showing the last loaded list. " : ""}{error}{" "}

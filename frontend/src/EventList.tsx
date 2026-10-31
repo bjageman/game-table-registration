@@ -1,6 +1,6 @@
 import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
-import { Eye, X } from "lucide-react";
+import { Eye, RefreshCw, X } from "lucide-react";
 import EventTables from "./EventTables";
 import DraftActions from "./DraftActions";
 import type { EventRecord } from "./api";
@@ -72,6 +72,8 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const modal = dialog.current;
     const trigger = document.activeElement;
@@ -90,6 +92,13 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
           {event.status.replaceAll("_", " ")}
         </span>
         <div className="event-header-actions">
+          <button type="button" className="event-icon-action"
+            aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
+            title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
+            disabled={refreshing || !event.discord_url}
+            onClick={() => setRefreshToken((value) => value + 1)}>
+            <RefreshCw size={18} aria-hidden="true" />
+          </button>
           {event.discord_url && (
             <a className="button event-icon-action" href={event.discord_url} target="_blank" rel="noreferrer"
               aria-label={`View Discord poll for ${event.title} (opens in a new tab)`} title="View Discord Poll">
@@ -141,7 +150,7 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
                 </div>
               )}
             </dl>
-            <EventTables key={`${event.id}:${event.discord_url}`} event={event} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}`} event={event} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (
