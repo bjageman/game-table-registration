@@ -441,3 +441,5 @@ dd {
 .settings-panel .form-grid { margin-bottom: 16px; }
 
 .announcement-status { margin-top: 20px; }
+
+.archive-filter { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }

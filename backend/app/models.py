@@ -38,6 +38,7 @@ class Event(Base):
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     closes_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     test_signups: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    archived_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     published_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     close_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     close_started_at: Mapped[float | None] = mapped_column(Float, nullable=True)

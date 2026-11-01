@@ -255,6 +255,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": event.status,
             "closes_at": event.closes_at,
             "published_at": event.published_at,
+            "archived_at": event.archived_at,
             "close_error": event.close_error,
             "is_test": bool(event.test_signups),
             "test_generation": event.test_signups.get("generation")
@@ -811,6 +812,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             event = db.get(Event, event_id)
             assert event is not None
+            return serialize(event)
+
+    @app.post("/api/events/{event_id}/archive")
+    def archive_event(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned" or db.get(LotteryRun, event_id) is None:
+                raise HTTPException(409, "Only assigned events can be archived")
+            db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id,
+                    *event_scope(request),
+                    Event.status == "assigned",
+                    Event.archived_at.is_(None),
+                )
+                .values(archived_at=time.time())
+            )
+            db.commit()
+            db.refresh(event)
             return serialize(event)
 
     @app.delete("/api/events/{event_id}", status_code=204)

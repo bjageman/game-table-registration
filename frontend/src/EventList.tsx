@@ -1,6 +1,7 @@
 import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
 import { Eye, RefreshCw, X } from "lucide-react";
+import ArchiveEvent from "./ArchiveEvent";
 import EventTables from "./EventTables";
 import DiscordLink from "./DiscordLink";
 import PopulateTestUsers from "./PopulateTestUsers";
@@ -45,7 +46,7 @@ export default function EventList({
               <span className="event-list-top">
                 <span className="event-list-title">{event.title}</span>
                 <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-                  {event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
+                  {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
                 </span>
                 <span className="event-table-count">{event.tables.length} {event.tables.length === 1 ? "table" : "tables"}</span>
               </span>
@@ -97,7 +98,7 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
       <div className="event-modal-header">
         <h2 id={`event-${event.id}`}>{event.title}</h2>
         <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-          {event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
+          {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
         </span>
         <div className="event-header-actions">
           {event.status !== "draft" && (
@@ -114,6 +115,7 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
               <Eye size={18} aria-hidden="true" />
             </DiscordLink>
           )}
+          {event.status === "assigned" && !event.archived_at && <ArchiveEvent event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
           {event.status === "draft" && <PublishEvent event={event} {...actions} />}
           {(event.status === "draft" || event.status === "open") && (
             <>
