@@ -94,6 +94,8 @@ class DiscordAPI:
         headers = {"Authorization": f"Bearer {token['access_token']}"}
         user = self.request("GET", "/users/@me", headers=headers)
         user["guilds"] = self.request_items("/users/@me/guilds", headers=headers)
+        if isinstance(token.get("guild"), dict):
+            user["authorized_guild"] = token["guild"]
         return user
 
     def authorize(self, user_id: str) -> None:

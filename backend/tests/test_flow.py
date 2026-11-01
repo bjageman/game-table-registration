@@ -514,8 +514,7 @@ def test_login_requests_guild_scope_and_retains_only_manageable_servers(client):
     login(client)
     data = client.get("/api/settings").json()
     assert {g["id"] for g in data["guilds"]} == {"100", "200", "guild"}
-    params = parse_qs(urlparse(data["install_url"]).query)
-    assert params["scope"] == ["bot"]
+    assert data["connect_url"] == "/api/auth/connect"
     assert "bot_token" not in data
 
 
@@ -1438,3 +1437,133 @@ def test_disconnect_blocks_legacy_fallback_preserves_data_and_allows_reconnect(
     with DBSession(client.app.state.engine) as db:
         assert db.get(UserSettings, "owner").disconnected is False
     client.app.state.discord.delete_poll.assert_not_called()
+
+
+def test_connect_callback_saves_authorized_server_before_channel_selection(client):
+    headers = login(client)
+    client.delete("/api/settings", headers=headers)
+    response = client.get("/api/auth/connect", follow_redirects=False)
+    params = parse_qs(urlparse(response.headers["location"]).query)
+    assert set(params["scope"][0].split()) == {"identify", "guilds", "bot"}
+    assert params["response_type"] == ["code"]
+    assert params["redirect_uri"] == ["http://localhost:5180/api/auth/callback"]
+    assert params["integration_type"] == ["0"]
+    assert "permissions" in params
+    state = params["state"][0]
+    discord = client.app.state.discord
+    discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+        "authorized_guild": {"id": "100"},
+        "guilds": [{"id": "100", "name": "Chosen", "owner": True}],
+    }
+    discord.manager_context.return_value = (
+        {"id": "100", "name": "Chosen Server"},
+        {},
+        [],
+    )
+    callback = client.get(
+        f"/api/auth/callback?state={state}&code=connected&guild_id=100",
+        follow_redirects=False,
+    )
+    assert callback.status_code == 307
+    assert callback.headers["location"] == "http://localhost:5180/#/settings"
+    selection = client.get("/api/settings").json()["selection"]
+    assert selection == {
+        "guild_id": "100",
+        "guild_name": "Chosen Server",
+        "channel_id": "",
+        "channel_name": "",
+    }
+    assert client.get("/api/settings").json()["disconnected"] is False
+    assert client.get("/api/me").json()["needs_setup"] is True
+    assert client.get("/api/events").status_code == 409
+    assert client.get("/api/settings/assignment").status_code == 200
+    # Reload/sign-in retains the authorized server even before choosing a channel.
+    headers = login(client)
+    assert client.get("/api/settings").json()["selection"] == selection
+    discord.destination_channels.return_value = (
+        "Chosen Server",
+        [{"id": "101", "name": "games"}],
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/me").json()["needs_setup"] is False
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "101"
+    discord.manager_context.assert_any_call("owner", "100")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["wrong-account", "wrong-server", "no-permission", "missing-server", "cancelled"],
+)
+def test_failed_connection_does_not_save_or_replace_connection(client, failure):
+    login(client)
+    response = client.get("/api/auth/connect", follow_redirects=False)
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    previous = client.get("/api/settings").json()["selection"]
+    discord = client.app.state.discord
+    discord.identity.return_value = {
+        "id": "other" if failure == "wrong-account" else "owner",
+        "username": "organizer",
+        "authorized_guild": {} if failure == "missing-server" else {"id": "100"},
+    }
+    discord.manager_context.return_value = ({"id": "100", "name": "Server"}, {}, [])
+    if failure == "no-permission":
+        discord.manager_context.side_effect = HTTPException(403, "Not a manager")
+    code = "" if failure == "cancelled" else "connected"
+    hint = "200" if failure == "wrong-server" else ""
+    callback = client.get(
+        f"/api/auth/callback?state={state}&code={code}&guild_id={hint}",
+        follow_redirects=False,
+    )
+    assert callback.status_code in (400, 403)
+    assert client.get("/api/settings").json()["selection"] == previous
+    client.cookies.set("oauth_state", state, path="/api")
+    assert client.get(f"/api/auth/callback?state={state}&code=retry").status_code == 400
+
+
+def test_connect_state_is_bound_to_initiating_session_and_requires_sign_in(client):
+    assert client.get("/api/auth/connect", follow_redirects=False).status_code == 401
+    login(client)
+    response = client.get("/api/auth/connect", follow_redirects=False)
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    from app.models import Session as StoredSession
+
+    with DBSession(client.app.state.engine) as db:
+        session = db.get(StoredSession, digest(client.cookies.get("session")))
+        session.user_id = "another-user"
+        db.commit()
+    client.app.state.discord.identity.reset_mock()
+    callback = client.get(
+        f"/api/auth/callback?state={state}&code=approved&guild_id=100",
+        follow_redirects=False,
+    )
+    assert callback.status_code == 403
+    client.app.state.discord.identity.assert_not_called()
+
+
+def test_connect_verifies_guild_hint_when_token_omits_guild(client):
+    login(client)
+    response = client.get("/api/auth/connect", follow_redirects=False)
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    discord = client.app.state.discord
+    discord.identity.return_value = {"id": "owner", "username": "Organizer"}
+    discord.manager_context.return_value = (
+        {"id": "200", "name": "Verified Server"},
+        {},
+        [],
+    )
+    callback = client.get(
+        f"/api/auth/callback?state={state}&code=approved&guild_id=200",
+        follow_redirects=False,
+    )
+    assert callback.status_code == 307
+    assert client.get("/api/settings").json()["selection"]["guild_id"] == "200"
+    discord.manager_context.assert_called_once_with("owner", "200")

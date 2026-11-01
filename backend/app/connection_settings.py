@@ -1,6 +1,5 @@
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -59,15 +58,7 @@ def register_settings(
             "selection": selection,
             "disconnected": bool(saved and saved.disconnected),
             "guilds": guilds,
-            "install_url": "https://discord.com/oauth2/authorize?"
-            + urlencode(
-                {
-                    "client_id": config.discord_client_id,
-                    "scope": "bot",
-                    "integration_type": "0",
-                    "permissions": str(POLL_PERMISSIONS),
-                }
-            ),
+            "connect_url": "/api/auth/connect",
         }
 
     @app.get("/api/settings/channels")
