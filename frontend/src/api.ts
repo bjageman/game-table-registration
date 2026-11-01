@@ -74,6 +74,7 @@ export function errorMessage(error: unknown): string {
 export interface ModeratorSession {
   needs_setup?: boolean;
   destination?: string;
+  can_populate_test_users?: boolean;
   username: string;
   csrf: string;
 }
@@ -88,6 +89,9 @@ export interface EventRecord {
   closes_at: number | null;
   published_at?: number | null;
   close_error?: string | null;
+  is_test?: boolean;
+  test_generation?: string | null;
+  test_user_count?: number;
   discord_url: string | null;
 }
 

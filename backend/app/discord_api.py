@@ -1,9 +1,18 @@
+import math
 from typing import Any
 
 import httpx
 from fastapi import HTTPException
 
 from app.config import Settings
+
+
+class DiscordRequestError(HTTPException):
+    def __init__(self, discord_status: int | None, retry_after: float = 0) -> None:
+        super().__init__(502, "Discord request failed. Please try again.")
+        self.retry_after = retry_after
+        self.discord_status = discord_status
+        self.ambiguous = discord_status is None or discord_status >= 500
 
 
 class DiscordAPI:
@@ -23,10 +32,18 @@ class DiscordAPI:
             if response.status_code == 204:
                 return {}
             return response.json()
+        except httpx.HTTPStatusError as error:
+            retry_after = 0.0
+            if error.response.status_code == 429:
+                try:
+                    value = float(error.response.json().get("retry_after", 0))
+                    if math.isfinite(value) and value > 0:
+                        retry_after = value
+                except (ValueError, TypeError, AttributeError):
+                    pass
+            raise DiscordRequestError(error.response.status_code, retry_after) from None
         except (httpx.HTTPError, ValueError):
-            raise HTTPException(
-                502, "Discord request failed. Please try again."
-            ) from None
+            raise DiscordRequestError(None) from None
 
     def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         value = self.request_json(method, path, **kwargs)
@@ -232,6 +249,52 @@ class DiscordAPI:
             raise HTTPException(
                 403, "You no longer have access to the configured channel."
             )
+
+    def send_announcement(
+        self, channel_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        message = self.bot(
+            "POST", f"/channels/{channel_id}/messages", json=payload, timeout=8
+        )
+        if not isinstance(message.get("id"), str) or not message["id"]:
+            raise DiscordRequestError(None)
+        return message
+
+    def find_announcement(
+        self, channel_id: str, payload: dict[str, Any], attempted_at: float
+    ) -> str | None:
+        from datetime import datetime
+
+        author = str(self.bot("GET", "/users/@me")["id"])
+        before = ""
+        for _ in range(20):
+            path = f"/channels/{channel_id}/messages?limit=100" + (
+                f"&before={before}" if before else ""
+            )
+            messages = self.bot_items(path)
+            if not messages:
+                return None
+            for message in messages:
+                if str(message.get("author", {}).get("id")) == author and (
+                    str(message.get("nonce")) == str(payload["nonce"])
+                    or message.get("content") == payload["content"]
+                ):
+                    return str(message["id"])
+            try:
+                oldest = min(
+                    datetime.fromisoformat(m["timestamp"]).timestamp() for m in messages
+                )
+                cursor = str(min(int(m["id"]) for m in messages))
+            except (KeyError, TypeError, ValueError):
+                raise HTTPException(
+                    502, "Could not verify Discord delivery history"
+                ) from None
+            if oldest < attempted_at - 60 or len(messages) < 100:
+                return None
+            if cursor == before:
+                break
+            before = cursor
+        raise HTTPException(502, "Could not finish checking Discord delivery history")
 
 
 def guild_permissions(

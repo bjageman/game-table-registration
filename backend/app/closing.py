@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.announcements import enqueue
 from app.discord_api import DiscordAPI
 from app.lottery import VERSION, assign
 from app.models import Event, LotteryRun, PlayerProfile
@@ -101,7 +102,7 @@ def reconcile(
 
 
 def close_and_assign(
-    engine: Engine, discord: DiscordAPI, event_id: str, moderator: str
+    engine: Engine, discord: DiscordAPI, event_id: str, moderator: str, channel_id: str
 ) -> bool:
     token = secrets.token_hex(16)
     now = time.time()
@@ -156,12 +157,25 @@ def close_and_assign(
         message_id = event.message_id
         tables = [dict(t) for t in event.tables]
         answers = list(event.answers or [])
+        test_population = event.test_signups
         assert message_id is not None
     try:
         poll, expiry = poll_data(discord.poll_message(message_id))
         if expiry > time.time() and not (poll.get("results") or {}).get("is_finalized"):
             discord.end_poll(message_id)
         snapshot, ended_at = reconcile(discord, message_id, tables, answers, weights)
+        if test_population:
+            snapshot["is_test"] = True
+            snapshot["players"].extend(
+                {
+                    "id": player["id"],
+                    "name": player["name"],
+                    "choices": player["choices"],
+                    "weight": weights.get(player["id"], 1.0),
+                    "is_test": True,
+                }
+                for player in test_population["players"]
+            )
         result = assign(snapshot, seed)
         with Session(engine) as db:
             changed = db.execute(
@@ -194,6 +208,7 @@ def close_and_assign(
                     created_at=time.time(),
                 )
             )
+            enqueue(db, event, event.channel_id or channel_id, result, snapshot)
             db.commit()
         return True
     except Exception as failure:

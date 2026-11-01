@@ -19,6 +19,7 @@ from app.models import Base, Session
 def client(tmp_path):
     settings = Settings(
         _env_file=None,
+        announcement_worker_enabled=False,
         database_url=os.getenv("TEST_DATABASE_URL", f"sqlite:///{tmp_path}/test.db"),
         discord_client_id="client",
         discord_client_secret="secret",
@@ -31,6 +32,7 @@ def client(tmp_path):
     Base.metadata.drop_all(app.state.engine)
     Base.metadata.create_all(app.state.engine)
     app.state.discord = Mock()
+    app.state.discord.send_announcement.return_value = {"id": "announcement"}
     app.state.discord.identity.return_value = {"id": "owner", "username": "organizer"}
     app.state.discord.publish.return_value = {
         "id": "message",
@@ -779,3 +781,234 @@ def test_close_and_results_are_scoped_to_destination(client):
     assert client.post(path + "/close", headers=headers).status_code == 404
     assert client.get(path + "/assignments").status_code == 404
     client.app.state.discord.end_poll.assert_not_called()
+
+
+def test_close_immediately_announces_assignments_without_duplicate_delivery(client):
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    delivery = client.get(path + "/announcement").json()
+    assert delivery["status"] == "sent"
+    assert delivery["url"].endswith("/channel/announcement")
+    channel, payload = discord.send_announcement.call_args.args
+    assert channel == "channel"
+    assert "Table Assignments" in payload["content"]
+    assert payload["enforce_nonce"] is True
+    assert payload["allowed_mentions"]["parse"] == []
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    discord.send_announcement.assert_called_once()
+    with DBSession(client.app.state.engine) as db:
+        assert db.query(Announcement).filter_by(event_id=event["id"]).count() == 1
+
+
+def test_announcement_failure_retries_without_redrawing(client):
+    from app.announcements import dispatch_due
+    from app.discord_api import DiscordRequestError
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    discord.send_announcement.side_effect = DiscordRequestError(429)
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    original = client.get(path + "/assignments").json()
+    assert client.get(path + "/announcement").json()["status"] == "pending"
+    discord.send_announcement.side_effect = None
+    with DBSession(client.app.state.engine) as db:
+        db.query(Announcement).filter_by(event_id=event["id"]).update(
+            {"next_attempt": 0}
+        )
+        db.commit()
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    assert client.get(path + "/announcement").json()["status"] == "sent"
+    assert client.get(path + "/assignments").json() == original
+    assert discord.send_announcement.call_count == 2
+    discord.end_poll.assert_not_called()
+
+
+def test_ambiguous_announcement_is_reconciled_without_blind_repost(client):
+    from app.announcements import dispatch_due
+    from app.discord_api import DiscordRequestError
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    discord.send_announcement.side_effect = DiscordRequestError(None)
+    client.post(path + "/close", headers=headers)
+    discord.find_announcement.return_value = "accepted-but-response-lost"
+    with DBSession(client.app.state.engine) as db:
+        db.query(Announcement).filter_by(event_id=event["id"]).update(
+            {"next_attempt": 0}
+        )
+        db.commit()
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    assert client.get(path + "/announcement").json()["status"] == "sent"
+    discord.send_announcement.assert_called_once()
+    discord.find_announcement.assert_called_once()
+
+
+def test_unconfirmed_delivery_requires_explicit_repost_confirmation(client):
+    from app.announcements import dispatch_due
+    from app.discord_api import DiscordRequestError
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    discord.send_announcement.side_effect = DiscordRequestError(None)
+    client.post(path + "/close", headers=headers)
+    original = client.get(path + "/assignments").json()
+    discord.find_announcement.return_value = None
+    with DBSession(client.app.state.engine) as db:
+        db.query(Announcement).filter_by(event_id=event["id"]).update(
+            {"next_attempt": 0}
+        )
+        db.commit()
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    assert client.get(path + "/announcement").json()["status"] == "needs_review"
+    assert (
+        client.post(path + "/announcement/retry", headers=headers, json={}).status_code
+        == 409
+    )
+    discord.send_announcement.side_effect = None
+    assert (
+        client.post(
+            path + "/announcement/retry", json={"confirm_repost": True}
+        ).status_code
+        == 403
+    )
+    retried = client.post(
+        path + "/announcement/retry", headers=headers, json={"confirm_repost": True}
+    )
+    assert retried.json()["status"] == "sent"
+    assert client.get(path + "/assignments").json() == original
+
+
+def test_persisted_test_users_run_through_publish_close_and_announce(client):
+    from app.models import Announcement, Event, LotteryRun, PlayerProfile
+
+    headers = login(client)
+    assert client.get("/api/me").json()["can_populate_test_users"] is True
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    assert client.post(path + "/test-users", json={"players": 30}).status_code == 403
+    populated = client.post(path + "/test-users", headers=headers, json={"players": 30})
+    assert populated.status_code == 200
+    assert populated.json()["status"] == "draft"
+    assert populated.json()["is_test"] is True
+    signups = client.get(path + "/signups").json()
+    assert len(signups[0]["players"]) == 30
+    pid = signups[0]["players"][0]["id"]
+    profile = client.get(f"/api/players/{pid}")
+    assert profile.status_code == 200
+    assert profile.json()["discord_name"] == "Test Player 001"
+    assert (
+        client.put(
+            f"/api/players/{pid}",
+            headers=headers,
+            json={"real_name": "Editable test name"},
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]).close_seed is None
+        assert db.get(LotteryRun, event["id"]) is None
+        assert db.query(Announcement).count() == 0
+        weight = db.get(PlayerProfile, ("guild", pid)).weighting
+    discord = client.app.state.discord
+    discord.send_announcement.assert_not_called()
+    assert client.post(path + "/publish", headers=headers).status_code == 200
+    assert "[TEST]" in discord.publish.call_args.args[0]["content"]
+    discord.table_signups.return_value = [
+        {"name": "Clocktower", "players": [{"id": "999", "name": "Real Signup"}]}
+    ]
+    assert len(client.get(path + "/signups").json()[0]["players"]) == 31
+    final_poll = {
+        "poll": {
+            "expiry": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+            "answers": [
+                {"answer_id": 9, "poll_media": {"text": "Clocktower · 15 seats"}}
+            ],
+            "results": {"is_finalized": True, "answer_counts": [{"id": 9, "count": 1}]},
+        }
+    }
+    open_poll = {
+        "poll": {
+            **final_poll["poll"],
+            "expiry": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            "results": {"is_finalized": False},
+        }
+    }
+    discord.poll_message.side_effect = [open_poll, final_poll]
+    discord.voter_users.return_value = [{"id": "999", "username": "Real Signup"}]
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    discord.end_poll.assert_called_once_with("message")
+    run = client.get(path + "/assignments").json()
+    assert len(run["snapshot"]["players"]) == 31
+    assert run["snapshot"]["is_test"] is True
+    assert (
+        next(p for p in run["snapshot"]["players"] if p["id"] == pid)["weight"]
+        == weight
+    )
+    assert len(run["result"]["assignments"]) == 15
+    assert len(run["result"]["waitlist"]) == 16
+    assert (
+        client.post(
+            path + "/test-users", headers=headers, json={"players": 2}
+        ).status_code
+        == 409
+    )
+    for call in discord.send_announcement.call_args_list:
+        payload = call.args[1]
+        assert "[TEST]" in payload["content"]
+        assert "<@test-" not in payload["content"]
+        assert payload["allowed_mentions"]["users"] == []
+
+
+def test_test_population_requires_server_allowlist_and_can_be_cleared(client):
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}/test-users"
+    assert client.post(path, headers=headers, json={"players": 1001}).status_code == 422
+    client.post(path, headers=headers, json={"players": 5})
+    assert (
+        len(client.get(f"/api/events/{event['id']}/signups").json()[0]["players"]) == 5
+    )
+    assert (
+        client.post(path, headers=headers, json={"players": 0}).json()["is_test"]
+        is False
+    )
+    assert client.get(f"/api/events/{event['id']}/signups").json()[0]["players"] == []
+    client.app.state.discord.identity.return_value = {
+        "id": "other",
+        "username": "Other",
+    }
+    headers = login(client)
+    assert client.get("/api/me").json()["can_populate_test_users"] is False
+    assert client.post(path, headers=headers, json={"players": 5}).status_code == 403
+
+
+def test_test_population_and_announcements_are_destination_scoped(client):
+    from app.models import Event
+
+    headers, event, path, _ = closing_event(client)
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).guild_id = "other"
+        db.commit()
+    assert (
+        client.post(
+            path + "/test-users", headers=headers, json={"players": 30}
+        ).status_code
+        == 404
+    )
+    assert client.get(path + "/announcement").status_code == 404
+    assert (
+        client.post(
+            path + "/announcement/retry", headers=headers, json={"confirm_repost": True}
+        ).status_code
+        == 404
+    )

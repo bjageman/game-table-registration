@@ -11,7 +11,7 @@ import {
 
 export interface PublicationActions {
   csrf: string;
-  onUpdated: (event: EventRecord) => void;
+  onUpdated: (event: EventRecord, message?: string) => void;
   onUncertain: (event: EventRecord, message: string) => void;
   onAccessError: (error: unknown) => boolean;
 }

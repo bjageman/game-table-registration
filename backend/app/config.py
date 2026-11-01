@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    test_signup_user_ids: str = ""
+    announcement_worker_enabled: bool = True
     database_url: str = "sqlite:///./local.db"
     public_url: str = "http://localhost:5180"
     discord_client_id: str = ""
