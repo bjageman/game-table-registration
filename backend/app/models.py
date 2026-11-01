@@ -12,6 +12,8 @@ class LoginState(Base):
     __tablename__ = "login_states"
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     expires: Mapped[float] = mapped_column(Float)
+    purpose: Mapped[str] = mapped_column(String(16), default="login")
+    user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 class Session(Base):

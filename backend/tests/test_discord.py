@@ -253,3 +253,19 @@ def test_reconcile_announcement_requires_our_bot_and_matches_saved_payload():
         api.find_announcement("channel", {"content": "saved", "nonce": "nonce"}, 0)
         == "2"
     )
+
+
+def test_identity_retains_authorized_guild_from_code_exchange():
+    api = DiscordAPI(Settings(_env_file=None))
+    api.request = Mock(
+        side_effect=[
+            {"access_token": "private", "guild": {"id": "100"}},
+            {"id": "123", "username": "Organizer"},
+        ]
+    )
+    api.request_items = Mock(
+        return_value=[{"id": "100", "name": "Server", "owner": True}]
+    )
+    user = api.identity("authorization-code")
+    assert user["authorized_guild"] == {"id": "100"}
+    assert "access_token" not in user

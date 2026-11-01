@@ -30,7 +30,7 @@ from app.announcements import (
 )
 from app.closing import close_and_assign
 from app.config import Settings
-from app.connection_settings import register_settings
+from app.connection_settings import POLL_PERMISSIONS, register_settings
 from app.discord_api import DiscordAPI
 from app.models import (
     Announcement,
@@ -212,7 +212,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return False
 
     def authenticated(
-        request: Request, mutation: bool = False, require_destination: bool = True
+        request: Request,
+        mutation: bool = False,
+        require_destination: bool = True,
+        require_channel: bool = True,
     ) -> Session:
         with DBSession(engine) as db:
             session = db.get(Session, digest(request.cookies.get("session", "")))
@@ -242,12 +245,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if saved
                 else config
             )
-            if not target.discord_guild_id or not target.discord_channel_id:
+            if not target.discord_guild_id or (
+                require_channel and not target.discord_channel_id
+            ):
                 raise HTTPException(
                     409, "Choose a server and channel in Settings first."
                 )
             discord = client_for(target)
-            if saved:
+            if saved and not require_channel:
+                discord.manager_context(session.user_id, target.discord_guild_id)
+            elif saved:
                 discord.authorize_destination(session.user_id)
             else:
                 discord.authorize(session.user_id)
@@ -300,8 +307,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def setup() -> dict[str, bool]:
         return {"configured": config.configured}
 
-    @app.get("/api/auth/login")
-    def login(return_to: str = "") -> Response:
+    def begin_login(return_to: str = "", user_id: str | None = None) -> Response:
         if not config.configured:
             raise HTTPException(
                 503, "Complete Discord configuration before signing in."
@@ -310,19 +316,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with DBSession(engine) as db:
             db.execute(delete(LoginState).where(LoginState.expires < time.time()))
             db.execute(delete(Session).where(Session.expires < time.time()))
-            db.add(LoginState(token_hash=digest(token), expires=time.time() + 600))
-            db.commit()
-        response = RedirectResponse(
-            "https://discord.com/oauth2/authorize?"
-            + urlencode(
-                {
-                    "client_id": config.discord_client_id,
-                    "response_type": "code",
-                    "scope": "identify guilds",
-                    "redirect_uri": config.callback_url,
-                    "state": token,
-                }
+            db.add(
+                LoginState(
+                    token_hash=digest(token),
+                    expires=time.time() + 600,
+                    purpose="connect" if user_id else "login",
+                    user_id=user_id,
+                )
             )
+            db.commit()
+        params = {
+            "client_id": config.discord_client_id,
+            "response_type": "code",
+            "scope": "identify guilds bot" if user_id else "identify guilds",
+            "redirect_uri": config.callback_url,
+            "state": token,
+        }
+        if user_id:
+            params.update(
+                permissions=str(POLL_PERMISSIONS),
+                integration_type="0",
+                prompt="consent",
+            )
+        response = RedirectResponse(
+            "https://discord.com/oauth2/authorize?" + urlencode(params)
         )
         cookie(response, "oauth_state", token, 600)
         cookie(
@@ -330,8 +347,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return response
 
+    @app.get("/api/auth/login")
+    def login(return_to: str = "") -> Response:
+        return begin_login(return_to)
+
+    @app.get("/api/auth/connect")
+    def connect(request: Request) -> Response:
+        session = authenticated(request, require_destination=False)
+        return begin_login("settings", session.user_id)
+
     @app.get("/api/auth/callback")
-    def callback(request: Request, code: str = "", state: str = "") -> Response:
+    def callback(
+        request: Request, code: str = "", state: str = "", guild_id: str = ""
+    ) -> Response:
         if not state or not secrets.compare_digest(
             state, request.cookies.get("oauth_state", "")
         ):
@@ -343,12 +371,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     LoginState.token_hash == digest(state),
                     LoginState.expires > time.time(),
                 )
-                .returning(LoginState.token_hash)
-            ).scalar_one_or_none()
+                .returning(LoginState.purpose, LoginState.user_id)
+            ).first()
             db.commit()
             if not consumed or not code:
                 raise HTTPException(400, "Login expired or cancelled. Sign in again.")
+            if consumed.purpose == "connect":
+                current = authenticated(request, require_destination=False)
+                if current.user_id != consumed.user_id:
+                    raise HTTPException(
+                        403,
+                        "Connection was started by another account. "
+                        "Start Connect again.",
+                    )
             user = app.state.discord.identity(code)
+            if consumed.purpose == "connect":
+                if user["id"] != consumed.user_id:
+                    raise HTTPException(
+                        403, "Authorize with the Discord account you signed in with."
+                    )
+                authorized = user.get("authorized_guild") or {}
+                chosen_id = str(authorized.get("id") or guild_id)
+                if not re.fullmatch(r"[0-9]{1,32}", chosen_id):
+                    raise HTTPException(
+                        400,
+                        "Discord did not return the authorized server. "
+                        "Start Connect again.",
+                    )
+                if authorized.get("id") and guild_id and chosen_id != guild_id:
+                    raise HTTPException(
+                        400, "Discord server did not match the authorization."
+                    )
+                # guild_id is only a hint; verify manager and bot access.
+                guild, _, _ = app.state.discord.manager_context(user["id"], chosen_id)
+                if str(guild.get("id")) != chosen_id:
+                    raise HTTPException(502, "Could not verify the authorized server.")
+                previous = db.get(UserSettings, user["id"])
+                keep_channel = (
+                    previous is not None
+                    and not previous.disconnected
+                    and previous.guild_id == chosen_id
+                )
+                db.merge(
+                    UserSettings(
+                        user_id=user["id"],
+                        disconnected=False,
+                        guild_id=chosen_id,
+                        guild_name=str(guild["name"]),
+                        channel_id=previous.channel_id
+                        if keep_channel and previous
+                        else "",
+                        channel_name=previous.channel_name
+                        if keep_channel and previous
+                        else "",
+                    )
+                )
             token = secrets.token_urlsafe(32)
             db.execute(
                 delete(Session).where(
@@ -372,7 +449,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
         response = RedirectResponse(
             config.public_url + "/#/settings"
-            if request.cookies.get("oauth_return") == "settings"
+            if consumed.purpose == "connect"
+            or request.cookies.get("oauth_return") == "settings"
             else config.public_url
         )
         response.delete_cookie("oauth_state", path="/api")
@@ -395,7 +473,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else "legacy"
             )
         needs_setup = (
-            saved.disconnected if saved else not legacy_access(session.user_id)
+            (saved.disconnected or not saved.channel_id)
+            if saved
+            else not legacy_access(session.user_id)
         )
         return {
             "username": session.username,
@@ -419,7 +499,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/settings/assignment")
     def assignment_settings(request: Request) -> dict[str, Any]:
-        authenticated(request)
+        authenticated(request, require_channel=False)
         guild_id = destination(request).discord_guild_id
         with DBSession(engine) as db:
             saved = db.get(GuildSettings, guild_id)
@@ -433,7 +513,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def save_assignment_settings(
         body: AssignmentSettingsInput, request: Request
     ) -> dict[str, Any]:
-        authenticated(request, True)
+        authenticated(request, True, require_channel=False)
         with DBSession(engine) as db:
             db.merge(
                 GuildSettings(
