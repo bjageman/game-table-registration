@@ -8,10 +8,11 @@ import { isBackdropClick } from "./dialogBackdrop";
 
 interface Profile { discord_id: string; discord_name: string; real_name: string; weighting: number; is_test?: boolean; guaranteed_seat?: boolean; }
 
-export default function PlayerProfile({ player, csrf, onClose, onAccessError }: {
+export default function PlayerProfile({ player, csrf, onClose, onAccessError, onSaved }: {
   player: { id: string; name: string };
   csrf: string;
   onClose: () => void;
+  onSaved?: () => void;
   onAccessError: (error: unknown) => boolean;
 }) {
   const heading = useId();
@@ -54,6 +55,7 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError }: 
         ...mutationOptions(csrf, { real_name: realName, guaranteed_seat: guaranteedSeat, ...(profile.is_test ? { weighting: Number(weighting) } : {}) }), method: "PUT",
       });
       setProfile(value); setRealName(value.real_name); setWeighting(String(value.weighting)); setGuaranteedSeat(Boolean(value.guaranteed_seat)); setNotice("Player information saved.");
+      onSaved?.();
     } catch (failure) {
       if (!onAccessError(failure)) setError(errorMessage(failure));
     } finally { inFlight.current = false; setSaving(false); }
@@ -72,7 +74,7 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError }: 
     {!profile && error && <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button>}
     {profile && <form onSubmit={(event) => void save(event)} aria-label="Player information">
       <FormFields>
-      <FormField id={nameField} label="Real Name" value={realName} fullWidth disabled={saving}
+      <FormField id={nameField} label="Display Name" value={realName} fullWidth disabled={saving}
         onChange={(event) => { setRealName(event.target.value); setNotice(""); }}
         slotProps={{ htmlInput: { maxLength: 100 } }} />
       {profile.is_test ? <FormField label="Current Weighting" type="number" value={weighting} fullWidth disabled={saving}

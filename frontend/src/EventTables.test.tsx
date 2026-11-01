@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import EventTables from "./EventTables";
+import EventTables, { TableColumns } from "./EventTables";
 import type { EventRecord } from "./api";
 
 const event: EventRecord = {
@@ -45,4 +45,15 @@ it("refreshes names and counts when votes are added and removed, and stops on cl
   view.unmount();
   await vi.advanceTimersByTimeAsync(30000);
   expect(fetchMock).toHaveBeenCalledTimes(4);
+});
+
+it("prefers display names for assigned and waiting players, with Discord name fallback", () => {
+  render(<TableColumns event={{ ...event, status: "assigned" }} onSelect={() => {}} rows={[
+    { name: "Table A", players: [{ id: "1", name: "DiscordMary", display_name: "Mary Display" }, { id: "2", name: "Dan" }], waitlist: [{ id: "3", name: "DiscordCarl", display_name: "Carl Display" }] },
+    { name: "Table B", players: [] },
+  ]} />);
+  expect(screen.getByRole("button", { name: "Mary Display" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Dan" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Carl Display" })).toBeVisible();
+  expect(screen.queryByText("DiscordMary")).not.toBeInTheDocument();
 });

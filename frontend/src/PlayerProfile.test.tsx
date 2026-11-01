@@ -15,10 +15,10 @@ it("loads and saves a real name while keeping Discord name and weighting read-on
   vi.stubGlobal("fetch", fetchMock);
   const props = { player: { id: "123", name: "Mary" }, csrf: "csrf", onClose: vi.fn(), onAccessError: vi.fn(() => false) };
   const view = render(<PlayerProfile {...props} />);
-  expect(await screen.findByLabelText("Real Name")).toHaveValue("Mary Smith");
+  expect(await screen.findByLabelText("Display Name")).toHaveValue("Mary Smith");
   expect(screen.getByText("1.0")).toBeVisible();
   expect(screen.getAllByRole("textbox")).toHaveLength(1);
-  fireEvent.change(screen.getByLabelText("Real Name"), { target: { value: "Mary Jones" } });
+  fireEvent.change(screen.getByLabelText("Display Name"), { target: { value: "Mary Jones" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByRole("status")).toHaveTextContent("Player information saved.");
   expect(fetchMock).toHaveBeenCalledWith("/api/players/123", expect.objectContaining({
@@ -27,7 +27,7 @@ it("loads and saves a real name while keeping Discord name and weighting read-on
   }));
   view.unmount();
   render(<PlayerProfile {...props} />);
-  expect(await screen.findByLabelText("Real Name")).toHaveValue("Mary Jones");
+  expect(await screen.findByLabelText("Display Name")).toHaveValue("Mary Jones");
 });
 
 it("marks saved test users and retains edited names and weights on reopening", async () => {
@@ -42,14 +42,14 @@ it("marks saved test users and retains edited names and weights on reopening", a
   const props = { player: { id: profile.discord_id, name: profile.discord_name }, csrf: "csrf", onClose: vi.fn(), onAccessError: vi.fn(() => false) };
   const view = render(<PlayerProfile {...props} />);
   expect(await screen.findByText("Test User")).toBeVisible();
-  fireEvent.change(screen.getByLabelText("Real Name"), { target: { value: "Saved Test Name" } });
+  fireEvent.change(screen.getByLabelText("Display Name"), { target: { value: "Saved Test Name" } });
   fireEvent.change(screen.getByLabelText("Current Weighting"), { target: { value: "2.5" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByRole("status")).toHaveTextContent("Player information saved.");
   expect(fetchMock).toHaveBeenCalledWith("/api/players/test-123", expect.objectContaining({ method: "PUT", body: JSON.stringify({ real_name: "Saved Test Name", guaranteed_seat: false, weighting: 2.5 }) }));
   view.unmount();
   render(<PlayerProfile {...props} />);
-  expect(await screen.findByLabelText("Real Name")).toHaveValue("Saved Test Name");
+  expect(await screen.findByLabelText("Display Name")).toHaveValue("Saved Test Name");
   expect(screen.getByLabelText("Current Weighting")).toHaveValue(2.5);
 });
 

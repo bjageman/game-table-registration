@@ -33,3 +33,5 @@ Allowlisted accounts see Populate Test Users on draft and open event modals. Con
 Player Information includes Guaranteed Seat, which guarantees placement at one of the tables the player selected. These server-wide settings apply when future signups close, including for saved test users. Players still need to sign up. Test users additionally expose editable weights from 0.1–10.
 
 Modal inputs use shared FormField defaults inside FormFields, which owns vertical spacing and floating-label clearance. Keep helper text with its field rather than adding individual margins.
+
+Display Name overrides Discord names in app signup, assignment, and waitlist entries when set. Saving refreshes the list immediately; clearing restores the Discord name. Discord posts and saved lottery data retain Discord identities. Existing profile names are preserved.

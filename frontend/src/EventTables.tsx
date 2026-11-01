@@ -4,8 +4,8 @@ import { api, errorMessage, type EventRecord } from "./api";
 
 export interface TableSignups {
   name: string;
-  players: { id: string; name: string }[];
-  waitlist?: { id: string; name: string }[];
+  players: { id: string; name: string; display_name?: string }[];
+  waitlist?: { id: string; name: string; display_name?: string }[];
 }
 
 export default function EventTables({ event, csrf, onAccessError, refreshToken = 0, onRefreshingChange }: {
@@ -42,7 +42,7 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, attempt, refreshToken, onAccessError, onRefreshingChange]);
   return <>
     {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf}
-      onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
+      onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
     {error && <p role="alert" className="error">
       Could not refresh signups. {rows ? "Showing the last loaded list. " : ""}{error}{" "}
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
@@ -73,13 +73,13 @@ export function TableColumns({ event, rows, error = "", onSelect }: {
           {players?.length ? <ul className="table-players">
             {players.map((player) => <li key={player.id}>
               {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog"
-                title="View Player Information" onClick={() => onSelect(player)}>{player.name}</button> : player.name}
+                title="View Player Information" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
             </li>)}
           </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : "Loading signups…"}</p>}
           {event.status === "assigned" && row && <div className="table-waitlist">
             <h4>Waitlist</h4>
             {row.waitlist?.length ? <ol>{row.waitlist.map((player) => <li key={player.id}>
-              {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.name}</button> : player.name}
+              {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
             </li>)}</ol> : <p className="help">No players waiting.</p>}
           </div>}
         </li>;

@@ -917,6 +917,9 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
         ).status_code
         == 200
     )
+    named = client.get(path + "/signups").json()[0]["players"][0]
+    assert named["display_name"] == "Editable test name"
+    assert named["name"] == "Test Player 001"
     with DBSession(client.app.state.engine) as db:
         assert db.get(Event, event["id"]).close_seed is None
         assert db.get(LotteryRun, event["id"]) is None
@@ -966,9 +969,28 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
         ).status_code
         == 409
     )
+    rows = client.get(path + "/signups").json()
+    displayed = [p for row in rows for key in ("players", "waitlist") for p in row[key]]
+    assert (
+        next(p for p in displayed if p["id"] == pid)["display_name"]
+        == "Editable test name"
+    )
+    client.put(
+        f"/api/players/{pid}", headers=headers, json={"real_name": "Updated Display"}
+    )
+    rows = client.get(path + "/signups").json()
+    assert any(
+        p.get("display_name") == "Updated Display"
+        for row in rows
+        for key in ("players", "waitlist")
+        for p in row[key]
+    )
+    assert client.get(path + "/assignments").json() == run
     for call in discord.send_announcement.call_args_list:
         payload = call.args[1]
         assert "[TEST]" in payload["content"]
+        assert "Editable test name" not in payload["content"]
+        assert "Updated Display" not in payload["content"]
         assert "<@test-" not in payload["content"]
         assert payload["allowed_mentions"]["users"] == []
 
@@ -1132,3 +1154,41 @@ def test_guarantee_conflict_does_not_end_poll_and_can_be_corrected(client):
         json={"real_name": "Changed", "guaranteed_seat": False},
     )
     assert client.get(path + "/assignments").json() == run
+
+
+def test_display_names_are_guild_scoped_and_clear_to_discord_name(client):
+    from app.models import PlayerProfile
+
+    headers = login(client)
+    client.app.state.discord.bot.return_value = {"username": "MaryDiscord"}
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    client.post(path + "/publish", headers=headers)
+    client.app.state.discord.table_signups.return_value = [
+        {"name": "Clocktower", "players": [{"id": "123", "name": "MaryDiscord"}]}
+    ]
+    with DBSession(client.app.state.engine) as db:
+        db.add(
+            PlayerProfile(
+                guild_id="other",
+                discord_id="123",
+                discord_name="OtherDiscord",
+                real_name="Private Display",
+            )
+        )
+        db.commit()
+    assert "display_name" not in client.get(path + "/signups").json()[0]["players"][0]
+    client.put(
+        "/api/players/123", headers=headers, json={"real_name": " Mary Display "}
+    )
+    player = client.get(path + "/signups").json()[0]["players"][0]
+    assert player == {
+        "id": "123",
+        "name": "MaryDiscord",
+        "display_name": "Mary Display",
+    }
+    client.put("/api/players/123", headers=headers, json={"real_name": "   "})
+    assert client.get(path + "/signups").json()[0]["players"][0] == {
+        "id": "123",
+        "name": "MaryDiscord",
+    }

@@ -499,6 +499,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             ]
 
+    def list_names(rows: list[dict[str, Any]], guild_id: str) -> list[dict[str, Any]]:
+        # Decorate copies for the app; saved results keep Discord names.
+        with DBSession(engine) as db:
+            names = {
+                profile.discord_id: profile.real_name
+                for profile in db.scalars(
+                    select(PlayerProfile).where(
+                        PlayerProfile.guild_id == guild_id,
+                        PlayerProfile.real_name != "",
+                    )
+                )
+            }
+        return [
+            {
+                **row,
+                **{
+                    key: [
+                        {
+                            **player,
+                            **(
+                                {"display_name": names[player["id"]]}
+                                if player["id"] in names
+                                else {}
+                            ),
+                        }
+                        for player in row[key]
+                    ]
+                    for key in ("players", "waitlist")
+                    if key in row
+                },
+            }
+            for row in rows
+        ]
+
     @app.get("/api/events/{event_id}/signups")
     def event_signups(event_id: str, request: Request) -> list[dict[str, Any]]:
         authenticated(request)
@@ -511,7 +545,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if run is None:
                     raise HTTPException(503, "Saved placements are unavailable")
                 rows: list[dict[str, Any]] = run.result["tables"]
-                return rows
+                return list_names(rows, event.guild_id)
             message_id = event.message_id
             tables = event.tables
             population = event.test_signups
@@ -520,7 +554,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if message_id
             else [{"name": table["name"], "players": []} for table in tables]
         )
-        return add_to_rows(rows, population)
+        return list_names(
+            add_to_rows(rows, population), destination(request).discord_guild_id
+        )
 
     @app.post("/api/events/{event_id}/close")
     def close_signups(event_id: str, request: Request) -> Response:
