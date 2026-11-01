@@ -5,7 +5,7 @@ export function discordAppUrl(url: string): string | null {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:" || parsed.hostname !== "discord.com" ||
       !/^\/channels\/(?:[0-9]+|@me)\/[0-9]+(?:\/[0-9]+)?$/.test(parsed.pathname)) return null;
-    return `discord://-${parsed.pathname}`;
+    return `discord://discord.com${parsed.pathname}`;
   } catch { return null; }
 }
 
