@@ -72,6 +72,10 @@ test("persists automatic weight adjustment on and off in Settings", async ({ pag
     return route.fulfill({ json: { automatic_weight_adjustment: enabled } });
   });
   await page.goto("/#/settings");
+  await expect(page.getByRole("tab", { name: "Discord", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("link", { name: "Game Events", exact: true })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Assignments", exact: true }).click();
+  await expect(page.getByRole("tabpanel", { name: "Discord", exact: true })).toHaveCount(0);
   const form = page.getByRole("form", { name: "Assignment settings" });
   const checkbox = form.getByLabel("Automatically Adjust Player Weights");
   await expect(checkbox).toBeChecked();
@@ -80,9 +84,18 @@ test("persists automatic weight adjustment on and off in Settings", async ({ pag
   await expect(form.getByRole("status")).toHaveText("Assignment settings saved.");
   expect(enabled).toBe(false);
   await page.reload();
+  await page.getByRole("tab", { name: "Assignments", exact: true }).click();
   await expect(checkbox).not.toBeChecked();
   await checkbox.check();
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form.getByRole("status")).toHaveText("Assignment settings saved.");
   expect(enabled).toBe(true);
+  await page.getByRole("tab", { name: "Discord", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toBeVisible();
+  await expect(form).toBeHidden();
+  // Arrow-key navigation activates the other tab without losing saved state.
+  await page.getByRole("tab", { name: "Discord", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Enter");
+  await expect(checkbox).toBeChecked();
 });

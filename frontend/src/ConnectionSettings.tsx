@@ -1,5 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import TextField from "@mui/material/TextField";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 import MenuItem from "@mui/material/MenuItem";
 import AssignmentSettings from "./AssignmentSettings";
 import { api, errorMessage, mutationOptions } from "./api";
@@ -13,6 +15,8 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
   onSaved: () => Promise<void>;
   onAccessError: (error: unknown) => boolean;
 }) {
+  const tabId = useId();
+  const [tab, setTab] = useState("discord");
   const [setup, setSetup] = useState<Setup>();
   const [guildId, setGuildId] = useState("");
   const [channelId, setChannelId] = useState("");
@@ -64,7 +68,13 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
   }
   const installUrl = setup ? setup.install_url + (guildId ? `&guild_id=${encodeURIComponent(guildId)}&disable_guild_select=true` : "") : "";
   return <section className="panel settings-panel" aria-labelledby="settings-heading">
-    <div className="section-heading"><h2 id="settings-heading">Settings</h2><a href="#/">Game Events</a></div>
+    <div className="section-heading"><h2 id="settings-heading">Settings</h2></div>
+    <Tabs className="settings-tabs" value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
+      <Tab label="Discord" value="discord" id={`${tabId}-discord-tab`} aria-controls={`${tabId}-discord-panel`} />
+      <Tab label="Assignments" value="assignments" id={`${tabId}-assignments-tab`} aria-controls={`${tabId}-assignments-panel`}
+        disabled={saving || !setup?.selection || setup.selection.guild_id !== guildId} />
+    </Tabs>
+    <div role="tabpanel" id={`${tabId}-discord-panel`} aria-labelledby={`${tabId}-discord-tab`} hidden={tab !== "discord"}>
     <p>Choose a server you manage and the channel where TableSignup should post signups.</p>
     {!setup && !error && <p role="status">Loading settings…</p>}
     {error && <p role="alert" className="error">{error}{!setup && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry settings</button>}</p>}
@@ -102,7 +112,10 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
         {saved && <p role="status">Settings saved.</p>}
         <div className="form-actions"><button className="primary" type="submit" disabled={saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></div>
       </form>
-      {setup.selection && setup.selection.guild_id === guildId && <AssignmentSettings key={setup.selection.guild_id} csrf={csrf} onAccessError={onAccessError} />}
     </>}
+    </div>
+    <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
+      {setup?.selection && setup.selection.guild_id === guildId && <AssignmentSettings key={setup.selection.guild_id} csrf={csrf} onAccessError={onAccessError} />}
+    </div>
   </section>;
 }

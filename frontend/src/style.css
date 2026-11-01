@@ -444,4 +444,4 @@ dd {
 
 .archive-filter { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
 
-.assignment-settings { margin-top: 28px; padding-top: 24px; border-top: 1px solid #dce3d9; }
+.settings-tabs { margin-bottom: 24px; }
