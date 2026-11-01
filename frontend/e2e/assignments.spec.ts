@@ -23,6 +23,12 @@ test("confirms closing signups and shows saved placements and waitlists", async 
   await page.getByRole("button", { name: /Game Night open 1 table/ }).click();
   const details = page.getByRole("dialog", { name: "Game Night", exact: true });
   await expect(details.getByText("2/1", { exact: true })).toBeVisible();
+  const bounds = await details.boundingBox();
+  const viewport = page.viewportSize();
+  expect(bounds).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(Math.abs(bounds!.x + bounds!.width / 2 - viewport!.width / 2)).toBeLessThan(2);
+  expect(Math.abs(bounds!.y + bounds!.height / 2 - viewport!.height / 2)).toBeLessThan(2);
   await details.getByRole("button", { name: "Close Signups" }).click();
   const confirmation = page.getByRole("dialog", { name: "Close signups for Game Night?" });
   await expect(confirmation).toBeVisible();
