@@ -560,3 +560,222 @@ def test_refresh_server_list_returns_to_settings_without_open_redirect(client):
         f"/api/auth/callback?code=ok&state={state}", follow_redirects=False
     )
     assert callback.headers["location"] == "http://localhost:5180"
+
+
+def closing_event(client):
+    headers = login(client)
+    body = {
+        **event_body(),
+        "tables": [{"name": "A", "capacity": 1}, {"name": "B", "capacity": 1}],
+    }
+    base = client.app.state.discord
+    base.publish.return_value["poll"]["answers"] = [
+        {"answer_id": 9, "poll_media": {"text": "A · 1 seats"}},
+        {"answer_id": 42, "poll_media": {"text": "B · 1 seats"}},
+    ]
+    event = client.post("/api/events", headers=headers, json=body).json()
+    path = f"/api/events/{event['id']}"
+    client.post(path + "/publish", headers=headers)
+    users = {
+        9: [
+            {"id": "1", "username": "Mary"},
+            {"id": "2", "username": "Dan"},
+            {"id": "3", "username": "Shirley"},
+        ],
+        42: [{"id": "1", "username": "Mary"}, {"id": "4", "username": "Carl"}],
+    }
+    base.voter_users.side_effect = lambda message_id, answer_id: users[answer_id]
+    return headers, event, path, users
+
+
+def closing_message(finalized=True, future=False, counts=None):
+    return {
+        "poll": {
+            "expiry": (
+                datetime.now(UTC) + timedelta(hours=1)
+                if future
+                else datetime.now(UTC) - timedelta(seconds=1)
+            ).isoformat(),
+            "answers": [
+                {"answer_id": 9, "poll_media": {"text": "A · 1 seats"}},
+                {"answer_id": 42, "poll_media": {"text": "B · 1 seats"}},
+            ],
+            "results": {
+                "is_finalized": finalized,
+                "answer_counts": counts
+                if counts is not None
+                else [{"id": 9, "count": 3}, {"id": 42, "count": 2}],
+            },
+        }
+    }
+
+
+def test_close_signups_assigns_once_and_replays_saved_results(client):
+    from app.lottery import assign
+    from app.models import LotteryRun
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.side_effect = [closing_message(False, True), closing_message()]
+    assert client.post(path + "/close").status_code == 403
+    result = client.post(path + "/close", headers=headers)
+    assert result.status_code == 200
+    assert result.json()["status"] == "assigned"
+    run = client.get(path + "/assignments").json()
+    assert assign(run["snapshot"], run["seed"]) == run["result"]
+    assert len(run["snapshot"]["players"]) == 4
+    assert len(run["result"]["assignments"]) == 2
+    assert len(run["result"]["waitlist"]) == 2
+    assert client.get(path + "/signups").json() == run["result"]["tables"]
+    assert client.post(path + "/close", headers=headers).json() == result.json()
+    discord.end_poll.assert_called_once_with("message")
+    assert discord.poll_message.call_count == 2
+    discord.table_signups.assert_not_called()
+    with DBSession(client.app.state.engine) as db:
+        assert len(db.query(LotteryRun).all()) == 1
+    assert client.delete(path, headers=headers).status_code == 409
+
+
+def test_close_waits_for_finalization_and_freezes_weights_before_retries(client):
+    from app.models import Event, LotteryRun, PlayerProfile
+
+    headers, event, path, _ = closing_event(client)
+    with DBSession(client.app.state.engine) as db:
+        db.add(
+            PlayerProfile(
+                guild_id="guild",
+                discord_id="2",
+                discord_name="Dan",
+                real_name="",
+                weighting=2.0,
+            )
+        )
+        db.commit()
+    discord = client.app.state.discord
+    discord.poll_message.side_effect = [
+        closing_message(False, True),
+        closing_message(False),
+        closing_message(False),
+        closing_message(),
+    ]
+    pending = client.post(path + "/close", headers=headers)
+    assert pending.status_code == 202
+    assert pending.json()["status"] == "closing"
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(LotteryRun, event["id"]) is None
+        seed = db.get(Event, event["id"]).close_seed
+        db.get(PlayerProfile, ("guild", "2")).weighting = 9.0
+        db.commit()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    run = client.get(path + "/assignments").json()
+    assert run["seed"] == seed
+    assert (
+        next(p for p in run["snapshot"]["players"] if p["id"] == "2")["weight"] == 2.0
+    )
+    discord.end_poll.assert_called_once()
+
+
+def test_incomplete_voters_do_not_create_partial_assignments(client):
+    from app.models import LotteryRun
+
+    headers, event, path, users = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    missing = users[9].pop()
+    assert client.post(path + "/close", headers=headers).status_code == 202
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(LotteryRun, event["id"]) is None
+    users[9].append(missing)
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    discord.end_poll.assert_not_called()
+
+
+def test_close_retries_after_discord_failure_without_redraw(client):
+    from app.models import Event, LotteryRun
+
+    headers, event, path, users = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    discord.voter_users.side_effect = HTTPException(502, "Discord unavailable")
+    assert client.post(path + "/close", headers=headers).status_code == 502
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(LotteryRun, event["id"]) is None
+        saved = db.get(Event, event["id"])
+        seed = saved.close_seed
+        assert saved.close_token is None
+        assert saved.status == "closing"
+    discord.voter_users.side_effect = lambda msg, answer: users[answer]
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    assert client.get(path + "/assignments").json()["seed"] == seed
+
+
+def test_concurrent_close_only_one_worker_claims_the_event(client):
+    from threading import Event as Gate
+
+    headers, event, path, _ = closing_event(client)
+    entered, release = Gate(), Gate()
+    discord = client.app.state.discord
+    discord.poll_message.side_effect = [closing_message(False, True), closing_message()]
+
+    def block(message_id):
+        entered.set()
+        assert release.wait(5)
+
+    discord.end_poll.side_effect = block
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(client.post, path + "/close", headers=headers)
+        try:
+            assert entered.wait(5)
+            assert client.post(path + "/close", headers=headers).status_code == 409
+        finally:
+            release.set()
+        assert first.result(timeout=5).status_code == 200
+    discord.end_poll.assert_called_once()
+
+
+def test_expired_close_claim_can_be_recovered(client):
+    from app.closing import LEASE_SECONDS
+    from app.models import Event
+
+    headers, event, path, _ = closing_event(client)
+    with DBSession(client.app.state.engine) as db:
+        saved = db.get(Event, event["id"])
+        saved.status = "closing"
+        saved.close_token = "interrupted"
+        saved.close_started_at = time.time() - LEASE_SECONDS - 1
+        saved.close_seed = "original-seed"
+        saved.close_weights = {}
+        db.commit()
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    assert client.get(path + "/assignments").json()["seed"] == "original-seed"
+
+
+def test_close_validates_poll_identity_and_supports_zero_votes(client):
+    from app.models import LotteryRun
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    message = closing_message()
+    message["poll"]["answers"][0]["answer_id"] = 123
+    discord.poll_message.return_value = message
+    assert client.post(path + "/close", headers=headers).status_code == 502
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(LotteryRun, event["id"]) is None
+    discord.poll_message.return_value = closing_message(counts=[])
+    discord.voter_users.side_effect = lambda msg, answer: []
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    assert client.get(path + "/assignments").json()["result"]["assignments"] == {}
+
+
+def test_close_and_results_are_scoped_to_destination(client):
+    from app.models import Event
+
+    headers, event, path, _ = closing_event(client)
+    assert client.get(path + "/assignments").status_code == 409
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).guild_id = "different"
+        db.commit()
+    assert client.post(path + "/close", headers=headers).status_code == 404
+    assert client.get(path + "/assignments").status_code == 404
+    client.app.state.discord.end_poll.assert_not_called()

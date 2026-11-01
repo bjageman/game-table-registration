@@ -367,7 +367,7 @@ dd {
 .table-player-count { margin-left: auto; flex-shrink: 0; color: #52665a; }
 .table-players { list-style: disc; padding-left: 20px; }
 .table-waitlist { margin-top: 20px; }
-.table-waitlist h5 { font-weight: 650; margin-bottom: 8px; }
+.table-waitlist h4, .table-waitlist h5 { font-weight: 650; margin-bottom: 8px; }
 .table-waitlist ol { list-style: decimal; padding-left: 20px; }
 
 .event-list-item {

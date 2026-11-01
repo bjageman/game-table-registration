@@ -7,16 +7,24 @@ from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import create_engine, delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
+from app.closing import close_and_assign
 from app.config import Settings
 from app.connection_settings import register_settings
 from app.discord_api import DiscordAPI
-from app.models import Event, LoginState, PlayerProfile, Session, UserSettings
+from app.models import (
+    Event,
+    LoginState,
+    LotteryRun,
+    PlayerProfile,
+    Session,
+    UserSettings,
+)
 
 
 def digest(token: str) -> str:
@@ -176,6 +184,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "tables": event.tables,
             "status": event.status,
             "closes_at": event.closes_at,
+            "published_at": event.published_at,
+            "close_error": event.close_error,
             "discord_url": (
                 f"https://discord.com/channels/{event.guild_id}/"
                 f"{event.channel_id or config.discord_channel_id}/{event.message_id}"
@@ -393,12 +403,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             event = db.get(Event, event_id)
             if event is None or not matches_destination(event, request):
                 raise HTTPException(404, "Event not found")
+            if event.status == "assigned":
+                run = db.get(LotteryRun, event_id)
+                if run is None:
+                    raise HTTPException(503, "Saved placements are unavailable")
+                rows: list[dict[str, Any]] = run.result["tables"]
+                return rows
             message_id = event.message_id
             tables = event.tables
         if not message_id:
             return [{"name": table["name"], "players": []} for table in tables]
         discord = scoped_discord(request)
         return discord.table_signups(message_id, tables)
+
+    @app.post("/api/events/{event_id}/close")
+    def close_signups(event_id: str, request: Request) -> Response:
+        session = authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+        complete = close_and_assign(
+            engine, scoped_discord(request), event_id, session.user_id
+        )
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            assert event is not None
+            return JSONResponse(serialize(event), status_code=200 if complete else 202)
+
+    @app.get("/api/events/{event_id}/assignments")
+    def assignments(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            run = db.get(LotteryRun, event_id)
+            if run is None:
+                raise HTTPException(409, "Placements have not been determined yet")
+            return {
+                "version": run.version,
+                "seed": run.seed,
+                "snapshot": run.snapshot,
+                "result": run.result,
+                "created_at": run.created_at,
+            }
 
     @app.post("/api/events", status_code=201)
     def create_event(body: EventInput, request: Request) -> dict[str, Any]:
@@ -514,6 +563,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "allow_multiselect": True,
                         },
                     }
+                )
+                event.published_at = (
+                    datetime.fromisoformat(message["timestamp"]).timestamp()
+                    if message.get("timestamp")
+                    else time.time()
                 )
                 event.message_id = str(message["id"])
                 event.answers = message["poll"]["answers"]

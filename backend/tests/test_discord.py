@@ -208,3 +208,10 @@ def test_saved_destination_rejects_lost_channel_access():
     )
     with pytest.raises(HTTPException):
         api.authorize_destination("user")
+
+
+def test_end_poll_uses_discord_expire_endpoint():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(return_value={})
+    api.end_poll("message")
+    api.bot.assert_called_once_with("POST", "/channels/channel/polls/message/expire")

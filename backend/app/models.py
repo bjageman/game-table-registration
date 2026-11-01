@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import JSON, Float, String
+from sqlalchemy import JSON, Float, ForeignKey, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -37,6 +37,12 @@ class Event(Base):
     created_by: Mapped[str] = mapped_column(String(32))
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     closes_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    published_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    close_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    close_started_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    close_seed: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    close_weights: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
+    close_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
 
@@ -56,3 +62,14 @@ class UserSettings(Base):
     guild_name: Mapped[str] = mapped_column(String(100))
     channel_id: Mapped[str] = mapped_column(String(32))
     channel_name: Mapped[str] = mapped_column(String(100))
+
+
+class LotteryRun(Base):
+    __tablename__ = "lottery_runs"
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id"), primary_key=True)
+    version: Mapped[str] = mapped_column(String(64))
+    seed: Mapped[str] = mapped_column(String(64))
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
+    result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[float] = mapped_column(Float)
