@@ -40,4 +40,4 @@ Assigned event modals offer an Archive icon with shared Cancel/Confirm controls.
 
 Settings → Assignments includes Automatically Adjust Player Weights for the currently saved server. It defaults on and can be disabled without resetting player weights.
 
-The Discord tab offers Disconnect with shared Cancel/Confirm controls for connected accounts. Disconnect hides server/channel controls until Connect is selected. The Assignments tab remains accessible and offers Connect Discord when disconnected. The Refresh Channels icon beside Signup Channel reloads eligible channels without leaving Settings.
+The Discord tab offers Disconnect with shared Cancel/Confirm controls for connected accounts. Disconnect hides server/channel controls until Connect is selected. Connect opens the same Discord installation link as Add TableSignup to Discord and reveals the controls to finish setup. The Assignments tab remains accessible and offers Connect Discord when disconnected. The Refresh Channels icon beside Signup Channel reloads eligible channels without leaving Settings.

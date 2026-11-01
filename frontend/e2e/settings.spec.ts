@@ -113,7 +113,7 @@ test("persists automatic weight adjustment on and off in Settings", async ({ pag
   await expect(checkbox).toBeChecked();
 });
 
-test("disconnects only after confirmation and offers setup again", async ({ page }) => {
+test("disconnects only after confirmation and offers setup again", async ({ page, context }) => {
   let connected = true;
   let disconnects = 0;
   await page.route("**/api/me", (route) => route.fulfill({ json: { username: "organizer", csrf: "csrf", needs_setup: !connected, destination: connected ? "100:101" : "disconnected" } }));
@@ -138,16 +138,21 @@ test("disconnects only after confirmation and offers setup again", async ({ page
   await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(confirmation).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Disconnect", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Connect (opens in a new tab)", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Refresh Channels" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Assignments", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Connect Discord", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Connect Discord (opens in a new tab)", exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Connect (opens in a new tab)", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  const connect = page.getByRole("link", { name: "Connect (opens in a new tab)", exact: true });
+  await expect(connect).toHaveAttribute("href", "https://discord.com/oauth2/authorize?client_id=client");
+  await context.route("https://discord.com/oauth2/authorize?*", (route) => route.fulfill({ body: "Discord setup" }));
+  const [popup] = await Promise.all([page.waitForEvent("popup"), connect.click()]);
+  await expect(popup).toHaveURL("https://discord.com/oauth2/authorize?client_id=client");
+  await popup.close();
   await expect(page.getByRole("combobox", { name: "Discord Server" })).toBeVisible();
   expect(disconnects).toBe(1);
 });

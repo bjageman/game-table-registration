@@ -81,7 +81,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
     {error && <p role="alert" className="error">{error}{!setup && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry settings</button>}</p>}
     {setup && <>
       <div className="form-actions settings-connections">
-        {setup.disconnected && !connecting && <button type="button" onClick={() => setConnecting(true)}>Connect</button>}
+        {setup.disconnected && !connecting && <a className="button" href={installUrl} target="_blank" rel="noreferrer" onClick={() => setConnecting(true)}>Connect<span className="sr-only"> (opens in a new tab)</span></a>}
         {(!setup.disconnected || connecting) && (!setup.selection || setup.selection.guild_id !== guildId) && <a className="button" href={installUrl} target="_blank" rel="noreferrer">Add TableSignup to Discord<span className="sr-only"> (opens in a new tab)</span></a>}
         {setup.selection && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
           onDisconnected={async () => {
@@ -129,7 +129,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
     </div>
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
       {setup?.selection ? <AssignmentSettings key={setup.selection.guild_id} csrf={csrf} onAccessError={onAccessError} />
-        : setup ? <button type="button" onClick={() => { setTab("discord"); setConnecting(true); }}>Connect Discord</button>
+        : setup ? <a className="button" href={installUrl} target="_blank" rel="noreferrer" onClick={() => { setTab("discord"); setConnecting(true); }}>Connect Discord<span className="sr-only"> (opens in a new tab)</span></a>
         : <p role="status">Loading settings…</p>}
     </div>
   </section>;
