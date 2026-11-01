@@ -228,6 +228,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not require_destination:
                 return session
             saved = db.get(UserSettings, session.user_id)
+            if saved and saved.disconnected:
+                raise HTTPException(
+                    409, "Choose a server and channel in Settings first."
+                )
             target = (
                 config.model_copy(
                     update={
@@ -381,8 +385,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session = authenticated(request, require_destination=False)
         with DBSession(engine) as db:
             saved = db.get(UserSettings, session.user_id)
-            selection = f"{saved.guild_id}:{saved.channel_id}" if saved else "legacy"
-        needs_setup = not saved and not legacy_access(session.user_id)
+            selection = (
+                (
+                    "disconnected"
+                    if saved.disconnected
+                    else f"{saved.guild_id}:{saved.channel_id}"
+                )
+                if saved
+                else "legacy"
+            )
+        needs_setup = (
+            saved.disconnected if saved else not legacy_access(session.user_id)
+        )
         return {
             "username": session.username,
             "csrf": session.csrf,

@@ -3,6 +3,7 @@ import TextField from "@mui/material/TextField";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import MenuItem from "@mui/material/MenuItem";
+import DisconnectDiscord from "./DisconnectDiscord";
 import AssignmentSettings from "./AssignmentSettings";
 import { api, errorMessage, mutationOptions } from "./api";
 
@@ -80,7 +81,13 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
     {setup && <>
       <div className="form-actions settings-connections">
         {(!setup.selection || setup.selection.guild_id !== guildId) && <a className="button" href={installUrl} target="_blank" rel="noreferrer">Add TableSignup to Discord<span className="sr-only"> (opens in a new tab)</span></a>}
-        <a href="/api/auth/login?return_to=settings">Refresh Server List</a>
+        <a className="button" href="/api/auth/login?return_to=settings">Refresh Server List</a>
+        {setup.selection && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
+          onDisconnected={async () => {
+            await onSaved();
+            setSetup((current) => current ? { ...current, selection: null } : current);
+            setGuildId(""); setChannelId(""); setChannels(undefined); setChannelError(""); setSaved(false); setError("");
+          }} />}
       </div>
       {!setup.guilds.length && <p className="help">No manageable servers found. Refresh your server list to grant Discord server access.</p>}
       <form onSubmit={(event) => void save(event)} aria-label="Discord settings">

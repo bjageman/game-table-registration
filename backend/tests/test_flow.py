@@ -1364,3 +1364,77 @@ def test_weight_adjustment_clamps_and_updates_test_profiles(client):
     with DBSession(client.app.state.engine) as db:
         assert db.get(PlayerProfile, ("guild", players[0]["id"])).weighting == 0.1
         assert db.get(PlayerProfile, ("guild", players[1]["id"])).weighting == 10
+
+
+@pytest.mark.parametrize("saved_connection", [True, False])
+def test_disconnect_blocks_legacy_fallback_preserves_data_and_allows_reconnect(
+    client, saved_connection
+):
+    from app.models import Event, GuildSettings, PlayerProfile, UserSettings
+
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    with DBSession(client.app.state.engine) as db:
+        if saved_connection:
+            db.add(
+                UserSettings(
+                    user_id="owner",
+                    guild_id="guild",
+                    guild_name="Server",
+                    channel_id="channel",
+                    channel_name="games",
+                )
+            )
+        db.add(
+            UserSettings(
+                user_id="other",
+                guild_id="guild",
+                guild_name="Server",
+                channel_id="channel",
+                channel_name="games",
+            )
+        )
+        db.add(
+            PlayerProfile(
+                guild_id="guild",
+                discord_id="123",
+                discord_name="Mary",
+                real_name="Display",
+                weighting=1.2,
+            )
+        )
+        db.add(GuildSettings(guild_id="guild", automatic_weight_adjustment=False))
+        db.commit()
+    assert client.get("/api/me").json()["needs_setup"] is False
+    assert client.delete("/api/settings").status_code == 403
+    assert client.get("/api/settings").json()["selection"] is not None
+    assert client.delete("/api/settings", headers=headers).status_code == 204
+    assert client.delete("/api/settings", headers=headers).status_code == 204
+    assert client.get("/api/settings").json()["selection"] is None
+    assert client.get("/api/me").json()["needs_setup"] is True
+    assert client.get("/api/events").status_code == 409
+    assert client.get("/api/settings/assignment").status_code == 409
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]) is not None
+        assert db.get(PlayerProfile, ("guild", "123")).weighting == 1.2
+        assert db.get(GuildSettings, "guild").automatic_weight_adjustment is False
+        assert db.get(UserSettings, "other").disconnected is False
+    headers = login(client)
+    assert client.get("/api/me").json()["needs_setup"] is True
+    client.app.state.discord.destination_channels.return_value = (
+        "Reconnected Server",
+        [{"id": "101", "name": "games"}],
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/me").json()["needs_setup"] is False
+    assert client.get("/api/settings").json()["selection"]["guild_id"] == "100"
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(UserSettings, "owner").disconnected is False
+    client.app.state.discord.delete_poll.assert_not_called()

@@ -63,6 +63,7 @@ class PlayerProfile(Base):
 
 class UserSettings(Base):
     __tablename__ = "user_settings"
+    disconnected: Mapped[bool] = mapped_column(default=False)
     user_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     guild_id: Mapped[str] = mapped_column(String(32))
     guild_name: Mapped[str] = mapped_column(String(100))

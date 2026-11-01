@@ -102,3 +102,35 @@ test("persists automatic weight adjustment on and off in Settings", async ({ pag
   await page.keyboard.press("Enter");
   await expect(checkbox).toBeChecked();
 });
+
+test("disconnects only after confirmation and offers setup again", async ({ page }) => {
+  let connected = true;
+  let disconnects = 0;
+  await page.route("**/api/me", (route) => route.fulfill({ json: { username: "organizer", csrf: "csrf", needs_setup: !connected, destination: connected ? "100:101" : "disconnected" } }));
+  await page.route("**/api/events", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/settings", (route) => {
+    if (route.request().method() === "DELETE") {
+      expect(route.request().headers()["x-csrf-token"]).toBe("csrf");
+      connected = false; disconnects++;
+      return route.fulfill({ status: 204 });
+    }
+    return route.fulfill({ json: { selection: connected ? { guild_id: "100", channel_id: "101", guild_name: "Server", channel_name: "games" } : null,
+      guilds: [{ id: "100", name: "Server" }], install_url: "https://discord.com/oauth2/authorize?client_id=client" } });
+  });
+  await page.route("**/api/settings/channels?*", (route) => route.fulfill({ json: { channels: [{ id: "101", name: "games" }] } }));
+  await page.route("**/api/settings/assignment", (route) => route.fulfill({ json: { automatic_weight_adjustment: true } }));
+  await page.goto("/#/settings");
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Disconnect Discord?" });
+  await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(disconnects).toBe(0);
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Disconnect", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Assignments", exact: true })).toBeDisabled();
+  await page.reload();
+  await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toBeVisible();
+  expect(disconnects).toBe(1);
+});

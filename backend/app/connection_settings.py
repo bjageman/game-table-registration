@@ -2,7 +2,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session as DBSession
@@ -40,7 +40,7 @@ def register_settings(
                     "channel_id": saved.channel_id,
                     "channel_name": saved.channel_name,
                 }
-                if saved
+                if saved and not saved.disconnected
                 else None
             )
         guilds = [dict(g) for g in session.guilds]
@@ -95,6 +95,7 @@ def register_settings(
             db.merge(
                 UserSettings(
                     user_id=session.user_id,
+                    disconnected=False,
                     guild_id=body.guild_id,
                     guild_name=guild_name,
                     channel_id=body.channel_id,
@@ -108,3 +109,20 @@ def register_settings(
             "channel_id": body.channel_id,
             "channel_name": channel["name"],
         }
+
+    @app.delete("/api/settings", status_code=204)
+    def disconnect(request: Request) -> Response:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            db.merge(
+                UserSettings(
+                    user_id=session.user_id,
+                    disconnected=True,
+                    guild_id="",
+                    guild_name="",
+                    channel_id="",
+                    channel_name="",
+                )
+            )
+            db.commit()
+        return Response(status_code=204)
