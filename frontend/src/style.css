@@ -423,7 +423,18 @@ dd {
 .player-name:hover { background: transparent; color: #19432f; }
 
 .player-discord-name { margin-bottom: 24px; }
-.player-weighting { margin-top: 24px; margin-bottom: 8px; }
+/* Reserve room for floating labels and keep spacing independent of field type. */
+.form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 8px;
+  min-width: 0;
+}
+.form-fields > * { min-width: 0; }
+.form-fields > p,
+.form-fields > dl,
+.form-fields > .form-actions { margin: 0; }
 
 .settings-panel { max-width: 800px; margin-inline: auto; }
 .settings-connections { margin-bottom: 24px; }

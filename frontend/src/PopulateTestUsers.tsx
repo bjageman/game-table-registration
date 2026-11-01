@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import TextField from "@mui/material/TextField";
+import FormFields, { FormField } from "./FormFields";
 import ConfirmationDialog from "./ConfirmationDialog";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
@@ -31,10 +31,9 @@ export default function PopulateTestUsers({ event, csrf, onUpdated, onAccessErro
     <button type="button" onClick={() => { setError(""); setOpen(true); }}>Populate Test Users</button>
     {open && <ConfirmationDialog title="Populate test users?" busy={busy} error={error}
       status="Adding test signups…" onCancel={() => setOpen(false)} onConfirm={() => void populate()}>
-      <p>Adds test players directly to this event's signup list. You can then publish, close signups, and assign players normally. Discord announcements will be marked TEST.</p>
-      <TextField label="Test Users" type="number" value={players} disabled={busy} fullWidth
-        onChange={(e) => setPlayers(e.target.value)} helperText="Reuses saved test users and their edited names and weights. Use 0 to remove signups; saved profiles remain."
-        slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: 0, max: 1000, step: 1 } }} />
+      <FormFields><FormField label="Test Users" type="number" value={players} disabled={busy} fullWidth
+        onChange={(e) => setPlayers(e.target.value)}
+        slotProps={{ htmlInput: { min: 0, max: 1000, step: 1 } }} /></FormFields>
     </ConfirmationDialog>}
   </>;
 }

@@ -54,7 +54,6 @@ class PlayerProfile(Base):
     discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     discord_name: Mapped[str] = mapped_column(String(100), default="")
     guaranteed_seat: Mapped[bool] = mapped_column(default=False)
-    guaranteed_table: Mapped[str | None] = mapped_column(String(35), nullable=True)
     is_test: Mapped[bool] = mapped_column(default=False)
     real_name: Mapped[str] = mapped_column(String(100), default="")
     weighting: Mapped[float] = mapped_column(Float, default=1.0)

@@ -132,7 +132,6 @@ def close_and_assign(
             guarantees = {
                 p.discord_id: {
                     "guaranteed_seat": True,
-                    "guaranteed_table": p.guaranteed_table,
                 }
                 for p in db.scalars(
                     select(PlayerProfile).where(
@@ -263,7 +262,7 @@ def close_and_assign(
         return True
     except Exception as failure:
         if isinstance(failure, GuaranteeConflict):
-            # Permit correcting reservations and retrying; never save a partial draw.
+            # Permit correcting guarantees and retrying; never save a partial draw.
             with Session(engine) as db:
                 db.execute(
                     update(Event)

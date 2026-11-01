@@ -30,4 +30,6 @@ Open signup modals offer Close Signups. The shared centered Cancel/Confirm dialo
 
 Allowlisted accounts see Populate Test Users on draft and open event modals. Confirming adds persistent test players for the normal publish and close flow. Test events and announcements are marked TEST. After closure, the modal shows announcement delivery status; Retry Announcement uses saved placements. Discord links use the original HTTPS destination so the browser and operating system can handle opening Discord.
 
-Player Information includes Guaranteed Seat and an optional Reserved Table (exact name). These server-wide settings apply when future signups close, including for saved test users. Players still need to sign up. Test users additionally expose editable weights from 0.1–10.
+Player Information includes Guaranteed Seat, which guarantees placement at one of the tables the player selected. These server-wide settings apply when future signups close, including for saved test users. Players still need to sign up. Test users additionally expose editable weights from 0.1–10.
+
+Modal inputs use shared FormField defaults inside FormFields, which owns vertical spacing and floating-label clearance. Keep helper text with its field rather than adding individual margins.

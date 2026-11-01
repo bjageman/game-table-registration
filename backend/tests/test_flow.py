@@ -314,7 +314,6 @@ def test_player_profile_survives_event_and_poll_deletion(client):
         "discord_name": "Mary",
         "is_test": False,
         "guaranteed_seat": False,
-        "guaranteed_table": None,
         "real_name": "",
         "weighting": 1.0,
     }
@@ -1088,7 +1087,6 @@ def test_guarantee_conflict_does_not_end_poll_and_can_be_corrected(client):
             json={
                 "real_name": "Volunteer",
                 "guaranteed_seat": True,
-                "guaranteed_table": "Clocktower",
             },
         )
         assert result.status_code == 200
