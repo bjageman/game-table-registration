@@ -430,6 +430,3 @@ dd {
 .settings-panel .form-grid { margin-bottom: 16px; }
 
 .announcement-status { margin-top: 20px; }
-
-.discord-link-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.discord-browser-fallback { font-size: 0.8rem; text-decoration: underline; }
