@@ -75,12 +75,11 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
         disabled={saving || !setup?.selection || setup.selection.guild_id !== guildId} />
     </Tabs>
     <div role="tabpanel" id={`${tabId}-discord-panel`} aria-labelledby={`${tabId}-discord-tab`} hidden={tab !== "discord"}>
-    <p>Choose a server you manage and the channel where TableSignup should post signups.</p>
     {!setup && !error && <p role="status">Loading settings…</p>}
     {error && <p role="alert" className="error">{error}{!setup && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry settings</button>}</p>}
     {setup && <>
       <div className="form-actions settings-connections">
-        <a className="button" href={installUrl} target="_blank" rel="noreferrer">Add TableSignup to Discord<span className="sr-only"> (opens in a new tab)</span></a>
+        {(!setup.selection || setup.selection.guild_id !== guildId) && <a className="button" href={installUrl} target="_blank" rel="noreferrer">Add TableSignup to Discord<span className="sr-only"> (opens in a new tab)</span></a>}
         <a href="/api/auth/login?return_to=settings">Refresh Server List</a>
       </div>
       {!setup.guilds.length && <p className="help">No manageable servers found. Refresh your server list to grant Discord server access.</p>}

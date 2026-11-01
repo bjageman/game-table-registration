@@ -34,6 +34,8 @@ for (const newUser of [false, true]) {
       await page.getByRole("menuitem", { name: "Settings" }).click();
     }
     await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+    await expect(page.getByText("Choose a server you manage and the channel where TableSignup should post signups.", { exact: true })).toHaveCount(0);
+    if (!newUser) await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toHaveCount(0);
     await page.getByRole("combobox", { name: "Discord Server" }).click();
     await page.getByRole("option", { name: "Second Server" }).click();
     await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toHaveAttribute("href", /guild_id=200/);
@@ -50,6 +52,7 @@ for (const newUser of [false, true]) {
     }
     await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveText("Second Server");
     await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveText("#games");
+    await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
