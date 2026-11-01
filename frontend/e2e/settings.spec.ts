@@ -52,8 +52,12 @@ for (const newUser of [false, true]) {
     }
     await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveText("Second Server");
     await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveText("#games");
-    const refresh = page.getByRole("link", { name: "Refresh Server List", exact: true });
-    await expect(refresh).toHaveAttribute("href", "/api/auth/login?return_to=settings");
+    const refresh = page.getByRole("button", { name: "Refresh Channels", exact: true });
+    await expect(refresh).toHaveCount(1);
+    const refreshed = page.waitForRequest((request) => request.url().includes("/api/settings/channels?guild_id=200"));
+    await refresh.click();
+    await refreshed;
+    await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveText("#games");
     const channelBox = await page.getByRole("combobox", { name: "Signup Channel" }).boundingBox();
     const refreshBox = await refresh.boundingBox();
     expect(refreshBox!.x).toBeGreaterThan(channelBox!.x + channelBox!.width);
@@ -137,7 +141,7 @@ test("disconnects only after confirmation and offers setup again", async ({ page
   await expect(page.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Refresh Server List" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Refresh Channels" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Assignments", exact: true }).click();
   await expect(page.getByRole("button", { name: "Connect Discord", exact: true })).toBeVisible();
   await page.reload();

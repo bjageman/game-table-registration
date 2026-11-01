@@ -109,16 +109,17 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
             <MenuItem value="">Choose a channel</MenuItem>
             {(channels ?? []).map((c) => <MenuItem key={c.id} value={c.id}>#{c.name}</MenuItem>)}
           </TextField>
-          <a className="button settings-refresh" href="/api/auth/login?return_to=settings" aria-label="Refresh Server List" title="Refresh Server List">
+          <button type="button" className="settings-refresh" aria-label="Refresh Channels" title="Refresh Channels"
+            disabled={saving || !guildId || (!channels && !channelError)}
+            onClick={() => { setChannelError(""); setChannels(undefined); setChannelAttempt((n) => n + 1); }}>
             <RefreshCw size={18} aria-hidden="true" />
-          </a>
+          </button>
           </div>
         </div>
         {guildId && !channels && !channelError && <p role="status">Loading channels…</p>}
         {channelError && <p role="alert" className="error">Could not load channels. {channelError}</p>}
         {guildId && <>
           <p className="help">If channels are missing, disconnect from Discord and reconnect.</p>
-          <button type="button" disabled={saving} onClick={() => { setChannelError(""); setChannels(undefined); setChannelAttempt((n) => n + 1); }}>Refresh Channels</button>
         </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
         {saved && <p role="status">Settings saved.</p>}
