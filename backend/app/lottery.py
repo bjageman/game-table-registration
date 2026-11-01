@@ -4,7 +4,11 @@ import hashlib
 import math
 from typing import Any
 
-VERSION = "weighted-matching-v1"
+VERSION = "guaranteed-weighted-matching-v2"
+
+
+class GuaranteeConflict(ValueError):
+    pass
 
 
 def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
@@ -34,10 +38,27 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         uniform = (int(digest(f"priority:{player_id}")[:13], 16) + 1) / (2**52 + 1)
         return -math.log(uniform) / float(by_id[player_id]["weight"]), player_id
 
-    order = sorted(by_id, key=priority)
+    for p in players:
+        if p.get("guaranteed_table") and (
+            not p.get("guaranteed_seat") or p["guaranteed_table"] not in p["choices"]
+        ):
+            raise GuaranteeConflict(
+                f"{p['name']} must select their reserved table "
+                f"({p['guaranteed_table']}) or have the reservation changed."
+            )
+    order = sorted(
+        by_id,
+        key=lambda pid: (not by_id[pid].get("guaranteed_seat", False), *priority(pid)),
+    )
     rank = {pid: i for i, pid in enumerate(order)}
     choices = {
-        pid: sorted(set(p["choices"]), key=lambda name: digest(f"table:{pid}:{name}"))
+        pid: (
+            [p["guaranteed_table"]]
+            if p.get("guaranteed_table")
+            else sorted(
+                set(p["choices"]), key=lambda name: digest(f"table:{pid}:{name}")
+            )
+        )
         for pid, p in by_id.items()
     }
     seated: dict[str, list[str]] = {name: [] for name in capacities}
@@ -61,7 +82,11 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         return False
 
     for pid in order:
-        place(pid, set())
+        if not place(pid, set()) and by_id[pid].get("guaranteed_seat"):
+            raise GuaranteeConflict(
+                "Guaranteed seats exceed capacity for the selected tables. "
+                "Adjust reservations or table capacity before closing signups."
+            )
     waiting = [pid for pid in order if pid not in assignments]
 
     def display(pid: str) -> dict[str, str]:

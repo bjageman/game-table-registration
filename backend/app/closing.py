@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.announcements import enqueue
 from app.discord_api import DiscordAPI
-from app.lottery import VERSION, assign
+from app.lottery import VERSION, GuaranteeConflict, assign
 from app.models import Event, LotteryRun, PlayerProfile
 
 LEASE_SECONDS = 120
@@ -116,6 +116,7 @@ def close_and_assign(
             return True
         if event.status not in ("open", "closing") or not event.message_id:
             raise HTTPException(409, "Only open signups can be closed")
+        previous_status = event.status
         weights = event.close_weights
         if weights is None:
             weights = {
@@ -123,6 +124,20 @@ def close_and_assign(
                 for p in db.scalars(
                     select(PlayerProfile).where(
                         PlayerProfile.guild_id == event.guild_id
+                    )
+                )
+            }
+        guarantees = event.close_guarantees
+        if guarantees is None:
+            guarantees = {
+                p.discord_id: {
+                    "guaranteed_seat": True,
+                    "guaranteed_table": p.guaranteed_table,
+                }
+                for p in db.scalars(
+                    select(PlayerProfile).where(
+                        PlayerProfile.guild_id == event.guild_id,
+                        PlayerProfile.guaranteed_seat.is_(True),
                     )
                 )
             }
@@ -143,6 +158,7 @@ def close_and_assign(
                 close_started_at=now,
                 close_seed=seed,
                 close_weights=weights,
+                close_guarantees=guarantees,
                 close_error=None,
             )
             .returning(Event.id)
@@ -159,7 +175,41 @@ def close_and_assign(
         answers = list(event.answers or [])
         test_population = event.test_signups
         assert message_id is not None
+
+    def with_guarantees(snapshot: dict[str, Any]) -> dict[str, Any]:
+        for player in snapshot["players"]:
+            player.update(guarantees.get(player["id"], {}))
+        return snapshot
+
+    preflight = True
     try:
+        if guarantees:
+            rows = discord.table_signups(message_id, tables)
+            participants: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                for player in row["players"]:
+                    entry = participants.setdefault(
+                        player["id"],
+                        {
+                            **player,
+                            "choices": [],
+                            "weight": weights.get(player["id"], 1.0),
+                        },
+                    )
+                    entry["choices"].append(row["name"])
+            if test_population:
+                for player in test_population["players"]:
+                    participants[player["id"]] = {
+                        **player,
+                        "weight": weights.get(player["id"], 1.0),
+                    }
+            assign(
+                with_guarantees(
+                    {"tables": tables, "players": list(participants.values())}
+                ),
+                seed,
+            )
+        preflight = False
         poll, expiry = poll_data(discord.poll_message(message_id))
         if expiry > time.time() and not (poll.get("results") or {}).get("is_finalized"):
             discord.end_poll(message_id)
@@ -176,7 +226,7 @@ def close_and_assign(
                 }
                 for player in test_population["players"]
             )
-        result = assign(snapshot, seed)
+        result = assign(with_guarantees(snapshot), seed)
         with Session(engine) as db:
             changed = db.execute(
                 update(Event)
@@ -212,6 +262,22 @@ def close_and_assign(
             db.commit()
         return True
     except Exception as failure:
+        if isinstance(failure, GuaranteeConflict):
+            # Permit correcting reservations and retrying; never save a partial draw.
+            with Session(engine) as db:
+                db.execute(
+                    update(Event)
+                    .where(Event.id == event_id, Event.close_token == token)
+                    .values(
+                        status=previous_status if preflight else "closing",
+                        close_token=None,
+                        close_guarantees=None,
+                        close_weights=None,
+                        close_error=str(failure)[:500],
+                    )
+                )
+                db.commit()
+            raise HTTPException(409, str(failure)) from None
         pending = isinstance(failure, Pending)
         message = (
             str(failure)

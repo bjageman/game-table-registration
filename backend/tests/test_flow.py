@@ -313,6 +313,8 @@ def test_player_profile_survives_event_and_poll_deletion(client):
         "discord_id": "123",
         "discord_name": "Mary",
         "is_test": False,
+        "guaranteed_seat": False,
+        "guaranteed_table": None,
         "real_name": "",
         "weighting": 1.0,
     }
@@ -1067,3 +1069,68 @@ def test_test_profiles_reused_after_clear_and_event_deletion(client):
         ).status_code
         == 404
     )
+
+
+def test_guarantee_conflict_does_not_end_poll_and_can_be_corrected(client):
+    from app.models import Event, LotteryRun
+
+    headers = login(client)
+    body = event_body()
+    body["tables"][0]["capacity"] = 1
+    event = client.post("/api/events", headers=headers, json=body).json()
+    path = f"/api/events/{event['id']}"
+    client.post(path + "/test-users", headers=headers, json={"players": 2})
+    players = client.get(path + "/signups").json()[0]["players"]
+    for player in players:
+        result = client.put(
+            f"/api/players/{player['id']}",
+            headers=headers,
+            json={
+                "real_name": "Volunteer",
+                "guaranteed_seat": True,
+                "guaranteed_table": "Clocktower",
+            },
+        )
+        assert result.status_code == 200
+        assert result.json()["guaranteed_seat"] is True
+    client.post(path + "/publish", headers=headers)
+    discord = client.app.state.discord
+    discord.table_signups.return_value = [{"name": "Clocktower", "players": []}]
+    conflict = client.post(path + "/close", headers=headers)
+    assert conflict.status_code == 409
+    assert "exceed capacity" in conflict.json()["detail"]
+    discord.end_poll.assert_not_called()
+    discord.send_announcement.assert_not_called()
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]).status == "open"
+        assert db.get(LotteryRun, event["id"]) is None
+    client.put(
+        f"/api/players/{players[1]['id']}",
+        headers=headers,
+        json={"real_name": "Player", "guaranteed_seat": False},
+    )
+    discord.poll_message.return_value = {
+        "poll": {
+            "expiry": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+            "answers": [
+                {"answer_id": 9, "poll_media": {"text": "Clocktower · 1 seats"}}
+            ],
+            "results": {"is_finalized": True, "answer_counts": []},
+        }
+    }
+    discord.voter_users.return_value = []
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    run = client.get(path + "/assignments").json()
+    assert run["result"]["assignments"] == {players[0]["id"]: "Clocktower"}
+    assert (
+        next(p for p in run["snapshot"]["players"] if p["id"] == players[0]["id"])[
+            "guaranteed_seat"
+        ]
+        is True
+    )
+    client.put(
+        f"/api/players/{players[0]['id']}",
+        headers=headers,
+        json={"real_name": "Changed", "guaranteed_seat": False},
+    )
+    assert client.get(path + "/assignments").json() == run

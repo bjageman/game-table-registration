@@ -90,6 +90,8 @@ class EventInput(BaseModel):
 class PlayerProfileInput(BaseModel):
     model_config = {"extra": "forbid"}
     real_name: str = Field(max_length=100)
+    guaranteed_seat: bool | None = None
+    guaranteed_table: str | None = Field(default=None, min_length=1, max_length=35)
     weighting: float | None = Field(default=None, ge=0.1, le=10.0, allow_inf_nan=False)
 
     @field_validator("real_name")
@@ -412,6 +414,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "real_name": profile.real_name if profile else "",
             "weighting": profile.weighting if profile else 1.0,
             "is_test": profile.is_test if profile else False,
+            "guaranteed_seat": profile.guaranteed_seat if profile else False,
+            "guaranteed_table": profile.guaranteed_table if profile else None,
         }
 
     def valid_player_id(player_id: str) -> None:
@@ -465,6 +469,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 profile.real_name = body.real_name
                 if body.weighting is not None:
                     profile.weighting = body.weighting
+
+            def apply_guarantee(profile: PlayerProfile) -> None:
+                if body.guaranteed_seat is not None:
+                    profile.guaranteed_seat = body.guaranteed_seat
+                if "guaranteed_table" in body.model_fields_set:
+                    profile.guaranteed_table = (
+                        body.guaranteed_table.strip() if body.guaranteed_table else None
+                    )
+                    if body.guaranteed_table and not profile.guaranteed_table:
+                        raise HTTPException(422, "Reserved table cannot be blank")
+                if not profile.guaranteed_seat:
+                    profile.guaranteed_table = None
+
+            apply_guarantee(profile)
             try:
                 db.commit()
             except IntegrityError:
@@ -476,6 +494,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if profile is None:
                     raise
                 profile.real_name = body.real_name
+                apply_guarantee(profile)
                 db.commit()
             return player_data(player_id, profile)
 

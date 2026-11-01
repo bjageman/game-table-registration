@@ -97,3 +97,34 @@ def test_empty_lottery_and_ample_capacity():
     result = assign(snapshot([["A"], ["A"], ["B"]], capacities=(8, 8)), "room")
     assert len(result["assignments"]) == 3
     assert result["waitlist"] == []
+
+
+def test_guaranteed_players_always_seated_ahead_of_weighted_players():
+    data = snapshot([["A"], ["A"], ["A", "B"]], weights={"0": 0.1, "1": 10})
+    data["players"][0]["guaranteed_seat"] = True
+    for seed in range(100):
+        result = assign(data, str(seed))
+        assert result["assignments"]["0"] == "A"
+        assert result["assignments"]["2"] == "B"
+        assert result["waitlist"] == ["1"]
+
+
+def test_reserved_table_stays_fixed_while_flexible_guarantees_can_move():
+    data = snapshot([["A", "B"], ["A", "B"], ["A"]])
+    data["players"][0].update(guaranteed_seat=True, guaranteed_table="B")
+    data["players"][1]["guaranteed_seat"] = True
+    for seed in range(50):
+        assert assign(data, str(seed))["assignments"] == {"0": "B", "1": "A"}
+
+
+def test_conflicting_guarantees_and_unselected_reservations_rejected():
+    from app.lottery import GuaranteeConflict
+
+    data = snapshot([["A"], ["A"]])
+    for p in data["players"]:
+        p["guaranteed_seat"] = True
+    with pytest.raises(GuaranteeConflict, match="exceed capacity"):
+        assign(data, "seed")
+    data["players"][0]["guaranteed_table"] = "B"
+    with pytest.raises(GuaranteeConflict, match="reserved table"):
+        assign(data, "seed")
