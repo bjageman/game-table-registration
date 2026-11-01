@@ -312,6 +312,7 @@ def test_player_profile_survives_event_and_poll_deletion(client):
     assert client.get(path).json() == {
         "discord_id": "123",
         "discord_name": "Mary",
+        "is_test": False,
         "real_name": "",
         "weighting": 1.0,
     }
@@ -906,11 +907,12 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
     profile = client.get(f"/api/players/{pid}")
     assert profile.status_code == 200
     assert profile.json()["discord_name"] == "Test Player 001"
+    assert profile.json()["is_test"] is True
     assert (
         client.put(
             f"/api/players/{pid}",
             headers=headers,
-            json={"real_name": "Editable test name"},
+            json={"real_name": "Editable test name", "weighting": 3.5},
         ).status_code
         == 200
     )
@@ -919,6 +921,7 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
         assert db.get(LotteryRun, event["id"]) is None
         assert db.query(Announcement).count() == 0
         weight = db.get(PlayerProfile, ("guild", pid)).weighting
+        assert weight == 3.5
     discord = client.app.state.discord
     discord.send_announcement.assert_not_called()
     assert client.post(path + "/publish", headers=headers).status_code == 200
@@ -1009,6 +1012,58 @@ def test_test_population_and_announcements_are_destination_scoped(client):
     assert (
         client.post(
             path + "/announcement/retry", headers=headers, json={"confirm_repost": True}
+        ).status_code
+        == 404
+    )
+
+
+def test_test_profiles_reused_after_clear_and_event_deletion(client):
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    client.post(path + "/test-users", headers=headers, json={"players": 2})
+    players = client.get(path + "/signups").json()[0]["players"]
+    pid = players[0]["id"]
+    profile_path = f"/api/players/{pid}"
+    for weight in (0, -1, 10.1, "nan", "inf"):
+        assert (
+            client.put(
+                profile_path,
+                headers=headers,
+                json={"real_name": "Test", "weighting": weight},
+            ).status_code
+            == 422
+        )
+    assert (
+        client.put(profile_path, json={"real_name": "Test", "weighting": 2}).status_code
+        == 403
+    )
+    saved = client.put(
+        profile_path,
+        headers=headers,
+        json={"real_name": "Saved Name", "weighting": 0.25},
+    ).json()
+    assert saved["is_test"] is True
+    client.post(path + "/test-users", headers=headers, json={"players": 0})
+    assert client.get(profile_path).json() == saved
+    assert client.delete(path, headers=headers).status_code == 204
+    assert client.get(profile_path).json() == saved
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    client.post(path + "/test-users", headers=headers, json={"players": 3})
+    reused = client.get(path + "/signups").json()[0]["players"]
+    assert {p["id"] for p in players}.issubset({p["id"] for p in reused})
+    assert len({p["id"] for p in reused}) == 3
+    assert client.get(profile_path).json() == saved
+    from app.models import PlayerProfile
+
+    with DBSession(client.app.state.engine) as db:
+        db.get(PlayerProfile, ("guild", pid)).guild_id = "elsewhere"
+        db.commit()
+    assert client.get(profile_path).status_code == 404
+    assert (
+        client.put(
+            profile_path, headers=headers, json={"real_name": "No", "weighting": 1}
         ).status_code
         == 404
     )

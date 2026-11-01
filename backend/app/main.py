@@ -90,6 +90,7 @@ class EventInput(BaseModel):
 class PlayerProfileInput(BaseModel):
     model_config = {"extra": "forbid"}
     real_name: str = Field(max_length=100)
+    weighting: float | None = Field(default=None, ge=0.1, le=10.0, allow_inf_nan=False)
 
     @field_validator("real_name")
     @classmethod
@@ -410,6 +411,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else discord_name(player_id),
             "real_name": profile.real_name if profile else "",
             "weighting": profile.weighting if profile else 1.0,
+            "is_test": profile.is_test if profile else False,
         }
 
     def valid_player_id(player_id: str) -> None:
@@ -446,6 +448,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 profile is None or not profile.is_test
             ):
                 raise HTTPException(404, "Test player not found")
+            if body.weighting is not None and (profile is None or not profile.is_test):
+                raise HTTPException(
+                    422, "Weight editing is currently available for test users only"
+                )
             if profile is None:
                 profile = PlayerProfile(
                     guild_id=destination(request).discord_guild_id,
@@ -457,6 +463,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 db.add(profile)
             else:
                 profile.real_name = body.real_name
+                if body.weighting is not None:
+                    profile.weighting = body.weighting
             try:
                 db.commit()
             except IntegrityError:
@@ -563,17 +571,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     409, "Test users can only be changed before signups close"
                 )
-            for player in population["players"] if population else []:
-                db.add(
-                    PlayerProfile(
-                        guild_id=event.guild_id,
-                        discord_id=player["id"],
-                        discord_name=player["name"],
-                        real_name="",
-                        weighting=player["weight"],
-                        is_test=True,
+            saved_tests = (
+                list(
+                    db.scalars(
+                        select(PlayerProfile)
+                        .where(
+                            PlayerProfile.guild_id == event.guild_id,
+                            PlayerProfile.is_test.is_(True),
+                        )
+                        .order_by(PlayerProfile.discord_name, PlayerProfile.discord_id)
+                        .limit(body.players)
                     )
                 )
+                if population
+                else []
+            )
+            for index, player in enumerate(population["players"] if population else []):
+                if index < len(saved_tests):
+                    saved = saved_tests[index]
+                    player.update(
+                        id=saved.discord_id,
+                        name=saved.discord_name,
+                        weight=saved.weighting,
+                    )
+                else:
+                    player["name"] = f"Test Player {index + 1:03d}"
+                    player["weight"] = 1.0
+                    db.add(
+                        PlayerProfile(
+                            guild_id=event.guild_id,
+                            discord_id=player["id"],
+                            discord_name=player["name"],
+                            real_name="",
+                            weighting=1.0,
+                            is_test=True,
+                        )
+                    )
+            # Persist the final identities after reusing saved profiles.
+            db.execute(
+                update(Event)
+                .where(Event.id == event_id)
+                .values(test_signups=population)
+            )
             db.commit()
             db.refresh(event)
             return serialize(event)

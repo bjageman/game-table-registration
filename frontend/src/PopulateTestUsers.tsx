@@ -33,7 +33,7 @@ export default function PopulateTestUsers({ event, csrf, onUpdated, onAccessErro
       status="Adding test signups…" onCancel={() => setOpen(false)} onConfirm={() => void populate()}>
       <p>Adds test players directly to this event's signup list. You can then publish, close signups, and assign players normally. Discord announcements will be marked TEST.</p>
       <TextField label="Test Users" type="number" value={players} disabled={busy} fullWidth
-        onChange={(e) => setPlayers(e.target.value)} helperText="Replaces existing test signups. Use 0 to remove them; real signups stay untouched."
+        onChange={(e) => setPlayers(e.target.value)} helperText="Reuses saved test users and their edited names and weights. Use 0 to remove signups; saved profiles remain."
         slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: 0, max: 1000, step: 1 } }} />
     </ConfirmationDialog>}
   </>;
