@@ -41,3 +41,5 @@ Assigned event modals offer an Archive icon with shared Cancel/Confirm controls.
 Settings → Assignments includes Automatically Adjust Player Weights for the currently saved server. It defaults on and can be disabled without resetting player weights.
 
 The Discord tab offers Disconnect with shared Cancel/Confirm controls for connected accounts. Disconnect hides server/channel controls until authorization succeeds again. Connect uses the authenticated callback flow; server controls appear only after successful authorization. The Assignments tab remains accessible and offers Connect Discord when disconnected. The Refresh Channels icon beside Signup Channel reloads eligible channels without leaving Settings.
+
+The event list toolbar searches titles case-insensitively and provides a sort-icon menu for title A–Z/Z–A and event date earliest/latest first. Date ascending is the default; search and sort respect Show Archived.

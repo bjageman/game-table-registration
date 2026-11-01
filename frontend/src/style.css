@@ -482,3 +482,10 @@ dd {
 
 .signup-channel-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-width: 0; }
 .settings-refresh { padding: 8px 12px; }
+
+.event-search-controls { display: flex; align-items: stretch; gap: 12px; flex: 1; min-width: 0; }
+.event-search-controls .MuiInputBase-root { height: 46px; }
+.event-toolbar > .form-actions { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .event-search-controls { flex-basis: 100%; }
+}
