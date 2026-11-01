@@ -38,7 +38,8 @@ for (const newUser of [false, true]) {
     if (!newUser) await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toHaveCount(0);
     await page.getByRole("combobox", { name: "Discord Server" }).click();
     await page.getByRole("option", { name: "Second Server" }).click();
-    await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toHaveAttribute("href", /guild_id=200/);
+    await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toHaveCount(0);
+    if (newUser) await expect(page.getByRole("link", { name: "Connect (opens in a new tab)", exact: true })).toHaveAttribute("href", /guild_id=200/);
     await page.getByRole("combobox", { name: "Signup Channel" }).click();
     await page.getByRole("option", { name: "#games" }).click();
     await page.getByRole("form", { name: "Discord settings" }).getByRole("button", { name: "Save", exact: true }).click();
