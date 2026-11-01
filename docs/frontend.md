@@ -35,3 +35,9 @@ Player Information includes Guaranteed Seat, which guarantees placement at one o
 Modal inputs use shared FormField defaults inside FormFields, which owns vertical spacing and floating-label clearance. Keep helper text with its field rather than adding individual margins.
 
 Display Name overrides Discord names in app signup, assignment, and waitlist entries when set. Saving refreshes the list immediately; clearing restores the Discord name. Discord posts and saved lottery data retain Discord identities. Existing profile names are preserved.
+
+Assigned event modals offer an Archive icon with shared Cancel/Confirm controls. Archived events are hidden from the default list; Show Archived includes them again with saved placements and waitlists.
+
+Settings → Assignments includes Automatically Adjust Player Weights for the currently saved server. It defaults on and can be disabled without resetting player weights.
+
+The Discord tab offers Disconnect with shared Cancel/Confirm controls for connected accounts. Disconnect hides server/channel controls until Connect is selected. The Assignments tab remains accessible and offers Connect Discord when disconnected. Refresh Server List is an icon beside Signup Channel and renews the Discord server list through OAuth.

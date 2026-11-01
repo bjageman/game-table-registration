@@ -1192,3 +1192,249 @@ def test_display_names_are_guild_scoped_and_clear_to_discord_name(client):
         "id": "123",
         "name": "MaryDiscord",
     }
+
+
+def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
+    headers, event, path, _ = closing_event(client)
+    assert client.post(path + "/archive", headers=headers).status_code == 409
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    run = client.get(path + "/assignments").json()
+    signups = client.get(path + "/signups").json()
+    calls = list(client.app.state.discord.mock_calls)
+    assert client.post(path + "/archive").status_code == 403
+    archived = client.post(path + "/archive", headers=headers)
+    assert archived.status_code == 200
+    assert archived.json()["archived_at"] > 0
+    assert archived.json()["status"] == "assigned"
+    assert client.post(path + "/archive", headers=headers).json() == archived.json()
+    assert client.get(path + "/assignments").json() == run
+    assert client.get(path + "/signups").json() == signups
+    assert any(
+        row["id"] == event["id"] and row["archived_at"]
+        for row in client.get("/api/events").json()
+    )
+    # Authorization may contact Discord; archiving must not publish or delete anything.
+    assert sum(
+        c[0] == "send_announcement" for c in client.app.state.discord.mock_calls
+    ) == sum(c[0] == "send_announcement" for c in calls)
+    client.app.state.discord.delete_poll.assert_not_called()
+    from app.models import Event
+
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).channel_id = "another-channel"
+        db.commit()
+    assert client.post(path + "/archive", headers=headers).status_code == 404
+
+
+def test_draft_cannot_be_archived(client):
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    assert (
+        client.post(f"/api/events/{event['id']}/archive", headers=headers).status_code
+        == 409
+    )
+    assert (
+        client.post("/api/events/missing/archive", headers=headers).status_code == 404
+    )
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, enabled):
+    from app.models import GuildSettings, PlayerProfile
+
+    headers, event, path, _ = closing_event(client)
+    assert client.get("/api/settings/assignment").json() == {
+        "automatic_weight_adjustment": True
+    }
+    assert (
+        client.put(
+            "/api/settings/assignment", json={"automatic_weight_adjustment": enabled}
+        ).status_code
+        == 403
+    )
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": enabled},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get("/api/settings/assignment").json()["automatic_weight_adjustment"]
+        is enabled
+    )
+    with DBSession(client.app.state.engine) as db:
+        db.add(GuildSettings(guild_id="other", automatic_weight_adjustment=not enabled))
+        db.add(
+            PlayerProfile(
+                guild_id="guild",
+                discord_id="1",
+                discord_name="Mary",
+                real_name="Display",
+                weighting=1.25,
+            )
+        )
+        db.add(
+            PlayerProfile(
+                guild_id="other", discord_id="1", discord_name="Other", weighting=2.0
+            )
+        )
+        db.commit()
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message(finalized=False)
+    assert client.post(path + "/close", headers=headers).status_code == 202
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(PlayerProfile, ("guild", "1")).weighting == 1.25
+    # The setting is captured at the start of this closure, just like input weights.
+    client.put(
+        "/api/settings/assignment",
+        headers=headers,
+        json={"automatic_weight_adjustment": not enabled},
+    )
+    discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    run = client.get(path + "/assignments").json()
+    assert run["snapshot"]["automatic_weight_adjustment"] is enabled
+
+    def current():
+        with DBSession(client.app.state.engine) as db:
+            return {
+                p.discord_id: p.weighting
+                for p in db.query(PlayerProfile).filter_by(guild_id="guild")
+            }
+
+    weights = current()
+    for player in run["snapshot"]["players"]:
+        original = 1.25 if player["id"] == "1" else 1.0
+        if enabled:
+            delta = -0.1 if player["id"] in run["result"]["assignments"] else 0.1
+            assert weights[player["id"]] == pytest.approx(original + delta)
+        elif player["id"] == "1":
+            assert weights[player["id"]] == original
+        else:
+            assert player["id"] not in weights
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    client.post(
+        path + "/announcement/retry", headers=headers, json={"confirm_repost": False}
+    )
+    client.post(path + "/archive", headers=headers)
+    assert current() == weights
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(PlayerProfile, ("other", "1")).weighting == 2.0
+        assert db.get(GuildSettings, "other").automatic_weight_adjustment is not enabled
+        assert db.get(PlayerProfile, ("guild", "1")).real_name == "Display"
+
+
+def test_weight_adjustment_clamps_and_updates_test_profiles(client):
+    from app.models import PlayerProfile
+
+    headers = login(client)
+    body = event_body()
+    body["tables"][0]["capacity"] = 1
+    event = client.post("/api/events", headers=headers, json=body).json()
+    path = f"/api/events/{event['id']}"
+    client.post(path + "/test-users", headers=headers, json={"players": 2})
+    players = client.get(path + "/signups").json()[0]["players"]
+    client.put(
+        f"/api/players/{players[0]['id']}",
+        headers=headers,
+        json={"real_name": "Volunteer", "weighting": 0.1, "guaranteed_seat": True},
+    )
+    client.put(
+        f"/api/players/{players[1]['id']}",
+        headers=headers,
+        json={"real_name": "Waiting", "weighting": 10},
+    )
+    client.post(path + "/publish", headers=headers)
+    discord = client.app.state.discord
+    discord.table_signups.return_value = [{"name": "Clocktower", "players": []}]
+    discord.poll_message.return_value = {
+        "poll": {
+            "expiry": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+            "answers": [
+                {"answer_id": 9, "poll_media": {"text": "Clocktower · 1 seats"}}
+            ],
+            "results": {"is_finalized": True, "answer_counts": []},
+        }
+    }
+    discord.voter_users.return_value = []
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(PlayerProfile, ("guild", players[0]["id"])).weighting == 0.1
+        assert db.get(PlayerProfile, ("guild", players[1]["id"])).weighting == 10
+
+
+@pytest.mark.parametrize("saved_connection", [True, False])
+def test_disconnect_blocks_legacy_fallback_preserves_data_and_allows_reconnect(
+    client, saved_connection
+):
+    from app.models import Event, GuildSettings, PlayerProfile, UserSettings
+
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    with DBSession(client.app.state.engine) as db:
+        if saved_connection:
+            db.add(
+                UserSettings(
+                    user_id="owner",
+                    guild_id="guild",
+                    guild_name="Server",
+                    channel_id="channel",
+                    channel_name="games",
+                )
+            )
+        db.add(
+            UserSettings(
+                user_id="other",
+                guild_id="guild",
+                guild_name="Server",
+                channel_id="channel",
+                channel_name="games",
+            )
+        )
+        db.add(
+            PlayerProfile(
+                guild_id="guild",
+                discord_id="123",
+                discord_name="Mary",
+                real_name="Display",
+                weighting=1.2,
+            )
+        )
+        db.add(GuildSettings(guild_id="guild", automatic_weight_adjustment=False))
+        db.commit()
+    assert client.get("/api/me").json()["needs_setup"] is False
+    assert client.delete("/api/settings").status_code == 403
+    assert client.get("/api/settings").json()["selection"] is not None
+    assert client.delete("/api/settings", headers=headers).status_code == 204
+    assert client.delete("/api/settings", headers=headers).status_code == 204
+    assert client.get("/api/settings").json()["selection"] is None
+    assert client.get("/api/me").json()["needs_setup"] is True
+    assert client.get("/api/events").status_code == 409
+    assert client.get("/api/settings/assignment").status_code == 409
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]) is not None
+        assert db.get(PlayerProfile, ("guild", "123")).weighting == 1.2
+        assert db.get(GuildSettings, "guild").automatic_weight_adjustment is False
+        assert db.get(UserSettings, "other").disconnected is False
+    headers = login(client)
+    assert client.get("/api/me").json()["needs_setup"] is True
+    client.app.state.discord.destination_channels.return_value = (
+        "Reconnected Server",
+        [{"id": "101", "name": "games"}],
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/me").json()["needs_setup"] is False
+    assert client.get("/api/settings").json()["selection"]["guild_id"] == "100"
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(UserSettings, "owner").disconnected is False
+    client.app.state.discord.delete_poll.assert_not_called()

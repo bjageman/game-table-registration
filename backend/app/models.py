@@ -38,11 +38,13 @@ class Event(Base):
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     closes_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     test_signups: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    archived_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     published_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     close_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     close_started_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     close_seed: Mapped[str | None] = mapped_column(String(64), nullable=True)
     close_guarantees: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    close_adjust_weights: Mapped[bool | None] = mapped_column(nullable=True)
     close_weights: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
     close_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
@@ -61,6 +63,7 @@ class PlayerProfile(Base):
 
 class UserSettings(Base):
     __tablename__ = "user_settings"
+    disconnected: Mapped[bool] = mapped_column(default=False)
     user_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     guild_id: Mapped[str] = mapped_column(String(32))
     guild_name: Mapped[str] = mapped_column(String(100))
@@ -100,3 +103,9 @@ class Announcement(Base):
     lease_until: Mapped[float | None] = mapped_column(Float, nullable=True)
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class GuildSettings(Base):
+    __tablename__ = "guild_settings"
+    guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)

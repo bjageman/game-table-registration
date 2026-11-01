@@ -15,6 +15,7 @@ export interface DashboardProps {
 }
 
 export default function Dashboard({ session, onAccessError }: DashboardProps) {
+  const [showArchived, setShowArchived] = useState(false);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -82,6 +83,8 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
     setAttempt((value) => value + 1);
   }
 
+  const visibleEvents = events.filter((event) => showArchived || !event.archived_at);
+
   return (
     <section aria-labelledby="events-heading">
       <div className="section-heading">
@@ -112,6 +115,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           </button>
         </div>
       </div>
+      <label className="archive-filter"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Show Archived</label>
       {notice && (
         <p role="status" className="notice" ref={noticeElement} tabIndex={-1}>
           {notice}
@@ -142,10 +146,10 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
       )}
       {!loading &&
         !error &&
-        (events.length ? (
+        (visibleEvents.length ? (
           <EventList
             canPopulateTestUsers={Boolean(session.can_populate_test_users)}
-            events={events}
+            events={visibleEvents}
             onEdit={(event) => {
               setEditing(event);
               setCreating(true);
@@ -166,8 +170,8 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           />
         ) : (
           <div className="panel">
-            <h3>No Events Yet</h3>
-            <p>Event drafts and published signups will appear here.</p>
+            <h3>{events.length ? "No Active Events" : "No Events Yet"}</h3>
+            {!events.length && <p>Event drafts and published signups will appear here.</p>}
           </div>
         ))}
     </section>

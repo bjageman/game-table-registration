@@ -35,6 +35,7 @@ from app.discord_api import DiscordAPI
 from app.models import (
     Announcement,
     Event,
+    GuildSettings,
     LoginState,
     LotteryRun,
     PlayerProfile,
@@ -85,6 +86,11 @@ class EventInput(BaseModel):
         if len({table.name.casefold() for table in self.tables}) != len(self.tables):
             raise ValueError("Table names must be unique")
         return self
+
+
+class AssignmentSettingsInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    automatic_weight_adjustment: bool
 
 
 class PlayerProfileInput(BaseModel):
@@ -222,6 +228,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not require_destination:
                 return session
             saved = db.get(UserSettings, session.user_id)
+            if saved and saved.disconnected:
+                raise HTTPException(
+                    409, "Choose a server and channel in Settings first."
+                )
             target = (
                 config.model_copy(
                     update={
@@ -255,6 +265,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": event.status,
             "closes_at": event.closes_at,
             "published_at": event.published_at,
+            "archived_at": event.archived_at,
             "close_error": event.close_error,
             "is_test": bool(event.test_signups),
             "test_generation": event.test_signups.get("generation")
@@ -374,8 +385,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session = authenticated(request, require_destination=False)
         with DBSession(engine) as db:
             saved = db.get(UserSettings, session.user_id)
-            selection = f"{saved.guild_id}:{saved.channel_id}" if saved else "legacy"
-        needs_setup = not saved and not legacy_access(session.user_id)
+            selection = (
+                (
+                    "disconnected"
+                    if saved.disconnected
+                    else f"{saved.guild_id}:{saved.channel_id}"
+                )
+                if saved
+                else "legacy"
+            )
+        needs_setup = (
+            saved.disconnected if saved else not legacy_access(session.user_id)
+        )
         return {
             "username": session.username,
             "csrf": session.csrf,
@@ -395,6 +416,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     register_settings(app, engine, config, authenticated, legacy_access)
+
+    @app.get("/api/settings/assignment")
+    def assignment_settings(request: Request) -> dict[str, Any]:
+        authenticated(request)
+        guild_id = destination(request).discord_guild_id
+        with DBSession(engine) as db:
+            saved = db.get(GuildSettings, guild_id)
+            return {
+                "automatic_weight_adjustment": saved.automatic_weight_adjustment
+                if saved
+                else True
+            }
+
+    @app.put("/api/settings/assignment")
+    def save_assignment_settings(
+        body: AssignmentSettingsInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            db.merge(
+                GuildSettings(
+                    guild_id=destination(request).discord_guild_id,
+                    automatic_weight_adjustment=body.automatic_weight_adjustment,
+                )
+            )
+            db.commit()
+        return {"automatic_weight_adjustment": body.automatic_weight_adjustment}
 
     def discord_name(player_id: str) -> str:
         discord: DiscordAPI = app.state.discord
@@ -811,6 +859,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             event = db.get(Event, event_id)
             assert event is not None
+            return serialize(event)
+
+    @app.post("/api/events/{event_id}/archive")
+    def archive_event(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned" or db.get(LotteryRun, event_id) is None:
+                raise HTTPException(409, "Only assigned events can be archived")
+            db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id,
+                    *event_scope(request),
+                    Event.status == "assigned",
+                    Event.archived_at.is_(None),
+                )
+                .values(archived_at=time.time())
+            )
+            db.commit()
+            db.refresh(event)
             return serialize(event)
 
     @app.delete("/api/events/{event_id}", status_code=204)
