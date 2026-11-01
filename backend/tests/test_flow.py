@@ -1237,3 +1237,130 @@ def test_draft_cannot_be_archived(client):
     assert (
         client.post("/api/events/missing/archive", headers=headers).status_code == 404
     )
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, enabled):
+    from app.models import GuildSettings, PlayerProfile
+
+    headers, event, path, _ = closing_event(client)
+    assert client.get("/api/settings/assignment").json() == {
+        "automatic_weight_adjustment": True
+    }
+    assert (
+        client.put(
+            "/api/settings/assignment", json={"automatic_weight_adjustment": enabled}
+        ).status_code
+        == 403
+    )
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": enabled},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get("/api/settings/assignment").json()["automatic_weight_adjustment"]
+        is enabled
+    )
+    with DBSession(client.app.state.engine) as db:
+        db.add(GuildSettings(guild_id="other", automatic_weight_adjustment=not enabled))
+        db.add(
+            PlayerProfile(
+                guild_id="guild",
+                discord_id="1",
+                discord_name="Mary",
+                real_name="Display",
+                weighting=1.25,
+            )
+        )
+        db.add(
+            PlayerProfile(
+                guild_id="other", discord_id="1", discord_name="Other", weighting=2.0
+            )
+        )
+        db.commit()
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message(finalized=False)
+    assert client.post(path + "/close", headers=headers).status_code == 202
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(PlayerProfile, ("guild", "1")).weighting == 1.25
+    # The setting is captured at the start of this closure, just like input weights.
+    client.put(
+        "/api/settings/assignment",
+        headers=headers,
+        json={"automatic_weight_adjustment": not enabled},
+    )
+    discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    run = client.get(path + "/assignments").json()
+    assert run["snapshot"]["automatic_weight_adjustment"] is enabled
+
+    def current():
+        with DBSession(client.app.state.engine) as db:
+            return {
+                p.discord_id: p.weighting
+                for p in db.query(PlayerProfile).filter_by(guild_id="guild")
+            }
+
+    weights = current()
+    for player in run["snapshot"]["players"]:
+        original = 1.25 if player["id"] == "1" else 1.0
+        if enabled:
+            delta = -0.1 if player["id"] in run["result"]["assignments"] else 0.1
+            assert weights[player["id"]] == pytest.approx(original + delta)
+        elif player["id"] == "1":
+            assert weights[player["id"]] == original
+        else:
+            assert player["id"] not in weights
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    client.post(
+        path + "/announcement/retry", headers=headers, json={"confirm_repost": False}
+    )
+    client.post(path + "/archive", headers=headers)
+    assert current() == weights
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(PlayerProfile, ("other", "1")).weighting == 2.0
+        assert db.get(GuildSettings, "other").automatic_weight_adjustment is not enabled
+        assert db.get(PlayerProfile, ("guild", "1")).real_name == "Display"
+
+
+def test_weight_adjustment_clamps_and_updates_test_profiles(client):
+    from app.models import PlayerProfile
+
+    headers = login(client)
+    body = event_body()
+    body["tables"][0]["capacity"] = 1
+    event = client.post("/api/events", headers=headers, json=body).json()
+    path = f"/api/events/{event['id']}"
+    client.post(path + "/test-users", headers=headers, json={"players": 2})
+    players = client.get(path + "/signups").json()[0]["players"]
+    client.put(
+        f"/api/players/{players[0]['id']}",
+        headers=headers,
+        json={"real_name": "Volunteer", "weighting": 0.1, "guaranteed_seat": True},
+    )
+    client.put(
+        f"/api/players/{players[1]['id']}",
+        headers=headers,
+        json={"real_name": "Waiting", "weighting": 10},
+    )
+    client.post(path + "/publish", headers=headers)
+    discord = client.app.state.discord
+    discord.table_signups.return_value = [{"name": "Clocktower", "players": []}]
+    discord.poll_message.return_value = {
+        "poll": {
+            "expiry": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+            "answers": [
+                {"answer_id": 9, "poll_media": {"text": "Clocktower · 1 seats"}}
+            ],
+            "results": {"is_finalized": True, "answer_counts": []},
+        }
+    }
+    discord.voter_users.return_value = []
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(PlayerProfile, ("guild", players[0]["id"])).weighting == 0.1
+        assert db.get(PlayerProfile, ("guild", players[1]["id"])).weighting == 10

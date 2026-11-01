@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
+import AssignmentSettings from "./AssignmentSettings";
 import { api, errorMessage, mutationOptions } from "./api";
 
 interface Choice { id: string; name: string; }
@@ -54,7 +55,8 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
     if (saving || !guildId || !channelId) return;
     setSaving(true); setSaved(false); setError("");
     try {
-      await api<Selection>("/settings", { ...mutationOptions(csrf, { guild_id: guildId, channel_id: channelId }), method: "PUT" });
+      const selection = await api<Selection>("/settings", { ...mutationOptions(csrf, { guild_id: guildId, channel_id: channelId }), method: "PUT" });
+      setSetup((current) => current ? { ...current, selection } : current);
       await onSaved();
       setSaved(true);
     } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
@@ -100,6 +102,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
         {saved && <p role="status">Settings saved.</p>}
         <div className="form-actions"><button className="primary" type="submit" disabled={saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></div>
       </form>
+      {setup.selection && setup.selection.guild_id === guildId && <AssignmentSettings key={setup.selection.guild_id} csrf={csrf} onAccessError={onAccessError} />}
     </>}
   </section>;
 }

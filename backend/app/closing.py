@@ -3,6 +3,7 @@
 import secrets
 import time
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.announcements import enqueue
 from app.discord_api import DiscordAPI
 from app.lottery import VERSION, GuaranteeConflict, assign
-from app.models import Event, LotteryRun, PlayerProfile
+from app.models import Event, GuildSettings, LotteryRun, PlayerProfile
 
 LEASE_SECONDS = 120
 
@@ -140,6 +141,10 @@ def close_and_assign(
                     )
                 )
             }
+        adjust_weights = event.close_adjust_weights
+        if adjust_weights is None:
+            settings = db.get(GuildSettings, event.guild_id)
+            adjust_weights = settings.automatic_weight_adjustment if settings else True
         seed = event.close_seed or secrets.token_hex(32)
         claimed = db.execute(
             update(Event)
@@ -158,6 +163,7 @@ def close_and_assign(
                 close_seed=seed,
                 close_weights=weights,
                 close_guarantees=guarantees,
+                close_adjust_weights=adjust_weights,
                 close_error=None,
             )
             .returning(Event.id)
@@ -225,6 +231,7 @@ def close_and_assign(
                 }
                 for player in test_population["players"]
             )
+        snapshot["automatic_weight_adjustment"] = adjust_weights
         result = assign(with_guarantees(snapshot), seed)
         with Session(engine) as db:
             changed = db.execute(
@@ -257,6 +264,38 @@ def close_and_assign(
                     created_at=time.time(),
                 )
             )
+            if adjust_weights:
+                profiles = {
+                    p.discord_id: p
+                    for p in db.scalars(
+                        select(PlayerProfile)
+                        .where(PlayerProfile.guild_id == event.guild_id)
+                        .order_by(PlayerProfile.discord_id)
+                        .with_for_update()
+                    )
+                }
+                for player in snapshot["players"]:
+                    profile = profiles.get(player["id"])
+                    if profile is None:
+                        profile = PlayerProfile(
+                            guild_id=event.guild_id,
+                            discord_id=player["id"],
+                            discord_name=player["name"],
+                            weighting=1.0,
+                            is_test=bool(player.get("is_test")),
+                        )
+                        db.add(profile)
+                    delta = Decimal(
+                        "-0.1" if player["id"] in result["assignments"] else "0.1"
+                    )
+                    profile.weighting = float(
+                        min(
+                            Decimal("10"),
+                            max(
+                                Decimal("0.1"), Decimal(str(profile.weighting)) + delta
+                            ),
+                        )
+                    )
             enqueue(db, event, event.channel_id or channel_id, result, snapshot)
             db.commit()
         return True
@@ -272,6 +311,7 @@ def close_and_assign(
                         close_token=None,
                         close_guarantees=None,
                         close_weights=None,
+                        close_adjust_weights=None,
                         close_error=str(failure)[:500],
                     )
                 )

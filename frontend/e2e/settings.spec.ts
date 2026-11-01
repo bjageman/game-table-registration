@@ -23,6 +23,7 @@ for (const newUser of [false, true]) {
         install_url: "https://discord.com/oauth2/authorize?client_id=client&scope=bot&permissions=562949953489920",
       } });
     });
+    await page.route("**/api/settings/assignment", (route) => route.fulfill({ json: { automatic_weight_adjustment: true } }));
     await page.route("**/api/settings/channels?*", (route) => route.fulfill({ json: {
       channels: new URL(route.request().url()).searchParams.get("guild_id") === "200"
         ? [{ id: "201", name: "games" }] : [{ id: "101", name: "first" }],
@@ -38,13 +39,13 @@ for (const newUser of [false, true]) {
     await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toHaveAttribute("href", /guild_id=200/);
     await page.getByRole("combobox", { name: "Signup Channel" }).click();
     await page.getByRole("option", { name: "#games" }).click();
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("form", { name: "Discord settings" }).getByRole("button", { name: "Save", exact: true }).click();
     if (newUser) {
       await expect(page.getByRole("heading", { name: "Game Events", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "organizer" }).click();
       await page.getByRole("menuitem", { name: "Settings" }).click();
     } else {
-      await expect(page.getByRole("status")).toHaveText("Settings saved.");
+      await expect(page.getByText("Settings saved.", { exact: true })).toBeVisible();
       await page.reload();
     }
     await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveText("Second Server");
@@ -52,3 +53,36 @@ for (const newUser of [false, true]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+
+test("persists automatic weight adjustment on and off in Settings", async ({ page }) => {
+  let enabled = true;
+  await page.route("**/api/me", (route) => route.fulfill({ json: { username: "organizer", csrf: "csrf" } }));
+  await page.route("**/api/events", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/settings", (route) => route.fulfill({ json: {
+    selection: { guild_id: "100", channel_id: "101", guild_name: "Server", channel_name: "games" },
+    guilds: [{ id: "100", name: "Server" }], install_url: "https://discord.com/oauth2/authorize?client_id=client",
+  } }));
+  await page.route("**/api/settings/channels?*", (route) => route.fulfill({ json: { channels: [{ id: "101", name: "games" }] } }));
+  await page.route("**/api/settings/assignment", (route) => {
+    if (route.request().method() === "PUT") {
+      expect(route.request().headers()["x-csrf-token"]).toBe("csrf");
+      enabled = route.request().postDataJSON().automatic_weight_adjustment;
+    }
+    return route.fulfill({ json: { automatic_weight_adjustment: enabled } });
+  });
+  await page.goto("/#/settings");
+  const form = page.getByRole("form", { name: "Assignment settings" });
+  const checkbox = form.getByLabel("Automatically Adjust Player Weights");
+  await expect(checkbox).toBeChecked();
+  await checkbox.uncheck();
+  await form.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(form.getByRole("status")).toHaveText("Assignment settings saved.");
+  expect(enabled).toBe(false);
+  await page.reload();
+  await expect(checkbox).not.toBeChecked();
+  await checkbox.check();
+  await form.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(form.getByRole("status")).toHaveText("Assignment settings saved.");
+  expect(enabled).toBe(true);
+});

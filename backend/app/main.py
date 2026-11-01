@@ -35,6 +35,7 @@ from app.discord_api import DiscordAPI
 from app.models import (
     Announcement,
     Event,
+    GuildSettings,
     LoginState,
     LotteryRun,
     PlayerProfile,
@@ -85,6 +86,11 @@ class EventInput(BaseModel):
         if len({table.name.casefold() for table in self.tables}) != len(self.tables):
             raise ValueError("Table names must be unique")
         return self
+
+
+class AssignmentSettingsInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    automatic_weight_adjustment: bool
 
 
 class PlayerProfileInput(BaseModel):
@@ -396,6 +402,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     register_settings(app, engine, config, authenticated, legacy_access)
+
+    @app.get("/api/settings/assignment")
+    def assignment_settings(request: Request) -> dict[str, Any]:
+        authenticated(request)
+        guild_id = destination(request).discord_guild_id
+        with DBSession(engine) as db:
+            saved = db.get(GuildSettings, guild_id)
+            return {
+                "automatic_weight_adjustment": saved.automatic_weight_adjustment
+                if saved
+                else True
+            }
+
+    @app.put("/api/settings/assignment")
+    def save_assignment_settings(
+        body: AssignmentSettingsInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            db.merge(
+                GuildSettings(
+                    guild_id=destination(request).discord_guild_id,
+                    automatic_weight_adjustment=body.automatic_weight_adjustment,
+                )
+            )
+            db.commit()
+        return {"automatic_weight_adjustment": body.automatic_weight_adjustment}
 
     def discord_name(player_id: str) -> str:
         discord: DiscordAPI = app.state.discord
