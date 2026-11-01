@@ -1,3 +1,4 @@
+import TableTitle from "./TableTitle";
 import PlayerProfile from "./PlayerProfile";
 import { useEffect, useState } from "react";
 import { api, errorMessage, type EventRecord } from "./api";
@@ -65,7 +66,7 @@ export function TableColumns({ event, rows, error = "", onSelect }: {
         const count = rows ? players?.length : undefined;
         return <li key={table.name} className="event-table">
           <div className="table-heading">
-            <h3>{table.name}</h3>
+            <TableTitle>{table.name}</TableTitle>
             <span className="table-player-count" aria-label={`${count ?? "Unknown"} ${event.status === "assigned" ? "assigned players" : "signups"} for ${table.capacity} seats`}>
               {count ?? "—"}/{table.capacity}
             </span>
