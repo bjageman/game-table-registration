@@ -215,3 +215,41 @@ def test_end_poll_uses_discord_expire_endpoint():
     api.bot = Mock(return_value={})
     api.end_poll("message")
     api.bot.assert_called_once_with("POST", "/channels/channel/polls/message/expire")
+
+
+def test_discord_rate_limit_delay_is_preserved():
+    from app.discord_api import DiscordRequestError
+
+    api = DiscordAPI(Settings(_env_file=None))
+    with patch("app.discord_api.httpx.Client") as client:
+        client.return_value.__enter__.return_value.request.return_value = (
+            httpx.Response(
+                429,
+                json={"retry_after": 42.5},
+                request=httpx.Request("POST", "https://discord.com/test"),
+            )
+        )
+        with pytest.raises(DiscordRequestError) as error:
+            api.send_announcement("channel", {"content": "test"})
+        assert error.value.retry_after == 42.5
+        assert not error.value.ambiguous
+
+
+def test_reconcile_announcement_requires_our_bot_and_matches_saved_payload():
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(return_value={"id": "bot"})
+    api.bot_items = Mock(
+        return_value=[
+            {
+                "id": "1",
+                "author": {"id": "other"},
+                "nonce": "nonce",
+                "content": "saved",
+            },
+            {"id": "2", "author": {"id": "bot"}, "content": "saved"},
+        ]
+    )
+    assert (
+        api.find_announcement("channel", {"content": "saved", "nonce": "nonce"}, 0)
+        == "2"
+    )

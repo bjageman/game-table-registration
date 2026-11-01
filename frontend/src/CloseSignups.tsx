@@ -49,7 +49,7 @@ export default function CloseSignups({ event, csrf, onUpdated, onAccessError }: 
     {confirming && <ConfirmationDialog title={`Close signups for ${event.title}?`}
       busy={busy} error={error} status="Closing the Discord poll and determining placement…"
       onCancel={() => setConfirming(false)} onConfirm={() => void close()}>
-      <p>This closes the Discord poll and assigns players to tables. The saved placements cannot be redrawn.</p>
+      <p>This closes the Discord poll and assigns players to tables. The saved placements cannot be redrawn.{event.is_test ? " This event includes test users; its Discord announcement will be marked TEST." : ""}</p>
     </ConfirmationDialog>}
   </>;
 }

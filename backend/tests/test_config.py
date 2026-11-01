@@ -28,3 +28,16 @@ def test_shared_app_does_not_require_a_default_server():
         discord_bot_token="token",
     )
     assert settings.configured
+
+
+def test_test_signup_allowlist_defaults_to_owner_and_supports_additional_ids():
+    from app.test_signups import allowed
+
+    config = Settings(
+        _env_file=None, owner_discord_id="owner", test_signup_user_ids="second, third "
+    )
+    assert allowed("owner", config)
+    assert allowed("second", config)
+    assert allowed("third", config)
+    assert not allowed("stranger", config)
+    assert not allowed("owner", Settings(_env_file=None))

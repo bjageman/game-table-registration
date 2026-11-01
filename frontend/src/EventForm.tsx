@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import TextField from "@mui/material/TextField";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -71,11 +71,25 @@ export default function EventForm({
       : [{ id: 0, name: "", capacity: "15" }],
   );
   const nextId = useRef(tables.length);
+  const pendingTableFocus = useRef<number | null>(null);
   const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const isMobile = useMediaQuery("(max-width: 600px)");
+  useEffect(() => {
+    if (pendingTableFocus.current === null) return;
+    document.getElementById(`${prefix}-name-${pendingTableFocus.current}`)?.focus();
+    pendingTableFocus.current = null;
+  }, [tables, prefix]);
+
+  function addTable() {
+    if (inFlight.current || tables.length >= 10) return;
+    const id = nextId.current++;
+    pendingTableFocus.current = id;
+    setTables((rows) => [...rows, { id, name: "", capacity: "15" }]);
+  }
+
   function updateDesktopStart(value: Dayjs | null) {
     setStartsAt(value);
     setStartsAtLocal(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "");
@@ -323,6 +337,11 @@ export default function EventForm({
                     error={Boolean(fieldErrors[`name-${table.id}`])}
                     helperText={fieldErrors[`name-${table.id}`]}
                     label={`Table ${index + 1} name`}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+                      event.preventDefault();
+                      if (!event.repeat) addTable();
+                    }}
                     value={table.name}
                     onChange={(event) =>
                       updateTable(table.id, { name: event.target.value })
@@ -378,12 +397,7 @@ export default function EventForm({
             aria-label="Add table"
             title="Add table"
             disabled={tables.length >= 10}
-            onClick={() =>
-              setTables((rows) => [
-                ...rows,
-                { id: nextId.current++, name: "", capacity: "15" },
-              ])
-            }
+            onClick={addTable}
           >
             <Plus size={18} aria-hidden="true" />
           </button>

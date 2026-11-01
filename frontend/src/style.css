@@ -363,7 +363,7 @@ dd {
   padding: 16px;
 }
 .table-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.event-table h3 { font-weight: 650; margin: 0; min-width: 0; }
+.event-table h3 { flex: 1; font-weight: 650; margin: 0; min-width: 0; white-space: nowrap; overflow: hidden; }
 .table-player-count { margin-left: auto; flex-shrink: 0; color: #52665a; }
 .table-players { list-style: disc; padding-left: 20px; }
 .table-waitlist { margin-top: 20px; }
@@ -423,8 +423,21 @@ dd {
 .player-name:hover { background: transparent; color: #19432f; }
 
 .player-discord-name { margin-bottom: 24px; }
-.player-weighting { margin-top: 24px; margin-bottom: 8px; }
+/* Reserve room for floating labels and keep spacing independent of field type. */
+.form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 8px;
+  min-width: 0;
+}
+.form-fields > * { min-width: 0; }
+.form-fields > p,
+.form-fields > dl,
+.form-fields > .form-actions { margin: 0; }
 
 .settings-panel { max-width: 800px; margin-inline: auto; }
 .settings-connections { margin-bottom: 24px; }
 .settings-panel .form-grid { margin-bottom: 16px; }
+
+.announcement-status { margin-top: 20px; }

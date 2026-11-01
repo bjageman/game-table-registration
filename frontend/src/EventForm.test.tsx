@@ -121,3 +121,20 @@ it("limits the editor to ten tables and preserves remaining rows after removal",
   expect(screen.getByRole("button", { name: "Add table" })).not.toBeDisabled();
   expect(screen.getByLabelText(/^Table 1 name/)).toHaveValue("Clocktower");
 });
+
+it("Enter in a table name adds and focuses a row without submitting, including at the limit", () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  renderForm();
+  fill();
+  for (let i = 1; i < 10; i++) {
+    const name = screen.getByLabelText(new RegExp(`^Table ${i} name`));
+    expect(fireEvent.keyDown(name, { key: "Enter", code: "Enter" })).toBe(false);
+    expect(screen.getByLabelText(new RegExp(`^Table ${i + 1} name`))).toHaveFocus();
+  }
+  expect(fireEvent.keyDown(screen.getByLabelText(/^Table 10 name/), { key: "Enter" })).toBe(false);
+  expect(screen.getAllByRole("textbox", { name: /^Table .* name/ })).toHaveLength(10);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(props.onCreated).not.toHaveBeenCalled();
+});

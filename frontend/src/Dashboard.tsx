@@ -42,10 +42,10 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
     );
   }
 
-  function updated(event: EventRecord) {
+  function updated(event: EventRecord, notice?: string) {
     setEvents((rows) => rows.map((row) => (row.id === event.id ? event : row)));
     const message = event.status === "assigned" ? "Placements determined" : event.status === "closing" ? "Signups closing" : "Poll published";
-    setNotice(`${message}: ${event.title}.`);
+    setNotice(notice ?? `${message}: ${event.title}.`);
   }
 
   function uncertain(event: EventRecord, message: string) {
@@ -144,6 +144,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         !error &&
         (events.length ? (
           <EventList
+            canPopulateTestUsers={Boolean(session.can_populate_test_users)}
             events={events}
             onEdit={(event) => {
               setEditing(event);
