@@ -117,7 +117,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
         {guildId && !channels && !channelError && <p role="status">Loading channels…</p>}
         {channelError && <p role="alert" className="error">Could not load channels. {channelError}</p>}
         {guildId && <>
-          <p className="help">If channels are missing, add TableSignup to this server and allow View Channel, Send Messages, Read Message History, and Send Polls.</p>
+          <p className="help">If channels are missing, disconnect from Discord and reconnect.</p>
           <button type="button" disabled={saving} onClick={() => { setChannelError(""); setChannels(undefined); setChannelAttempt((n) => n + 1); }}>Refresh Channels</button>
         </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
