@@ -52,6 +52,12 @@ for (const newUser of [false, true]) {
     }
     await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveText("Second Server");
     await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveText("#games");
+    const refresh = page.getByRole("link", { name: "Refresh Server List", exact: true });
+    await expect(refresh).toHaveAttribute("href", "/api/auth/login?return_to=settings");
+    const channelBox = await page.getByRole("combobox", { name: "Signup Channel" }).boundingBox();
+    const refreshBox = await refresh.boundingBox();
+    expect(refreshBox!.x).toBeGreaterThan(channelBox!.x + channelBox!.width);
+    expect(Math.abs(refreshBox!.y - channelBox!.y)).toBeLessThanOrEqual(1);
     await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
@@ -114,7 +120,7 @@ test("disconnects only after confirmation and offers setup again", async ({ page
       connected = false; disconnects++;
       return route.fulfill({ status: 204 });
     }
-    return route.fulfill({ json: { selection: connected ? { guild_id: "100", channel_id: "101", guild_name: "Server", channel_name: "games" } : null,
+    return route.fulfill({ json: { disconnected: !connected, selection: connected ? { guild_id: "100", channel_id: "101", guild_name: "Server", channel_name: "games" } : null,
       guilds: [{ id: "100", name: "Server" }], install_url: "https://discord.com/oauth2/authorize?client_id=client" } });
   });
   await page.route("**/api/settings/channels?*", (route) => route.fulfill({ json: { channels: [{ id: "101", name: "games" }] } }));
@@ -128,9 +134,16 @@ test("disconnects only after confirmation and offers setup again", async ({ page
   await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(confirmation).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Disconnect", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Assignments", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Refresh Server List" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Assignments", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Connect Discord", exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("link", { name: /Add TableSignup to Discord/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toBeVisible();
   expect(disconnects).toBe(1);
 });

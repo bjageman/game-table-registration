@@ -445,3 +445,6 @@ dd {
 .archive-filter { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
 
 .settings-tabs { margin-bottom: 24px; }
+
+.signup-channel-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-width: 0; }
+.settings-refresh { padding: 8px 12px; }

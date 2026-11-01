@@ -57,6 +57,7 @@ def register_settings(
             )
         return {
             "selection": selection,
+            "disconnected": bool(saved and saved.disconnected),
             "guilds": guilds,
             "install_url": "https://discord.com/oauth2/authorize?"
             + urlencode(
