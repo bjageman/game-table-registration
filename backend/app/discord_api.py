@@ -1,4 +1,5 @@
 import math
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -230,11 +231,18 @@ class DiscordAPI:
 
     def seed_reactions(self, message_id: str, emojis: list[str]) -> None:
         for emoji in emojis:
-            self.bot(
-                "PUT",
+            path = (
                 f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
-                f"/reactions/{quote(emoji, safe='')}/@me",
+                f"/reactions/{quote(emoji, safe='')}/@me"
             )
+            for attempt in range(10):
+                try:
+                    self.bot("PUT", path)
+                    break
+                except DiscordRequestError as error:
+                    if error.discord_status != 429 or attempt == 9:
+                        raise
+                    time.sleep(max(error.retry_after, 0.5))
 
     def reaction_players(
         self, message_id: str, tables: list[dict[str, Any]]
@@ -245,16 +253,27 @@ class DiscordAPI:
         for index, table in enumerate(tables):
             after = 0
             while True:
-                rows = self.request_items(
-                    f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
-                    f"/reactions/{quote(EMOJIS[index], safe='')}",
-                    headers={"Authorization": f"Bot {self.settings.discord_bot_token}"},
-                    params={
-                        "limit": 100,
-                        "type": 0,
-                        **({"after": str(after)} if after else {}),
-                    },
-                )
+                for attempt in range(10):
+                    try:
+                        rows = self.request_items(
+                            f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+                            f"/reactions/{quote(EMOJIS[index], safe='')}",
+                            headers={
+                                "Authorization": (
+                                    f"Bot {self.settings.discord_bot_token}"
+                                )
+                            },
+                            params={
+                                "limit": 100,
+                                "type": 0,
+                                **({"after": str(after)} if after else {}),
+                            },
+                        )
+                        break
+                    except DiscordRequestError as error:
+                        if error.discord_status != 429 or attempt == 9:
+                            raise
+                        time.sleep(max(error.retry_after, 0.5))
                 for user in rows:
                     if user.get("bot"):
                         continue

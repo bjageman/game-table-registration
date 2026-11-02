@@ -212,6 +212,20 @@ def test_saved_destination_rejects_lost_channel_access():
         api.authorize_destination("user")
 
 
+def test_reaction_seeding_retries_discord_rate_limits(monkeypatch):
+    from app.discord_api import DiscordRequestError
+
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(side_effect=[{}, {}, DiscordRequestError(429, 0.3), {}, {}])
+    sleep = Mock()
+    monkeypatch.setattr("app.discord_api.time.sleep", sleep)
+    api.seed_reactions("message", ["1️⃣", "2️⃣", "3️⃣", "4️⃣"])
+    assert api.bot.call_count == 5
+    assert sleep.call_count == 1
+    assert sleep.call_args.args[0] >= 0.3
+    assert "/reactions/3%EF%B8%8F%E2%83%A3/@me" in api.bot.call_args_list[2].args[1]
+
+
 def test_end_poll_uses_discord_expire_endpoint():
     api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
     api.bot = Mock(return_value={})
