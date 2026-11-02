@@ -73,6 +73,7 @@ export default function EventForm({
   );
   const nextId = useRef(tables.length);
   const pendingTableFocus = useRef<number | null>(null);
+  const scheduleFields = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -236,7 +237,7 @@ export default function EventForm({
             }}
           />
           <div className="form-grid event-schedule-fields">
-            <div className="date-time-fields">
+            <div className="date-time-fields" ref={scheduleFields}>
               {isMobile ? (
                 <div className="mobile-date-time-fields">
                   <DatePicker
@@ -278,6 +279,15 @@ export default function EventForm({
               ) : (
                 <DateTimePicker
                   label="Event starts"
+                  onOpen={() => {
+                    scheduleFields.current?.scrollIntoView({
+                      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                        ? "instant"
+                        : "smooth",
+                      block: "start",
+                      inline: "nearest",
+                    });
+                  }}
                   value={startsAt}
                   onChange={updateDesktopStart}
                   referenceDate={mobileTime}
@@ -289,6 +299,12 @@ export default function EventForm({
                     minutes: renderTimeViewClock,
                   }}
                   slotProps={{
+                    desktopPaper: {
+                      sx: {
+                        maxHeight: "calc(100dvh - 32px)",
+                        overflowY: "auto",
+                      },
+                    },
                     textField: {
                       id: `${prefix}-start`,
                       fullWidth: true,
