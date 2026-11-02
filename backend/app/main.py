@@ -125,14 +125,14 @@ class AssignmentSettingsInput(BaseModel):
 
 class PlayerProfileInput(BaseModel):
     model_config = {"extra": "forbid"}
-    real_name: str = Field(max_length=100)
+    real_name: str | None = Field(default=None, max_length=100)
     guaranteed_seat: bool | None = None
     weighting: float | None = Field(default=None, ge=0.1, le=10.0, allow_inf_nan=False)
 
     @field_validator("real_name")
     @classmethod
-    def clean_real_name(cls, value: str) -> str:
-        return value.strip()
+    def clean_real_name(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
 
 
 class EventPlayerSettingInput(BaseModel):
@@ -704,12 +704,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     guild_id=destination(request).discord_guild_id,
                     discord_id=player_id,
                     discord_name=discord_name(player_id),
-                    real_name=body.real_name,
+                    real_name=body.real_name or "",
                     weighting=body.weighting if body.weighting is not None else 1.0,
                 )
                 db.add(profile)
             else:
-                profile.real_name = body.real_name
+                if body.real_name is not None:
+                    profile.real_name = body.real_name
                 if body.weighting is not None:
                     profile.weighting = body.weighting
 
@@ -728,7 +729,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 if profile is None:
                     raise
-                profile.real_name = body.real_name
+                if body.real_name is not None:
+                    profile.real_name = body.real_name
                 if body.weighting is not None:
                     profile.weighting = body.weighting
                 apply_guarantee(profile)
