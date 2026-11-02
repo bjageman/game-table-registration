@@ -7,6 +7,33 @@ from app.announcements import deliver_event, enqueue, payloads
 from app.models import Announcement, Base, Event
 
 
+def test_each_table_and_waitlist_has_its_own_message_without_repeated_intro():
+    event = Event(id="event", guild_id="guild", title="Active Check", message_id="poll")
+    one = {"id": "1", "name": "One", "choices": ["First"], "weight": 1.0}
+    two = {"id": "2", "name": "Two", "choices": ["Second"], "weight": 1.0}
+    waiting = {"id": "3", "name": "Waiting", "choices": ["First"], "weight": 1.0}
+    result = {
+        "tables": [
+            {"name": "First", "players": [one]},
+            {"name": "Second", "players": [two]},
+        ],
+        "waitlist": ["3"],
+    }
+    messages = payloads(
+        event, "channel", result, {"players": [one, two, waiting], "is_test": True}
+    )
+    assert len(messages) == 3
+    assert "[TEST] Active Check — Table Assignments" in messages[0]["content"]
+    assert "[Signup message]" in messages[0]["content"]
+    assert "First — 1 assigned" in messages[0]["content"]
+    assert "Second — 1 assigned" in messages[1]["content"]
+    assert "First — 1 assigned" not in messages[1]["content"]
+    assert "**Waitlist**" in messages[2]["content"]
+    for message in messages[1:]:
+        assert "Table Assignments" not in message["content"]
+        assert "Signup message" not in message["content"]
+
+
 def test_large_announcements_are_complete_bounded_and_private():
     event = Event(
         id="event", guild_id="guild", title="Games @everyone", message_id="poll"
@@ -37,6 +64,8 @@ def test_large_announcements_are_complete_bounded_and_private():
     for player in players:
         assert text.count(f"<@{player['id']}>") == 1
     assert chunks == payloads(event, "channel", result, snapshot)
+    assert sum("Table Assignments" in p["content"] for p in chunks) == 1
+    assert sum("Signup message" in p["content"] for p in chunks) == 1
 
 
 def test_expired_delivery_claim_reconciles_the_existing_message(tmp_path):

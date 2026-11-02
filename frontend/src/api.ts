@@ -97,6 +97,13 @@ export interface EventRecord {
   discord_url: string | null;
 }
 
+export interface EventTemplateRecord {
+  id: string;
+  title: string;
+  duration_hours: number;
+  tables: { name: string; capacity: number }[];
+}
+
 export function mutationOptions(csrf: string, body?: unknown): RequestInit {
   return {
     method: "POST",

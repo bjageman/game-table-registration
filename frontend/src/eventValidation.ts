@@ -19,13 +19,8 @@ export function validateEvent(
   draft: EventDraft,
   now = Date.now(),
 ): Record<string, string> {
-  const errors: Record<string, string> = {};
-  if (!draft.title.trim() || draft.title.trim().length > 100)
-    errors.title = "Enter an event title of 1–100 characters.";
+  const errors = validateTemplate(draft);
   const hours = Number(draft.duration);
-  if (!Number.isInteger(hours) || hours < 1 || hours > 768)
-    errors.duration =
-      "Signup duration must be a whole number from 1 to 768 hours.";
   const start = new Date(draft.startsAt);
   if (Number.isNaN(start.getTime()) || localMinute(start) !== draft.startsAt) {
     errors.start =
@@ -53,6 +48,19 @@ export function validateEvent(
         "The event must start after the signup window ends. Choose a later time or a shorter signup duration.";
     }
   }
+  return errors;
+}
+
+export function validateTemplate(
+  draft: Pick<EventDraft, "title" | "duration" | "tables">,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (!draft.title.trim() || draft.title.trim().length > 100)
+    errors.title = "Enter an event title of 1–100 characters.";
+  const hours = Number(draft.duration);
+  if (!Number.isInteger(hours) || hours < 1 || hours > 768)
+    errors.duration =
+      "Signup duration must be a whole number from 1 to 768 hours.";
   const names = new Set<string>();
   for (const table of draft.tables) {
     const name = table.name.trim();

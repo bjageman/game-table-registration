@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 import re
 import secrets
 import time
@@ -35,11 +36,12 @@ from app.connection_settings import (
     SIGNUP_PERMISSIONS,
     register_settings,
 )
-from app.discord_api import DiscordAPI
+from app.discord_api import DiscordAPI, DiscordRequestError
 from app.gateway import SignupGateway
 from app.models import (
     Announcement,
     Event,
+    EventTemplate,
     GuildSettings,
     LoginState,
     LotteryRun,
@@ -98,6 +100,20 @@ class EventInput(BaseModel):
         return self
 
 
+class EventTemplateInput(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    duration_hours: int = Field(ge=1, le=768)
+    tables: list[TableInput] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_template(self) -> "EventTemplateInput":
+        if not self.title.strip():
+            raise ValueError("Event title cannot be blank")
+        if len({table.name.casefold() for table in self.tables}) != len(self.tables):
+            raise ValueError("Table names must be unique")
+        return self
+
+
 class AssignmentSettingsInput(BaseModel):
     model_config = {"extra": "forbid"}
     automatic_weight_adjustment: bool
@@ -125,6 +141,13 @@ class RetryAnnouncementInput(BaseModel):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or Settings()
+    if settings is None and os.environ.get("TABLESIGNUP_LOCAL_AUTO_MIGRATE") == "1":
+        if not config.database_url.startswith("sqlite:"):
+            raise RuntimeError("Local automatic migrations require a SQLite database")
+        from alembic import command
+        from alembic.config import Config
+
+        command.upgrade(Config("alembic.ini"), "head")
     engine = create_engine(config.database_url, pool_pre_ping=True)
 
     @asynccontextmanager
@@ -655,6 +678,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             ]
 
+    def serialize_template(template: EventTemplate) -> dict[str, Any]:
+        return {
+            "id": template.id,
+            "title": template.title,
+            "duration_hours": template.duration_hours,
+            "tables": template.tables,
+        }
+
+    @app.get("/api/templates")
+    def templates(request: Request) -> list[dict[str, Any]]:
+        session = authenticated(request, require_destination=False)
+        with DBSession(engine) as db:
+            return [
+                serialize_template(template)
+                for template in db.scalars(
+                    select(EventTemplate)
+                    .where(EventTemplate.user_id == session.user_id)
+                    .order_by(EventTemplate.created_at.desc(), EventTemplate.id)
+                )
+            ]
+
+    @app.post("/api/templates", status_code=201)
+    def create_template(body: EventTemplateInput, request: Request) -> dict[str, Any]:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            template = EventTemplate(
+                id=str(uuid.uuid4()),
+                user_id=session.user_id,
+                title=body.title.strip(),
+                duration_hours=body.duration_hours,
+                tables=[table.model_dump() for table in body.tables],
+                created_at=time.time(),
+            )
+            db.add(template)
+            db.commit()
+            return serialize_template(template)
+
     def list_names(rows: list[dict[str, Any]], guild_id: str) -> list[dict[str, Any]]:
         # Decorate copies for the app; saved results keep Discord names.
         with DBSession(engine) as db:
@@ -1027,6 +1087,81 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             return serialize(event)
 
+    def delete_discord_messages_batch(
+        event_id: str, request: Request
+    ) -> dict[str, Any]:
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned" or event.archived_at is None:
+                raise HTTPException(
+                    409, "Archive the event before deleting its messages"
+                )
+            rows = list(
+                db.scalars(
+                    select(Announcement)
+                    .where(Announcement.event_id == event_id)
+                    .order_by(Announcement.part)
+                )
+            )
+
+            def progress(
+                retry_after: float = 0, error: str | None = None
+            ) -> dict[str, Any]:
+                remaining = sum(not row.deleted_at for row in rows)
+                remaining += bool(event.message_id and not event.signup_deleted_at)
+                return {
+                    **serialize(event),
+                    "discord_cleanup_remaining": remaining,
+                    "discord_cleanup_retry_after": retry_after,
+                    "discord_cleanup_error": error,
+                }
+
+            def failed(failure: DiscordRequestError) -> dict[str, Any]:
+                if failure.discord_status == 429:
+                    return progress(
+                        retry_after=failure.retry_after
+                        if failure.retry_after > 0
+                        else 1
+                    )
+                status = failure.discord_status or "network"
+                return progress(
+                    error=f"Discord deletion failed ({status}). "
+                    "Retry the remaining messages."
+                )
+
+            if any(row.state == "needs_review" for row in rows):
+                return progress(
+                    error="An assignment announcement needs review before its "
+                    "Discord messages can be deleted."
+                )
+            if any(row.state != "sent" or not row.message_id for row in rows):
+                return progress(retry_after=2)
+            targets = [row for row in rows if not row.deleted_at]
+            for row in targets[:3]:
+                assert row.message_id is not None
+                try:
+                    scoped_discord(request).at(
+                        event.guild_id, row.channel_id
+                    ).delete_poll(row.message_id)
+                except DiscordRequestError as failure:
+                    return failed(failure)
+                row.deleted_at = time.time()
+                db.commit()
+            if len(targets) < 3 and event.message_id and not event.signup_deleted_at:
+                try:
+                    remove_signup_message(db, event, request)
+                except DiscordRequestError as failure:
+                    return failed(failure)
+                db.commit()
+            return progress()
+
+    @app.post("/api/events/{event_id}/discord-messages/delete")
+    def delete_discord_messages(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        return delete_discord_messages_batch(event_id, request)
+
     @app.post("/api/events/{event_id}/archive")
     def archive_event(
         event_id: str, request: Request, delete_discord_messages: bool = False
@@ -1038,25 +1173,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(404, "Event not found")
             if event.status != "assigned" or db.get(LotteryRun, event_id) is None:
                 raise HTTPException(409, "Only assigned events can be archived")
-            if delete_discord_messages:
-                rows = list(
-                    db.scalars(
-                        select(Announcement).where(Announcement.event_id == event_id)
-                    )
-                )
-                if any(row.state != "sent" or not row.message_id for row in rows):
-                    raise HTTPException(
-                        409,
-                        "Resolve the Discord announcement before deleting messages",
-                    )
-                for row in rows:
-                    if not row.deleted_at:
-                        assert row.message_id is not None
-                        scoped_discord(request).at(
-                            event.guild_id, row.channel_id
-                        ).delete_poll(row.message_id)
-                        row.deleted_at = time.time()
-                remove_signup_message(db, event, request)
             db.execute(
                 update(Event)
                 .where(
@@ -1069,7 +1185,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             db.commit()
             db.refresh(event)
-            return serialize(event)
+            archived = serialize(event)
+        return (
+            delete_discord_messages_batch(event_id, request)
+            if delete_discord_messages
+            else archived
+        )
 
     @app.delete("/api/events/{event_id}", status_code=204)
     def delete_event(

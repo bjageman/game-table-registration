@@ -10,6 +10,8 @@ Requires Node.js/npm and either `uv` or an existing `.venv` with the backend
 dependencies installed. Configure the root `.env` using `.env.example` first.
 The script syncs Python dependencies when `uv` is available, installs frontend
 dependencies if missing, applies database migrations, and starts both servers.
+Local API reloads also apply pending SQLite migrations before serving requests,
+including after switching branches while the script stays running.
 Press Ctrl+C to stop both. If either server exits, the other is stopped too.
 
 When switching branches, an existing database may reference migrations absent
