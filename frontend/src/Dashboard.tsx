@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { ArrowDownWideNarrow, RefreshCw, Search } from "lucide-react";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import InputAdornment from "@mui/material/InputAdornment";
+import { FormField } from "./FormFields";
 import {
   api,
   errorMessage,
@@ -14,7 +18,19 @@ export interface DashboardProps {
   onAccessError: (error: unknown) => boolean;
 }
 
+const sortOptions = [
+  { value: "date-asc", label: "Event Date: Earliest First" },
+  { value: "date-desc", label: "Event Date: Latest First" },
+  { value: "title-asc", label: "Title: A–Z" },
+  { value: "title-desc", label: "Title: Z–A" },
+] as const;
+type SortOrder = typeof sortOptions[number]["value"];
+const titleOrder = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
 export default function Dashboard({ session, onAccessError }: DashboardProps) {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortOrder>("date-asc");
+  const [sortAnchor, setSortAnchor] = useState<HTMLElement | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,13 +99,36 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
     setAttempt((value) => value + 1);
   }
 
-  const visibleEvents = events.filter((event) => showArchived || !event.archived_at);
+  const titleQuery = query.trim().toLocaleLowerCase();
+  const visibleEvents = events.filter((event) =>
+    (showArchived || !event.archived_at) && event.title.toLocaleLowerCase().includes(titleQuery),
+  ).sort((a, b) => {
+    const byTitle = titleOrder.compare(a.title, b.title);
+    const byDate = a.starts_at - b.starts_at;
+    const primary = sort === "date-asc" ? byDate : sort === "date-desc" ? -byDate
+      : sort === "title-asc" ? byTitle : -byTitle;
+    return primary || byTitle || byDate || a.id.localeCompare(b.id);
+  });
 
   return (
-    <section aria-labelledby="events-heading">
-      <div className="section-heading">
-        <div>
-          <h2 id="events-heading">Game Events</h2>
+    <section aria-label="Events">
+      <div className="section-heading event-toolbar">
+        <div className="event-search-controls">
+          <FormField type="search" placeholder="Search Events" size="small" value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            slotProps={{ htmlInput: { "aria-label": "Search events" }, input: {
+              startAdornment: <InputAdornment position="start"><Search size={18} aria-hidden="true" /></InputAdornment>,
+            } }} />
+          <button type="button" className="event-icon-action" aria-label="Sort events" title="Sort Events"
+            aria-haspopup="menu" aria-expanded={Boolean(sortAnchor)} aria-controls={sortAnchor ? "event-sort-menu" : undefined}
+            onClick={(event) => setSortAnchor(event.currentTarget)}>
+            <ArrowDownWideNarrow size={18} aria-hidden="true" />
+          </button>
+          <Menu id="event-sort-menu" anchorEl={sortAnchor} open={Boolean(sortAnchor)} onClose={() => setSortAnchor(null)}
+            slotProps={{ list: { "aria-label": "Sort events" } }}>
+            {sortOptions.map((option) => <MenuItem key={option.value} role="menuitemradio" aria-checked={sort === option.value}
+              selected={sort === option.value} onClick={() => { setSort(option.value); setSortAnchor(null); }}>{option.label}</MenuItem>)}
+          </Menu>
         </div>
         <div className="form-actions">
           <button
@@ -170,8 +209,8 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           />
         ) : (
           <div className="panel">
-            <h3>{events.length ? "No Active Events" : "No Events Yet"}</h3>
-            {!events.length && <p>Event drafts and published signups will appear here.</p>}
+            <h3>{titleQuery ? "No Matching Events" : events.length ? "No Active Events" : "No Events Yet"}</h3>
+            {!events.length && !titleQuery && <p>Event drafts and published signups will appear here.</p>}
           </div>
         ))}
     </section>
