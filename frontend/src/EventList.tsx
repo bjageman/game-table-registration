@@ -2,6 +2,7 @@ import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
 import { Eye, RefreshCw, X } from "lucide-react";
 import ArchiveEvent from "./ArchiveEvent";
+import DeleteDiscordMessages from "./DeleteDiscordMessages";
 import DeleteSignupMessage from "./DeleteSignupMessage";
 import EventTables from "./EventTables";
 import DiscordLink from "./DiscordLink";
@@ -117,6 +118,7 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
             </DiscordLink>
           )}
           {event.status === "assigned" && !event.archived_at && <ArchiveEvent event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+          {event.status === "assigned" && event.archived_at && <DeleteDiscordMessages event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
           {event.status === "draft" && <PublishEvent event={event} {...actions} />}
           {(event.status === "draft" || event.status === "open") && (
             <>

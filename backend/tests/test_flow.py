@@ -1317,23 +1317,18 @@ def test_failed_archive_discord_cleanup_can_be_retried(client):
         client.app.state.engine, lambda guild, channel: client.app.state.discord
     )
     scoped = client.app.state.discord.at.return_value
-    scoped.delete_poll.side_effect = [DiscordRequestError(403), None, None, None, None]
+    scoped.delete_poll.side_effect = [None, DiscordRequestError(403), None, None, None]
     failed = client.post(
         path + "/archive?delete_discord_messages=true", headers=headers
     )
-    assert failed.status_code == 502
-    assert (
-        next(
-            row for row in client.get("/api/events").json() if row["id"] == event["id"]
-        )["archived_at"]
-        is None
-    )
-    assert (
-        client.post(
-            path + "/archive?delete_discord_messages=true", headers=headers
-        ).status_code
-        == 200
-    )
+    assert failed.status_code == 200
+    assert failed.json()["archived_at"] is not None
+    assert failed.json()["discord_cleanup_remaining"] == 3
+    assert "403" in failed.json()["discord_cleanup_error"]
+    retried = client.post(path + "/discord-messages/delete", headers=headers)
+    assert retried.status_code == 200
+    assert retried.json()["discord_cleanup_remaining"] == 0
+    assert retried.json()["discord_cleanup_error"] is None
     assert scoped.delete_poll.call_count == 5
     assert (
         next(
@@ -1341,6 +1336,94 @@ def test_failed_archive_discord_cleanup_can_be_retried(client):
         )["discord_url"]
         is None
     )
+
+
+def test_archive_cleanup_respects_rate_limit_and_resumes_after_plain_archive(client):
+    from app.announcements import dispatch_due
+    from app.discord_api import DiscordRequestError
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    dispatch_due(
+        client.app.state.engine, lambda guild, channel: client.app.state.discord
+    )
+    with DBSession(client.app.state.engine) as db:
+        for part in range(3, 13):
+            db.add(
+                Announcement(
+                    id=f"extra-{part}",
+                    event_id=event["id"],
+                    part=part,
+                    channel_id="channel",
+                    payload={},
+                    state="sent",
+                    message_id=f"extra-{part}",
+                    created_at=0,
+                    next_attempt=0,
+                )
+            )
+        db.commit()
+    scoped = client.app.state.discord.at.return_value
+    scoped.delete_poll.side_effect = [None, DiscordRequestError(429, 0.25)]
+    first = client.post(path + "/archive?delete_discord_messages=true", headers=headers)
+    assert first.status_code == 200
+    assert first.json()["archived_at"] is not None
+    assert first.json()["discord_cleanup_remaining"] == 13
+    assert first.json()["discord_cleanup_retry_after"] == 0.25
+    scoped.delete_poll.side_effect = None
+    while True:
+        result = client.post(path + "/discord-messages/delete", headers=headers)
+        assert result.status_code == 200
+        if result.json()["discord_cleanup_remaining"] == 0:
+            break
+    assert scoped.delete_poll.call_count == 15
+    assert result.json()["discord_url"] is None
+    assert (
+        client.post(path + "/discord-messages/delete", headers=headers).json()[
+            "discord_cleanup_remaining"
+        ]
+        == 0
+    )
+
+
+def test_discord_cleanup_can_start_after_event_was_archived_without_it(client):
+    from app.announcements import dispatch_due
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    dispatch_due(
+        client.app.state.engine, lambda guild, channel: client.app.state.discord
+    )
+    assert client.post(path + "/archive", headers=headers).status_code == 200
+    first = client.post(path + "/discord-messages/delete", headers=headers)
+    assert first.status_code == 200
+    assert first.json()["discord_cleanup_remaining"] == 1
+    last = client.post(path + "/discord-messages/delete", headers=headers)
+    assert last.json()["discord_cleanup_remaining"] == 0
+    assert last.json()["discord_url"] is None
+
+
+def test_archive_cleanup_waits_for_queued_announcements(client):
+    from app.announcements import dispatch_due
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    archived = client.post(
+        path + "/archive?delete_discord_messages=true", headers=headers
+    )
+    assert archived.status_code == 200
+    assert archived.json()["archived_at"] is not None
+    assert archived.json()["discord_cleanup_retry_after"] == 2
+    client.app.state.discord.at.return_value.delete_poll.assert_not_called()
+    dispatch_due(
+        client.app.state.engine, lambda guild, channel: client.app.state.discord
+    )
+    first = client.post(path + "/discord-messages/delete", headers=headers)
+    assert first.json()["discord_cleanup_remaining"] == 1
 
 
 def test_assigned_signup_message_can_be_deleted_later(client):
