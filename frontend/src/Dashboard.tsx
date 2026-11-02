@@ -12,6 +12,7 @@ import {
 } from "./api";
 import EventList from "./EventList";
 import EventForm from "./EventForm";
+import LoadingIndicator from "./LoadingIndicator";
 
 export interface DashboardProps {
   session: ModeratorSession;
@@ -174,7 +175,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           onAccessError={onAccessError}
         />
       )}
-      {loading && <p role="status">Loading events…</p>}
+      {loading && <p><LoadingIndicator label="Loading events…" /></p>}
       {error && (
         <div className="panel">
           <p role="alert" className="error">

@@ -1,5 +1,6 @@
 import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import LoadingIndicator from "./LoadingIndicator";
 
 export default function ConfirmationDialog({
   title, children, busy, error, status, onCancel, onConfirm,
@@ -31,7 +32,7 @@ export default function ConfirmationDialog({
       <h2 id={heading}>{title}</h2>
       {children}
       {error && <p role="alert" className="error">{error}</p>}
-      {busy && status && <p role="status">{status}</p>}
+      {busy && status && <p><LoadingIndicator label={status} /></p>}
       <div className="form-actions confirmation-actions">
         <button ref={cancel} type="button" disabled={busy} onClick={onCancel}>Cancel</button>
         <button type="button" className="primary" disabled={busy} onClick={onConfirm}>Confirm</button>

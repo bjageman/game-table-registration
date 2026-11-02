@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { api, errorMessage, mutationOptions } from "./api";
+import LoadingIndicator from "./LoadingIndicator";
 
 interface Settings { automatic_weight_adjustment: boolean; }
 
@@ -34,7 +35,7 @@ export default function AssignmentSettings({ csrf, onAccessError }: {
   }
   return <section className="assignment-settings" aria-labelledby="assignment-settings-heading">
     <h3 id="assignment-settings-heading">Assignments</h3>
-    {!loaded && !error && <p role="status">Loading assignment settings…</p>}
+    {!loaded && !error && <p><LoadingIndicator label="Loading assignment settings…" /></p>}
     {error && <p role="alert" className="error">{error}{!loaded && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry</button>}</p>}
     {loaded && <form aria-label="Assignment settings" onSubmit={(event) => void save(event)}>
       <FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox checked={enabled} disabled={busy}

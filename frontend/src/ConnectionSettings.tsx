@@ -7,6 +7,7 @@ import MenuItem from "@mui/material/MenuItem";
 import DisconnectDiscord from "./DisconnectDiscord";
 import AssignmentSettings from "./AssignmentSettings";
 import { api, errorMessage, mutationOptions } from "./api";
+import LoadingIndicator from "./LoadingIndicator";
 
 interface Choice { id: string; name: string; }
 interface Selection { guild_id: string; channel_id: string; guild_name: string; channel_name: string; }
@@ -76,7 +77,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
       <Tab label="Assignments" value="assignments" id={`${tabId}-assignments-tab`} aria-controls={`${tabId}-assignments-panel`} />
     </Tabs>
     <div role="tabpanel" id={`${tabId}-discord-panel`} aria-labelledby={`${tabId}-discord-tab`} hidden={tab !== "discord"}>
-    {!setup && !error && <p role="status">Loading settings…</p>}
+    {!setup && !error && <p><LoadingIndicator label="Loading settings…" /></p>}
     {error && <p role="alert" className="error">{error}{!setup && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry settings</button>}</p>}
     {setup && <>
       <div className="form-actions settings-connections">
@@ -105,7 +106,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
           </button>
           </div>
         </div>
-        {guildId && !channels && !channelError && <p role="status">Loading channels…</p>}
+        {guildId && !channels && !channelError && <p><LoadingIndicator label="Loading channels…" /></p>}
         {channelError && <p role="alert" className="error">Could not load channels. {channelError}</p>}
         {guildId && <>
           <p className="help">If channels are missing, disconnect from Discord and reconnect.</p>
@@ -119,7 +120,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
       {setup?.selection ? <AssignmentSettings key={setup.selection.guild_id} csrf={csrf} onAccessError={onAccessError} />
         : setup ? <a className="button" href={connectUrl}>Connect Discord</a>
-        : <p role="status">Loading settings…</p>}
+        : <p><LoadingIndicator label="Loading settings…" /></p>}
     </div>
   </section>;
 }

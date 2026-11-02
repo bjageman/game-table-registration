@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import DiscordLink from "./DiscordLink";
 import ConfirmationDialog from "./ConfirmationDialog";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
+import LoadingIndicator from "./LoadingIndicator";
 
 interface Delivery { status: "pending" | "sent" | "needs_review" | "unavailable" | "deleted"; error: string | null; url: string | null; }
 
@@ -38,6 +39,7 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken, onAc
     finally { setBusy(false); }
   }
   return <div className="announcement-status">
+    {!delivery && !error && <p><LoadingIndicator label="Loading announcement status…" /></p>}
     {error && <p role="alert" className="error">{error}</p>}
     {delivery?.status === "sent" && delivery.url && <p><DiscordLink url={delivery.url} label="View Assignment Announcement">View Assignment Announcement</DiscordLink></p>}
     {delivery?.status === "pending" && <p role="status">Assignment announcement queued for Discord.</p>}

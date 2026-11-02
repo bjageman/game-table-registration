@@ -2,6 +2,7 @@ import TableTitle from "./TableTitle";
 import PlayerProfile from "./PlayerProfile";
 import { useEffect, useState } from "react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
+import LoadingIndicator from "./LoadingIndicator";
 
 interface SignupPlayer { id: string; name: string; display_name?: string; weighting?: number; guaranteed_table?: string | null; guaranteed_seat?: boolean }
 type SortColumn = "guarantee" | "player" | "weight";
@@ -155,7 +156,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
                 title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 1).toFixed(1)}`} disabled={saving}
                 onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 1).toFixed(1)}</button>)}
             </li>)}
-          </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : "Loading signups…"}</p>}
+          </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}
           {event.status === "assigned" && row && <div className="table-waitlist">
             <h4>Waitlist</h4>
             {row.waitlist?.length ? <ol>{row.waitlist.map((player) => <li key={player.id}>

@@ -14,6 +14,20 @@ body {
   margin: 0;
   min-width: 320px;
 }
+.loading-indicator { display: inline-flex; align-items: center; gap: 12px; }
+.loader {
+  display: inline-block;
+  flex: none;
+  width: 60px;
+  aspect-ratio: 4;
+  background: radial-gradient(circle closest-side, #000 90%, #0000) 0/calc(100%/3) 100% space;
+  clip-path: inset(0 100% 0 0);
+  animation: loader-reveal 1s steps(4) infinite;
+}
+@keyframes loader-reveal { to { clip-path: inset(0 -34% 0 0); } }
+@media (prefers-reduced-motion: reduce) {
+  .loader { animation: none; clip-path: inset(0 -34% 0 0); }
+}
 button,
 input,
 select {
@@ -461,6 +475,8 @@ dd {
 .player-name:hover { background: transparent; color: #19432f; }
 
 .player-discord-name { margin-bottom: 24px; }
+.profile-weight-display, .profile-weight-edit { display: flex; align-items: center; gap: 12px; }
+.profile-weight-display dl, .profile-weight-edit > div { flex: 1; min-width: 0; margin: 0; }
 /* Reserve room for floating labels and keep spacing independent of field type. */
 .form-fields {
   display: flex;

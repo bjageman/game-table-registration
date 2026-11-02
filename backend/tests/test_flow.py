@@ -367,10 +367,17 @@ def test_player_profile_survives_event_and_poll_deletion(client):
         "real_name": "",
         "weighting": 1.0,
     }
+    client.app.state.discord.bot.reset_mock()
+    assert (
+        client.get(path + "?signup_name=Mary%20from%20signups").json()["discord_name"]
+        == "Mary from signups"
+    )
+    client.app.state.discord.bot.assert_not_called()
     assert client.put(path, json={"real_name": "Mary Smith"}).status_code == 403
     saved = client.put(path, headers=headers, json={"real_name": " Mary Smith "})
     assert saved.status_code == 200
     assert saved.json()["real_name"] == "Mary Smith"
+    assert client.get(path + "?signup_name=Stale").json()["discord_name"] == "Mary"
     event = client.post("/api/events", headers=headers, json=event_body()).json()
     event_path = f"/api/events/{event['id']}"
     client.post(event_path + "/publish", headers=headers)
@@ -385,7 +392,7 @@ def test_player_profile_survives_event_and_poll_deletion(client):
     client.app.state.discord.bot.assert_not_called()
 
 
-def test_player_profiles_are_scoped_to_guild_and_weighting_is_read_only(client):
+def test_player_profiles_are_scoped_to_guild_and_global_weight_can_be_edited(client):
     from app.models import PlayerProfile
 
     headers = login(client)
@@ -402,14 +409,30 @@ def test_player_profiles_are_scoped_to_guild_and_weighting_is_read_only(client):
         )
         db.commit()
     assert client.get("/api/players/123").json()["real_name"] == ""
-    assert (
-        client.put(
-            "/api/players/123",
-            headers=headers,
-            json={"real_name": "Mary", "weighting": 5},
-        ).status_code
-        == 422
+    created = client.put(
+        "/api/players/123",
+        headers=headers,
+        json={"real_name": "Mary", "weighting": 5},
     )
+    assert created.status_code == 200
+    assert created.json()["weighting"] == 5
+    updated = client.put(
+        "/api/players/123",
+        headers=headers,
+        json={"real_name": "Mary", "weighting": 2.5},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["weighting"] == 2.5
+    assert client.get("/api/players/123").json()["weighting"] == 2.5
+    for invalid in (0, 10.1):
+        assert (
+            client.put(
+                "/api/players/123",
+                headers=headers,
+                json={"real_name": "Mary", "weighting": invalid},
+            ).status_code
+            == 422
+        )
     assert (
         client.put(
             "/api/players/123", headers=headers, json={"real_name": "x" * 101}
@@ -418,9 +441,10 @@ def test_player_profiles_are_scoped_to_guild_and_weighting_is_read_only(client):
     )
     assert client.get("/api/players/invalid").status_code == 422
     saved = client.put("/api/players/123", headers=headers, json={"real_name": "Mary"})
-    assert saved.json()["weighting"] == 1.0
+    assert saved.json()["weighting"] == 2.5
     with DBSession(client.app.state.engine) as db:
         assert db.get(PlayerProfile, ("other", "123")).real_name == "Private"
+        assert db.get(PlayerProfile, ("other", "123")).weighting == 2.0
 
 
 def test_settings_switch_channels_without_retargeting_existing_events(client):
