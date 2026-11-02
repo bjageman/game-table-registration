@@ -117,7 +117,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
                 onClick={() => onToggleGuarantee?.(player, table.name)}>{player.guaranteed_table === table.name || (player.guaranteed_seat && !player.guaranteed_table) ? "⭐" : "⚪"}</button>}
               {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog"
                 title={player.display_name || player.name} aria-label={player.display_name || player.name}
-                onClick={() => onSelect(player)}>{(player.display_name || player.name).slice(0, 20)}{(player.display_name || player.name).length > 20 ? "…" : ""}</button> : (player.display_name || player.name).slice(0, 20)}
+                onClick={() => onSelect(player)}>{(player.display_name || player.name).slice(0, 26)}{(player.display_name || player.name).length > 26 ? "…" : ""}</button> : (player.display_name || player.name).slice(0, 26)}
               {event.status === "open" && (editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
                 <input type="number" min="0.1" max="10" step="0.1" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)} disabled={saving} autoFocus />
                 <button type="submit" disabled={saving}>Save</button><button type="button" onClick={onCancelWeight} disabled={saving}>Cancel</button>
