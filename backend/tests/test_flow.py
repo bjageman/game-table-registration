@@ -22,6 +22,7 @@ def client(tmp_path):
         announcement_worker_enabled=False,
         database_url=os.getenv("TEST_DATABASE_URL", f"sqlite:///{tmp_path}/test.db"),
         discord_client_id="client",
+        discord_signup_mode="poll",
         discord_client_secret="secret",
         discord_bot_token="token",
         discord_guild_id="guild",

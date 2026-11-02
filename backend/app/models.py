@@ -50,6 +50,26 @@ class Event(Base):
     close_weights: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
     close_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    signup_mode: Mapped[str] = mapped_column(String(16), default="poll")
+
+
+class TableSignup(Base):
+    __tablename__ = "table_signups"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    discord_name: Mapped[str] = mapped_column(String(100))
+    choices: Mapped[list[str]] = mapped_column(JSON)
+
+
+class SignupInteraction(Base):
+    __tablename__ = "signup_interactions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    response: Mapped[dict[str, Any]] = mapped_column(JSON)
 
 
 class PlayerProfile(Base):

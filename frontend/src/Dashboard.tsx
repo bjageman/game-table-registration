@@ -45,7 +45,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
 
   function updated(event: EventRecord, notice?: string) {
     setEvents((rows) => rows.map((row) => (row.id === event.id ? event : row)));
-    const message = event.status === "assigned" ? "Placements determined" : event.status === "closing" ? "Signups closing" : "Poll published";
+    const message = event.status === "assigned" ? "Placements determined" : event.status === "closing" ? "Signups closing" : "Signups published";
     setNotice(notice ?? `${message}: ${event.title}.`);
   }
 

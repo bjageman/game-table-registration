@@ -203,6 +203,14 @@ class DiscordAPI:
             f"/channels/{self.settings.discord_channel_id}/messages/{message_id}",
         )
 
+    def close_signup_message(self, message_id: str) -> None:
+        # Keep the event description and deadline; remove the interactive button.
+        self.bot(
+            "PATCH",
+            f"/channels/{self.settings.discord_channel_id}/messages/{message_id}",
+            json={"components": []},
+        )
+
     def manager_context(
         self, user_id: str, guild_id: str
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
@@ -224,7 +232,9 @@ class DiscordAPI:
         bot_member = self.bot("GET", f"/guilds/{guild_id}/members/{bot['id']}")
         channels = self.bot_items(f"/guilds/{guild_id}/channels")
         result = []
-        required = (1 << 10) | (1 << 11) | (1 << 16) | (1 << 49)
+        required = (1 << 10) | (1 << 11) | (1 << 16)
+        if self.settings.discord_signup_mode == "poll":
+            required |= 1 << 49
         for channel in channels:
             if channel.get("type") != 0:
                 continue

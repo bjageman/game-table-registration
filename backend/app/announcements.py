@@ -83,7 +83,7 @@ def payloads(
             "content": (
                 f"**{'[TEST] ' if is_test else ''}{clean(event.title)} "
                 "— Table Assignments "
-                f"({i + 1}/{len(chunks)})**\n[Signup poll]({poll_url})\n\n{body}"
+                f"({i + 1}/{len(chunks)})**\n[Signup message]({poll_url})\n\n{body}"
             ),
             "allowed_mentions": {"parse": [], "users": mentions},
             "nonce": hashlib.sha256(f"{event.id}:assignments:{i}".encode()).hexdigest()[

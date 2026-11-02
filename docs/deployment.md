@@ -21,6 +21,30 @@ Register these OAuth redirect URLs in the respective Discord applications:
 - `https://signups-dev.brodin.rocks/api/auth/callback`
 - `https://signups.brodin.rocks/api/auth/callback`
 
+For custom table signups, add each application's **General Information → Public Key**
+as `DISCORD_PUBLIC_KEY` in its environment file and keep `DISCORD_SIGNUP_MODE=custom`.
+After the signed endpoint is deployed, save these **Interactions Endpoint URLs** in
+the respective applications' General Information pages:
+
+- Dev: `https://signups-dev.brodin.rocks/api/discord/interactions`
+- Production: `https://signups.brodin.rocks/api/discord/interactions`
+
+Discord sends a signed PING when saving; the endpoint must be publicly reachable
+over HTTPS. Use a separate application per environment because an application has
+one interactions endpoint. No new OAuth redirect, Gateway worker, or privileged
+intent is needed. Until setup is complete, custom publication is blocked before
+sending any message. Set `DISCORD_SIGNUP_MODE=poll` to retain native publication
+during rollout. Existing published native polls continue working in either mode.
+
+For acceptance testing in the dedicated dev server, publish a future event with
+two tables. As a regular server member, click **Choose tables / My signup**, select
+both tables, and reopen the menu to confirm saved selections. Change to one table,
+verify the organizer view, withdraw, and rejoin. Confirm another member's menu
+shows only their own choices. Close signups as the organizer, verify assignments
+use the selected tables and appear in Discord, then confirm an old private menu
+cannot change the saved entries. Let a separate short signup window expire and
+confirm its controls reject changes even before the organizer closes it.
+
 Add repository Actions secrets `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_KEY`,
 just as in Tinygrim. Add `DEV_TO_MAIN_SECRET` with a token allowed to create
 pull requests so release PRs trigger the normal CI checks. These secrets are repository scoped and must be configured

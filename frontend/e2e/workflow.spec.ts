@@ -113,7 +113,7 @@ test("completes login, draft creation, publication, refresh, and logout", async 
   await page.getByRole("button", { name: "Publish to Discord" }).click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
-    page.getByRole("link", { name: /View Discord poll/ }),
+    page.getByRole("link", { name: /View Discord signup/ }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Refresh events" }).click();
   await expect(page.getByText("open", { exact: true })).toBeVisible();
@@ -291,7 +291,7 @@ test("blocks repeat confirmation and Escape while a publication is pending", asy
   await expect(page.getByRole("dialog")).toBeVisible();
   release();
   await expect(
-    page.getByRole("link", { name: /View Discord poll/ }),
+    page.getByRole("link", { name: /View Discord signup/ }),
   ).toBeVisible();
   expect(calls).toBe(1);
 });

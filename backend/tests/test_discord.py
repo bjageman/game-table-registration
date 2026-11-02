@@ -125,10 +125,11 @@ def test_delete_discord_poll_failure_is_reported():
         assert error.value.status_code == 502
 
 
-def test_channel_picker_respects_user_and_bot_overwrites():
+@pytest.mark.parametrize("mode", ["custom", "poll"])
+def test_channel_picker_respects_user_and_bot_overwrites(mode):
     from app.connection_settings import POLL_PERMISSIONS
 
-    api = DiscordAPI(Settings(_env_file=None))
+    api = DiscordAPI(Settings(_env_file=None, discord_signup_mode=mode))
     guild = {"id": "100", "owner_id": "other", "name": "Games"}
     roles = [
         {"id": "100", "permissions": str(1 << 10)},
@@ -176,7 +177,8 @@ def test_channel_picker_respects_user_and_bot_overwrites():
     )
     assert api.destination_channels("user", "100") == (
         "Games",
-        [{"id": "101", "name": "public"}],
+        ([{"id": "103", "name": "no-polls"}] if mode == "custom" else [])
+        + [{"id": "101", "name": "public"}],
     )
     roles[1]["permissions"] = "0"
     with pytest.raises(HTTPException) as error:

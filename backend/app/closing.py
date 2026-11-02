@@ -14,6 +14,7 @@ from app.announcements import enqueue
 from app.discord_api import DiscordAPI
 from app.lottery import VERSION, GuaranteeConflict, assign
 from app.models import Event, GuildSettings, LotteryRun, PlayerProfile
+from app.signups import players as signup_players
 
 LEASE_SECONDS = 120
 
@@ -179,6 +180,14 @@ def close_and_assign(
         tables = [dict(t) for t in event.tables]
         answers = list(event.answers or [])
         test_population = event.test_signups
+        custom = event.signup_mode == "custom"
+        custom_snapshot: dict[str, Any] | None = None
+        if custom:
+            custom_snapshot = {
+                "tables": tables,
+                "players": signup_players(db, event, weights),
+            }
+        custom_ended_at = min(now, event.closes_at or now)
         assert message_id is not None
 
     def with_guarantees(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -188,7 +197,7 @@ def close_and_assign(
 
     preflight = True
     try:
-        if guarantees:
+        if guarantees and not custom:
             rows = discord.table_signups(message_id, tables)
             participants: dict[str, dict[str, Any]] = {}
             for row in rows:
@@ -214,11 +223,19 @@ def close_and_assign(
                 ),
                 seed,
             )
-        preflight = False
-        poll, expiry = poll_data(discord.poll_message(message_id))
-        if expiry > time.time() and not (poll.get("results") or {}).get("is_finalized"):
-            discord.end_poll(message_id)
-        snapshot, ended_at = reconcile(discord, message_id, tables, answers, weights)
+        if custom:
+            assert custom_snapshot is not None
+            snapshot, ended_at = custom_snapshot, custom_ended_at
+        else:
+            preflight = False
+            poll, expiry = poll_data(discord.poll_message(message_id))
+            if expiry > time.time() and not (poll.get("results") or {}).get(
+                "is_finalized"
+            ):
+                discord.end_poll(message_id)
+            snapshot, ended_at = reconcile(
+                discord, message_id, tables, answers, weights
+            )
         if test_population:
             snapshot["is_test"] = True
             snapshot["players"].extend(

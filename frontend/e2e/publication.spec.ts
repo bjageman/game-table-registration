@@ -49,7 +49,7 @@ test("requires confirmation and replaces the publish action with a Discord link"
   await page.getByRole("button", { name: "Publish to Discord" }).click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
-    page.getByRole("link", { name: /View Discord poll/ }),
+    page.getByRole("link", { name: /View Discord signup/ }),
   ).toHaveAttribute(
     "href",
     "https://discord.com/channels/guild/channel/message",
