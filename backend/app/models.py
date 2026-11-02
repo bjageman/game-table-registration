@@ -51,6 +51,8 @@ class Event(Base):
     close_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     signup_mode: Mapped[str] = mapped_column(String(16), default="poll")
+    reaction_checkpoint: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reaction_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class TableSignup(Base):

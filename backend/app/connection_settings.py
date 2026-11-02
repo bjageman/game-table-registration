@@ -11,7 +11,7 @@ from app.discord_api import DiscordAPI
 from app.models import Session, UserSettings
 
 # Custom signups need View Channel, Send Messages, and Read Message History.
-SIGNUP_PERMISSIONS = (1 << 10) | (1 << 11) | (1 << 16)
+SIGNUP_PERMISSIONS = (1 << 10) | (1 << 11) | (1 << 16) | (1 << 6)
 POLL_PERMISSIONS = SIGNUP_PERMISSIONS | (1 << 49)
 
 

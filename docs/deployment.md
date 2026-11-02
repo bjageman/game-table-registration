@@ -41,13 +41,14 @@ OAuth redirect. Hosted deployments retain their normal website/OAuth HTTPS URLs.
 published native polls continue working in either mode.
 
 For acceptance testing in the dedicated dev server, publish a future event with
-two tables. As a regular server member, click **Choose tables / My signup**, select
-both tables, and reopen the menu to confirm saved selections. Change to one table,
-verify the organizer view, withdraw, and rejoin. Confirm another member's menu
-shows only their own choices. Close signups as the organizer, verify assignments
-use the selected tables and appear in Discord, then confirm an old private menu
-cannot change the saved entries. Let a separate short signup window expire and
-confirm its controls reject changes even before the organizer closes it.
+two tables. The bot should add 1️⃣ and 2️⃣ under the signup message. As a regular
+member, react to both; verify the organizer sees that player under both tables.
+Remove 1️⃣ and verify the player remains under only the second table. Try another
+member and close signups; the saved assignments must use those choices. New
+installations require the bot's **Add Reactions** permission in the signup channel.
+Existing menu-based events and native polls continue through their original paths.
+If the bot is disconnected across a signup deadline, closing is held for review
+because Discord cannot reveal when reactions were added during the outage.
 
 Add repository Actions secrets `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_KEY`,
 just as in Tinygrim. Add `DEV_TO_MAIN_SECRET` with a token allowed to create

@@ -49,7 +49,9 @@ from app.models import (
     TableSignup,
     UserSettings,
 )
-from app.signups import publication, table_rows
+from app.reactions import EMOJIS
+from app.reactions import publication as reaction_publication
+from app.signups import table_rows
 from app.test_signups import (
     add_to_rows,
 )
@@ -294,7 +296,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "closes_at": event.closes_at,
             "published_at": event.published_at,
             "archived_at": event.archived_at,
-            "close_error": event.close_error,
+            "close_error": event.close_error or event.reaction_error,
             "is_test": bool(event.test_signups),
             "test_generation": event.test_signups.get("generation")
             if event.test_signups
@@ -702,7 +704,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             message_id = event.message_id
             tables = event.tables
             population = event.test_signups
-            if event.signup_mode == "custom":
+            if event.signup_mode in ("custom", "reactions"):
                 return list_names(
                     add_to_rows(table_rows(db, event), population), event.guild_id
                 )
@@ -730,6 +732,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             destination(request).discord_channel_id,
         )
         if complete:
+            if event.signup_mode == "reactions" and event.message_id:
+                try:
+                    scoped_discord(request).close_reaction_message(event.message_id)
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        "Could not mark the reaction message closed; "
+                        "late reactions are rejected"
+                    )
             if event.signup_mode == "custom" and event.message_id:
                 try:
                     scoped_discord(request).close_signup_message(event.message_id)
@@ -1051,7 +1061,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             claimed = db.execute(
                 update(Event)
                 .where(Event.id == event_id, Event.status == "draft")
-                .values(status="publishing", signup_mode=config.discord_signup_mode)
+                .values(
+                    status="publishing",
+                    signup_mode=(
+                        "reactions"
+                        if config.discord_signup_mode == "custom"
+                        else "poll"
+                    ),
+                )
                 .returning(Event.id)
             ).scalar_one_or_none()
             db.commit()
@@ -1061,8 +1078,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 closes_at = time.time() + event.duration_hours * 3600
                 message = scoped_discord(request).publish(
-                    publication(event, closes_at)
-                    if event.signup_mode == "custom"
+                    reaction_publication(event, closes_at)
+                    if event.signup_mode == "reactions"
                     else {
                         "content": (
                             f"**{'[TEST] ' if event.test_signups else ''}"
@@ -1094,8 +1111,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     else time.time()
                 )
                 event.message_id = str(message["id"])
-                if event.signup_mode == "custom":
+                if event.signup_mode == "reactions":
                     event.closes_at = closes_at
+                    # Save the message identity before seeding: an uncertain PUT
+                    # must never cause a second publication on retry.
+                    db.commit()
+                    scoped_discord(request).seed_reactions(
+                        event.message_id, list(EMOJIS[: len(event.tables)])
+                    )
                 else:
                     event.answers = message["poll"]["answers"]
                     event.closes_at = datetime.fromisoformat(

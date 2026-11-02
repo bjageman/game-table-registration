@@ -44,7 +44,9 @@ def test_gateway_opens_private_menu_and_saves_and_withdraws(custom_client):
 
     async def check():
         gateway = SignupGateway(client.app.state.engine, config)
-        assert gateway.intents.value == 0
+        assert gateway.intents.guild_reactions
+        assert not gateway.intents.members
+        assert not gateway.intents.message_content
         opening = component(event)
         await gateway.on_interaction(opening)
         opening.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)

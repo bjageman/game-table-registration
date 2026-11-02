@@ -118,6 +118,21 @@ def close_and_assign(
             return True
         if event.status not in ("open", "closing") or not event.message_id:
             raise HTTPException(409, "Only open signups can be closed")
+        if event.signup_mode == "reactions" and (
+            event.reaction_error
+            or event.reaction_checkpoint is None
+            or (
+                event.closes_at
+                and time.time() >= event.closes_at
+                and event.reaction_checkpoint < event.closes_at
+            )
+        ):
+            raise HTTPException(
+                409,
+                event.reaction_error
+                or "Reaction signups are still synchronizing. "
+                "Keep the bot connected and retry; no placements have been drawn.",
+            )
         previous_status = event.status
         weights = event.close_weights
         if weights is None:
@@ -180,7 +195,7 @@ def close_and_assign(
         tables = [dict(t) for t in event.tables]
         answers = list(event.answers or [])
         test_population = event.test_signups
-        custom = event.signup_mode == "custom"
+        custom = event.signup_mode in ("custom", "reactions")
         custom_snapshot: dict[str, Any] | None = None
         if custom:
             custom_snapshot = {

@@ -86,7 +86,7 @@ def interaction(event, action="open", user="1", values=None):
     }
 
 
-def publish(custom_client):
+def publish(custom_client, *, reaction=False):
     client, _, _ = custom_client
     headers = login(client)
     body = {
@@ -96,7 +96,15 @@ def publish(custom_client):
     event = client.post("/api/events", json=body, headers=headers).json()
     result = client.post(f"/api/events/{event['id']}/publish", headers=headers)
     assert result.status_code == 200, result.text
-    return headers, result.json(), f"/api/events/{event['id']}"
+    saved = result.json()
+    if not reaction:
+        # Existing menu-based events remain supported after changing new posts
+        # to reactions. Exercise that compatibility path in these tests.
+        with Session(client.app.state.engine) as db:
+            db.get(Event, saved["id"]).signup_mode = "custom"
+            db.commit()
+        saved["signup_mode"] = "custom"
+    return headers, saved, f"/api/events/{event['id']}"
 
 
 def test_custom_publication_and_duplicate_guard(custom_client):
@@ -108,10 +116,9 @@ def test_custom_publication_and_duplicate_guard(custom_client):
     assert "B · 1 seats" in payload["content"]
     assert "lottery entry" in payload["content"]
     assert payload["allowed_mentions"] == {"parse": []}
-    assert (
-        payload["components"][0]["components"][0]["custom_id"]
-        == f"signup:open:{event['id']}"
-    )
+    assert "1️⃣ A" in payload["content"]
+    assert "2️⃣ B" in payload["content"]
+    assert "components" not in payload
     assert event["signup_mode"] == "custom"
     assert event["closes_at"] == pytest.approx(time.time() + 86400, abs=5)
     assert client.post(path + "/publish", headers=headers).status_code == 409
