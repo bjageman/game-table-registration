@@ -5,6 +5,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
+import { renderTimeViewClock } from "@mui/x-date-pickers/timeViewRenderers";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import {
@@ -72,6 +73,7 @@ export default function EventForm({
   );
   const nextId = useRef(tables.length);
   const pendingTableFocus = useRef<number | null>(null);
+  const scheduleFields = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -235,7 +237,7 @@ export default function EventForm({
             }}
           />
           <div className="form-grid event-schedule-fields">
-            <div className="date-time-fields">
+            <div className="date-time-fields" ref={scheduleFields}>
               {isMobile ? (
                 <div className="mobile-date-time-fields">
                   <DatePicker
@@ -259,7 +261,11 @@ export default function EventForm({
                     value={mobileTime}
                     onChange={updateMobileTime}
                     ampm
-                    timeSteps={{ minutes: 15 }}
+                    minutesStep={15}
+                    viewRenderers={{
+                      hours: renderTimeViewClock,
+                      minutes: renderTimeViewClock,
+                    }}
                     slotProps={{
                       textField: {
                         id: `${prefix}-time`,
@@ -273,13 +279,32 @@ export default function EventForm({
               ) : (
                 <DateTimePicker
                   label="Event starts"
+                  onOpen={() => {
+                    scheduleFields.current?.scrollIntoView({
+                      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                        ? "instant"
+                        : "smooth",
+                      block: "start",
+                      inline: "nearest",
+                    });
+                  }}
                   value={startsAt}
                   onChange={updateDesktopStart}
                   referenceDate={mobileTime}
                   format="MMMM D, YYYY h:mm A"
                   ampm
-                  timeSteps={{ minutes: 15 }}
+                  minutesStep={15}
+                  viewRenderers={{
+                    hours: renderTimeViewClock,
+                    minutes: renderTimeViewClock,
+                  }}
                   slotProps={{
+                    desktopPaper: {
+                      sx: {
+                        maxHeight: "calc(100dvh - 32px)",
+                        overflowY: "auto",
+                      },
+                    },
                     textField: {
                       id: `${prefix}-start`,
                       fullWidth: true,
