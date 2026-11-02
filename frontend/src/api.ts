@@ -50,7 +50,7 @@ export async function api<T>(
         ? body.detail
         : issues.length
           ? issues.map((issue: { msg: string }) => issue.msg).join(" ")
-          : "The request could not be completed. Please try again.",
+          : `Request failed (HTTP ${response.status}). Refresh and try again.`,
       issues,
     );
   }
