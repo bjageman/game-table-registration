@@ -12,6 +12,7 @@ import {
 import Dashboard from "./Dashboard";
 import ConnectionSettings from "./ConnectionSettings";
 import LoadingIndicator from "./LoadingIndicator";
+import PlayerLookup from "./PlayerLookup";
 
 type AuthState =
   | { kind: "loading" }
@@ -32,9 +33,9 @@ export default function App() {
     return () => controller.abort();
   }, []);
   useEffect(() => { document.title = branding.name; }, [branding.name]);
-  const [page, setPage] = useState(() => window.location.hash === "#/settings" ? "settings" : "events");
+  const [page, setPage] = useState(() => window.location.hash.slice(2) || "events");
   useEffect(() => {
-    const changed = () => setPage(window.location.hash === "#/settings" ? "settings" : "events");
+    const changed = () => setPage(window.location.hash.slice(2) || "events");
     window.addEventListener("hashchange", changed);
     return () => window.removeEventListener("hashchange", changed);
   }, []);
@@ -131,6 +132,9 @@ export default function App() {
               anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
               transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
+              <MenuItem component="a" href="#/players" onClick={() => setAccountAnchor(null)}>
+                User Lookup
+              </MenuItem>
               <MenuItem component="a" href="#/settings" onClick={() => setAccountAnchor(null)}>
                 Settings
               </MenuItem>
@@ -197,6 +201,8 @@ export default function App() {
                 const session = await api<ModeratorSession>("/me");
                 setAuth({ kind: "ready", session });
               }} />
+          ) : page === "players" ? (
+            <PlayerLookup key={auth.session.destination ?? "legacy"} session={auth.session} onAccessError={onAccessError} />
           ) : <Dashboard key={auth.session.destination ?? "legacy"} session={auth.session} onAccessError={onAccessError} />
         )}
       </main>

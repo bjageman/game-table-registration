@@ -123,14 +123,14 @@ class AssignmentSettingsInput(BaseModel):
 
 class PlayerProfileInput(BaseModel):
     model_config = {"extra": "forbid"}
-    real_name: str = Field(max_length=100)
+    real_name: str | None = Field(default=None, max_length=100)
     guaranteed_seat: bool | None = None
     weighting: float | None = Field(default=None, ge=0.1, le=10.0, allow_inf_nan=False)
 
     @field_validator("real_name")
     @classmethod
-    def clean_real_name(cls, value: str) -> str:
-        return value.strip()
+    def clean_real_name(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
 
 
 class EventPlayerSettingInput(BaseModel):
@@ -667,6 +667,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not player_id.isascii() or not player_id.isdecimal() or len(player_id) > 32:
             raise HTTPException(422, "Invalid Discord user ID")
 
+    @app.get("/api/players")
+    def players(request: Request) -> list[dict[str, Any]]:
+        authenticated(request)
+        guild_id = destination(request).discord_guild_id
+        found: dict[str, dict[str, Any]] = {}
+        with DBSession(engine) as db:
+            for profile in db.scalars(
+                select(PlayerProfile).where(PlayerProfile.guild_id == guild_id)
+            ):
+                found[profile.discord_id] = player_data(
+                    profile.discord_id, profile
+                )
+            for player_id, name in db.execute(
+                select(TableSignup.discord_id, TableSignup.discord_name)
+                .join(Event, Event.id == TableSignup.event_id)
+                .where(Event.guild_id == guild_id)
+            ):
+                found.setdefault(player_id, player_data(player_id, None, name))
+            for snapshot in db.scalars(
+                select(LotteryRun.snapshot)
+                .join(Event, Event.id == LotteryRun.event_id)
+                .where(Event.guild_id == guild_id)
+            ):
+                for player in snapshot.get("players", []):
+                    player_id = str(player.get("id", ""))
+                    name = player.get("name")
+                    if player_id and isinstance(name, str):
+                        found.setdefault(player_id, player_data(player_id, None, name))
+                        if player.get("is_test"):
+                            found[player_id]["is_test"] = True
+        return sorted(
+            found.values(),
+            key=lambda player: (
+                (player["real_name"] or player["discord_name"]).casefold(),
+                player["discord_id"],
+            ),
+        )
+
     @app.get("/api/players/{player_id}")
     def player_profile(
         player_id: str, request: Request, signup_name: str | None = None
@@ -689,6 +727,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         authenticated(request, True)
         valid_player_id(player_id)
+        if all(
+            value is None
+            for value in (body.real_name, body.guaranteed_seat, body.weighting)
+        ):
+            raise HTTPException(422, "Specify a profile setting to update")
         with DBSession(engine) as db:
             profile = db.get(
                 PlayerProfile, (destination(request).discord_guild_id, player_id)
@@ -702,12 +745,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     guild_id=destination(request).discord_guild_id,
                     discord_id=player_id,
                     discord_name=discord_name(player_id),
-                    real_name=body.real_name,
+                    real_name=body.real_name or "",
                     weighting=body.weighting if body.weighting is not None else 1.0,
                 )
                 db.add(profile)
             else:
-                profile.real_name = body.real_name
+                if body.real_name is not None:
+                    profile.real_name = body.real_name
                 if body.weighting is not None:
                     profile.weighting = body.weighting
 
@@ -726,7 +770,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 if profile is None:
                     raise
-                profile.real_name = body.real_name
+                if body.real_name is not None:
+                    profile.real_name = body.real_name
                 if body.weighting is not None:
                     profile.weighting = body.weighting
                 apply_guarantee(profile)
