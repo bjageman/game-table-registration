@@ -65,6 +65,7 @@ from app.test_signups import (
 from app.test_signups import (
     generate as generate_test_users,
 )
+from app.withdrawals import current_result
 
 
 def digest(token: str) -> str:
@@ -850,7 +851,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 run = db.get(LotteryRun, event_id)
                 if run is None:
                     raise HTTPException(503, "Saved placements are unavailable")
-                rows: list[dict[str, Any]] = run.result["tables"]
+                rows: list[dict[str, Any]] = current_result(db, run)["tables"]
                 return list_names(rows, event.guild_id)
             message_id = event.message_id
             tables = event.tables
@@ -1102,7 +1103,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             rows = list(
                 db.scalars(
                     select(Announcement).where(
-                        Announcement.event_id == event_id, Announcement.state != "sent"
+                        Announcement.event_id == event_id,
+                        Announcement.kind == "assignment",
+                        Announcement.state != "sent",
                     )
                 )
             )
@@ -1180,6 +1183,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "seed": run.seed,
                 "snapshot": run.snapshot,
                 "result": run.result,
+                "current_result": current_result(db, run),
                 "created_at": run.created_at,
             }
 
@@ -1249,7 +1253,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return serialize(event)
 
     def delete_discord_messages_batch(
-        event_id: str, request: Request
+        event_id: str, request: Request, promotions_only: bool = False
     ) -> dict[str, Any]:
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
@@ -1259,19 +1263,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     409, "Archive the event before deleting its messages"
                 )
-            rows = list(
-                db.scalars(
-                    select(Announcement)
-                    .where(Announcement.event_id == event_id)
-                    .order_by(Announcement.part)
-                )
-            )
+            query = select(Announcement).where(Announcement.event_id == event_id)
+            if promotions_only:
+                query = query.where(Announcement.kind == "promotion")
+            rows = list(db.scalars(query.order_by(Announcement.part)))
 
             def progress(
                 retry_after: float = 0, error: str | None = None
             ) -> dict[str, Any]:
                 remaining = sum(not row.deleted_at for row in rows)
-                remaining += bool(event.message_id and not event.signup_deleted_at)
+                if not promotions_only:
+                    remaining += bool(event.message_id and not event.signup_deleted_at)
                 return {
                     **serialize(event),
                     "discord_cleanup_remaining": remaining,
@@ -1292,6 +1294,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "Retry the remaining messages."
                 )
 
+            now = time.time()
+            for row in rows:
+                if row.kind == "promotion" and (
+                    row.unknown or row.state == "needs_review"
+                ):
+                    discord = scoped_discord(request).at(
+                        event.guild_id, row.channel_id
+                    )
+                    message_id = None
+                    try:
+                        message_id = discord.find_announcement(
+                            row.channel_id,
+                            row.payload,
+                            row.attempted_at or row.created_at,
+                        )
+                        if message_id:
+                            discord.delete_poll(message_id)
+                    except DiscordRequestError as failure:
+                        if message_id:
+                            row.message_id = message_id
+                            row.state = "sent"
+                            row.error = "Promotion notice deletion failed."
+                            db.commit()
+                        return failed(failure)
+                    except HTTPException as failure:
+                        return progress(
+                            error=f"Promotion notice cleanup failed: {failure.detail}"
+                        )
+                    row.message_id = message_id
+                    row.state = "sent"
+                    row.deleted_at = now
+                    row.unknown = False
+                    row.error = None
+                if (
+                    promotions_only
+                    and row.kind == "promotion"
+                    and row.state in ("pending", "needs_review")
+                    and not row.message_id
+                    and not row.unknown
+                ):
+                    row.state = "sent"
+                    row.deleted_at = now
+                    row.token = None
+                    row.lease_until = None
+            db.commit()
+
             if any(row.state == "needs_review" for row in rows):
                 return progress(
                     error="An assignment announcement needs review before its "
@@ -1300,7 +1348,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if any(row.state != "sent" or not row.message_id for row in rows):
                 return progress(retry_after=2)
             targets = [row for row in rows if not row.deleted_at]
-            for row in targets[:3]:
+            for row in (targets if promotions_only else targets[:3]):
                 assert row.message_id is not None
                 try:
                     scoped_discord(request).at(
@@ -1310,7 +1358,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     return failed(failure)
                 row.deleted_at = time.time()
                 db.commit()
-            if len(targets) < 3 and event.message_id and not event.signup_deleted_at:
+            if (
+                not promotions_only
+                and len(targets) < 3
+                and event.message_id
+                and not event.signup_deleted_at
+            ):
                 try:
                     remove_signup_message(db, event, request)
                 except DiscordRequestError as failure:
@@ -1345,12 +1398,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .values(archived_at=time.time())
             )
             db.commit()
-            db.refresh(event)
-            archived = serialize(event)
-        return (
-            delete_discord_messages_batch(event_id, request)
-            if delete_discord_messages
-            else archived
+        return delete_discord_messages_batch(
+            event_id, request, promotions_only=not delete_discord_messages
         )
 
     @app.delete("/api/events/{event_id}", status_code=204)

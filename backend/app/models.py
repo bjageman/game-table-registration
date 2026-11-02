@@ -127,6 +127,17 @@ class LotteryRun(Base):
     created_at: Mapped[float] = mapped_column(Float)
 
 
+class EventWithdrawal(Base):
+    __tablename__ = "event_withdrawals"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    table_name: Mapped[str] = mapped_column(String(35))
+    withdrawn_at: Mapped[float] = mapped_column(Float)
+    promoted_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
 class Announcement(Base):
     __tablename__ = "announcements"
     __table_args__ = (
@@ -136,6 +147,9 @@ class Announcement(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     event_id: Mapped[str] = mapped_column(ForeignKey("events.id"))
     part: Mapped[int]
+    kind: Mapped[str] = mapped_column(
+        String(16), default="assignment", server_default="assignment"
+    )
     channel_id: Mapped[str] = mapped_column(String(32))
     payload: Mapped[dict[str, Any]] = mapped_column(JSON)
     state: Mapped[str] = mapped_column(String(20), default="pending")

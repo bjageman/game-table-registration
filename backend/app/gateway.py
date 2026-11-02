@@ -8,7 +8,8 @@ from typing import Any
 import discord
 from sqlalchemy import Engine
 
-from app import reactions
+from app import reactions, withdrawals
+from app.announcements import deliver_event
 from app.config import Settings
 from app.discord_api import DiscordAPI
 from app.signups import handle
@@ -160,11 +161,46 @@ class SignupGateway(discord.Client):
         observed = time.time()
         if event.guild_id is None or event.emoji.id is not None:
             return
-        if event.emoji.name not in reactions.EMOJIS:
-            return
         if self.user and event.user_id == self.user.id:
             return
         if event.type != discord.ReactionType.normal:
+            return
+        if event.emoji.name == "❌":
+            if not added:
+                return
+            user = event.member or await self.fetch_user(event.user_id)
+            if user.bot:
+                return
+            async with self.reaction_lock:
+                event_id = await asyncio.to_thread(
+                    withdrawals.announcement_event,
+                    self.engine,
+                    str(event.guild_id),
+                    str(event.channel_id),
+                    str(event.message_id),
+                )
+                if event_id is None:
+                    return
+                try:
+                    changed = await asyncio.to_thread(
+                        withdrawals.withdraw,
+                        self.engine,
+                        str(event.guild_id),
+                        str(event.channel_id),
+                        str(event.message_id),
+                        str(event.user_id),
+                    )
+                    if changed:
+                        discord = DiscordAPI(self.config).at(
+                            str(event.guild_id), str(event.channel_id)
+                        )
+                        await asyncio.to_thread(
+                            deliver_event, self.engine, discord, event_id
+                        )
+                except Exception:
+                    logger.exception("Could not process an assignment withdrawal")
+            return
+        if event.emoji.name not in reactions.EMOJIS:
             return
         async with self.reaction_lock:
             event_id = await asyncio.to_thread(

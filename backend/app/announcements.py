@@ -68,6 +68,9 @@ def payloads(
     introduction = (
         f"**{'[TEST] ' if is_test else ''}{clean(event.title)} — Table Assignments**"
         f"\n[Signup message]({poll_url})\n\n"
+        "Before the event starts, react with ❌ to this message to leave "
+        "your assigned table. "
+        "The next eligible waitlisted player will be promoted.\n\n"
     )
     return [
         {
@@ -113,10 +116,28 @@ def deliver_event(
         with Session(engine) as db:
             row = db.scalar(
                 select(Announcement)
-                .where(Announcement.event_id == event_id, Announcement.state != "sent")
+                .where(
+                    Announcement.event_id == event_id,
+                    Announcement.state.in_(["pending", "sending"]),
+                )
                 .order_by(Announcement.part)
                 .limit(1)
             )
+            event = db.get(Event, event_id)
+            if (
+                row is not None
+                and row.kind == "promotion"
+                and event
+                and event.archived_at
+            ):
+                if row.unknown or row.state == "sending" or row.message_id:
+                    return
+                row.state = "sent"
+                row.deleted_at = now
+                row.token = None
+                row.lease_until = None
+                db.commit()
+                continue
             if row is None or row.state == "needs_review" or row.next_attempt > now:
                 return
             recovering = row.state == "sending"
@@ -148,6 +169,7 @@ def deliver_event(
                 row.payload,
                 row.attempts,
             )
+            row_kind = row.kind
         try:
             if unknown:
                 message_id = discord.find_announcement(
@@ -160,6 +182,18 @@ def deliver_event(
                     )
             else:
                 message_id = str(discord.send_announcement(channel_id, payload)["id"])
+            deleted_at = None
+            if row_kind == "promotion":
+                with Session(engine) as db:
+                    event = db.get(Event, event_id)
+                    archived = bool(event and event.archived_at)
+                if archived:
+                    try:
+                        discord.delete_poll(message_id)
+                        deleted_at = time.time()
+                    except Exception:
+                        # Keep the message ID so archived-event cleanup can retry.
+                        pass
             with Session(engine) as db:
                 db.execute(
                     update(Announcement)
@@ -167,6 +201,7 @@ def deliver_event(
                     .values(
                         state="sent",
                         message_id=message_id,
+                        deleted_at=deleted_at,
                         token=None,
                         lease_until=None,
                         error=None,
@@ -219,7 +254,7 @@ def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -
     with Session(engine) as db:
         first = (
             select(Announcement.event_id, func.min(Announcement.part).label("part"))
-            .where(Announcement.state != "sent")
+            .where(Announcement.state.in_(["pending", "sending"]))
             .group_by(Announcement.event_id)
             .subquery()
         )
@@ -233,6 +268,9 @@ def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -
                     & (first.c.part == Announcement.part),
                 )
                 .where(
+                    or_(
+                        Announcement.kind != "promotion", Event.archived_at.is_(None)
+                    ),
                     Announcement.state.in_(["pending", "sending"]),
                     Announcement.next_attempt <= time.time(),
                     or_(
@@ -253,7 +291,10 @@ def status(engine: Engine, event_id: str, guild_id: str) -> dict[str, Any]:
         rows = list(
             db.scalars(
                 select(Announcement)
-                .where(Announcement.event_id == event_id)
+                .where(
+                    Announcement.event_id == event_id,
+                    Announcement.kind == "assignment",
+                )
                 .order_by(Announcement.part)
             )
         )
