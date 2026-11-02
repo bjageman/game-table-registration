@@ -596,12 +596,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(502, "Discord returned an invalid user profile")
         return name
 
-    def player_data(player_id: str, profile: PlayerProfile | None) -> dict[str, Any]:
+    def player_data(
+        player_id: str, profile: PlayerProfile | None, signup_name: str | None = None
+    ) -> dict[str, Any]:
         return {
             "discord_id": player_id,
             "discord_name": profile.discord_name
             if profile
-            else discord_name(player_id),
+            else signup_name or discord_name(player_id),
             "real_name": profile.real_name if profile else "",
             "weighting": profile.weighting if profile else 1.0,
             "is_test": profile.is_test if profile else False,
@@ -615,7 +617,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(422, "Invalid Discord user ID")
 
     @app.get("/api/players/{player_id}")
-    def player_profile(player_id: str, request: Request) -> dict[str, Any]:
+    def player_profile(
+        player_id: str, request: Request, signup_name: str | None = None
+    ) -> dict[str, Any]:
         authenticated(request)
         valid_player_id(player_id)
         with DBSession(engine) as db:
@@ -626,7 +630,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 profile is None or not profile.is_test
             ):
                 raise HTTPException(404, "Test player not found")
-            return player_data(player_id, profile)
+            return player_data(player_id, profile, signup_name)
 
     @app.put("/api/players/{player_id}")
     def save_player_profile(
@@ -642,17 +646,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 profile is None or not profile.is_test
             ):
                 raise HTTPException(404, "Test player not found")
-            if body.weighting is not None and (profile is None or not profile.is_test):
-                raise HTTPException(
-                    422, "Weight editing is currently available for test users only"
-                )
             if profile is None:
                 profile = PlayerProfile(
                     guild_id=destination(request).discord_guild_id,
                     discord_id=player_id,
                     discord_name=discord_name(player_id),
                     real_name=body.real_name,
-                    weighting=1.0,
+                    weighting=body.weighting if body.weighting is not None else 1.0,
                 )
                 db.add(profile)
             else:
@@ -676,6 +676,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if profile is None:
                     raise
                 profile.real_name = body.real_name
+                if body.weighting is not None:
+                    profile.weighting = body.weighting
                 apply_guarantee(profile)
                 db.commit()
             return player_data(player_id, profile)

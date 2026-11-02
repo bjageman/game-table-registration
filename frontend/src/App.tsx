@@ -11,6 +11,7 @@ import {
 } from "./api";
 import Dashboard from "./Dashboard";
 import ConnectionSettings from "./ConnectionSettings";
+import LoadingIndicator from "./LoadingIndicator";
 
 type AuthState =
   | { kind: "loading" }
@@ -153,7 +154,7 @@ export default function App() {
           </p>
         )}
         {auth.kind === "loading" && (
-          <p role="status">Checking your Discord session…</p>
+          <p><LoadingIndicator label="Checking your Discord session…" /></p>
         )}
         {auth.kind === "signed-out" && (
           <section className="panel sign-in" aria-labelledby="sign-in-heading">

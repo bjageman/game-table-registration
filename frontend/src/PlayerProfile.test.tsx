@@ -1,75 +1,105 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import PlayerProfile from "./PlayerProfile";
 
+beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+});
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-it("loads and saves a real name while keeping Discord name and weighting read-only", async () => {
-  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
-  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
-  const profile = { discord_id: "123", discord_name: "Mary", real_name: "Mary Smith", weighting: 1.0 };
-  const fetchMock = vi.fn(async (_url: string, options: RequestInit) => {
-    if (options.method === "PUT") profile.real_name = JSON.parse(options.body as string).real_name;
-    return new Response(JSON.stringify(profile));
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  const props = { player: { id: "123", name: "Mary" }, csrf: "csrf", onClose: vi.fn(), onAccessError: vi.fn(() => false) };
-  const view = render(<PlayerProfile {...props} />);
-  expect(await screen.findByLabelText("Display Name")).toHaveValue("Mary Smith");
-  expect(screen.getByText("1.0")).toBeVisible();
-  expect(screen.getAllByRole("textbox")).toHaveLength(1);
-  fireEvent.change(screen.getByLabelText("Display Name"), { target: { value: "Mary Jones" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("Player information saved.");
-  expect(fetchMock).toHaveBeenCalledWith("/api/players/123", expect.objectContaining({
-    method: "PUT", body: JSON.stringify({ real_name: "Mary Jones", guaranteed_seat: false }),
-    headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }),
-  }));
-  view.unmount();
-  render(<PlayerProfile {...props} />);
-  expect(await screen.findByLabelText("Display Name")).toHaveValue("Mary Jones");
-});
+const player = { id: "123", name: "Mary" };
+const baseProfile = { discord_id: "123", discord_name: "Mary", real_name: "Mary Smith", weighting: 1, guaranteed_seat: false };
 
-it("marks saved test users and retains edited names and weights on reopening", async () => {
-  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
-  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
-  const profile = { discord_id: "test-123", discord_name: "Test Player 001", real_name: "", weighting: 1.0, is_test: true };
+function mockProfile(initial = baseProfile) {
+  const profile = { ...initial };
   const fetchMock = vi.fn(async (_url: string, options: RequestInit) => {
     if (options.method === "PUT") Object.assign(profile, JSON.parse(options.body as string));
     return new Response(JSON.stringify(profile));
   });
   vi.stubGlobal("fetch", fetchMock);
-  const props = { player: { id: profile.discord_id, name: profile.discord_name }, csrf: "csrf", onClose: vi.fn(), onAccessError: vi.fn(() => false) };
-  const view = render(<PlayerProfile {...props} />);
-  expect(await screen.findByText("Test User")).toBeVisible();
-  fireEvent.change(screen.getByLabelText("Display Name"), { target: { value: "Saved Test Name" } });
-  fireEvent.change(screen.getByLabelText("Current Weighting"), { target: { value: "2.5" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("Player information saved.");
-  expect(fetchMock).toHaveBeenCalledWith("/api/players/test-123", expect.objectContaining({ method: "PUT", body: JSON.stringify({ real_name: "Saved Test Name", guaranteed_seat: false, weighting: 2.5 }) }));
-  view.unmount();
-  render(<PlayerProfile {...props} />);
-  expect(await screen.findByLabelText("Display Name")).toHaveValue("Saved Test Name");
-  expect(screen.getByLabelText("Current Weighting")).toHaveValue(2.5);
+  return { profile, fetchMock };
+}
+
+it("saves display name on blur and when closing without a Save button", async () => {
+  const { profile, fetchMock } = mockProfile();
+  const onClose = vi.fn();
+  render(<PlayerProfile player={player} csrf="csrf" onClose={onClose} onAccessError={() => false} />);
+  const name = await screen.findByLabelText("Display Name");
+  expect(name).toHaveValue("Mary Smith");
+  expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/players/123?signup_name=Mary", expect.anything());
+  fireEvent.change(name, { target: { value: "Mary Jones" } });
+  fireEvent.blur(name);
+  await waitFor(() => expect(profile.real_name).toBe("Mary Jones"));
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ real_name: "Mary Jones" });
+  fireEvent.change(name, { target: { value: "Mary Smith-Jones" } });
+  fireEvent.click(screen.getByRole("button", { name: "Close player information" }));
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  expect(profile.real_name).toBe("Mary Smith-Jones");
 });
 
-it("saves and clears a guaranteed seat", async () => {
-  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
-  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
-  const profile = { discord_id: "123", discord_name: "Volunteer", real_name: "", weighting: 1, guaranteed_seat: false };
-  const fetchMock = vi.fn(async (_url: string, options: RequestInit) => {
-    if (options.method === "PUT") Object.assign(profile, JSON.parse(options.body as string));
-    return new Response(JSON.stringify(profile));
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  render(<PlayerProfile player={{ id: "123", name: "Volunteer" }} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} />);
+it("saves global weighting on blur in 0.1 steps", async () => {
+  const { profile, fetchMock } = mockProfile();
+  const onSaved = vi.fn();
+  render(<PlayerProfile player={player} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} onSaved={onSaved} />);
+  const weight = await screen.findByLabelText("Global Weighting");
+  expect(weight).toHaveAttribute("step", "0.1");
+  fireEvent.change(weight, { target: { value: "2.5" } });
+  fireEvent.blur(weight);
+  await waitFor(() => expect(profile.weighting).toBe(2.5));
+  expect(weight).toHaveValue(2.5);
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ weighting: 2.5 });
+  expect(onSaved).toHaveBeenCalledOnce();
+});
+
+it("saves a checkbox toggle immediately and serializes rapid changes", async () => {
+  const { profile, fetchMock } = mockProfile();
+  render(<PlayerProfile player={player} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} />);
   const checkbox = await screen.findByLabelText("Guaranteed Seat");
   fireEvent.click(checkbox);
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("Player information saved.");
-  expect(fetchMock).toHaveBeenCalledWith("/api/players/123", expect.objectContaining({ method: "PUT", body: JSON.stringify({ real_name: "", guaranteed_seat: true }) }));
   fireEvent.click(checkbox);
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("Player information saved.");
+  await waitFor(() => expect(fetchMock.mock.calls.filter(([, options]) => options.method === "PUT")).toHaveLength(2));
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ guaranteed_seat: true });
+  expect(JSON.parse(fetchMock.mock.calls[2][1].body as string)).toEqual({ guaranteed_seat: false });
   expect(profile.guaranteed_seat).toBe(false);
+});
+
+it("serializes name and weight edits without overwriting either", async () => {
+  const { profile, fetchMock } = mockProfile();
+  render(<PlayerProfile player={player} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} />);
+  const name = await screen.findByLabelText("Display Name");
+  fireEvent.change(name, { target: { value: "Unsaved Name" } });
+  fireEvent.blur(name);
+  const weight = screen.getByLabelText("Global Weighting");
+  fireEvent.change(weight, { target: { value: "2.5" } });
+  fireEvent.blur(weight);
+  await waitFor(() => expect(profile.weighting).toBe(2.5));
+  expect(screen.getByLabelText("Display Name")).toHaveValue("Unsaved Name");
+  expect(fetchMock.mock.calls[1][1].body).toBe(JSON.stringify({ real_name: "Unsaved Name" }));
+  expect(fetchMock.mock.calls[2][1].body).toBe(JSON.stringify({ weighting: 2.5 }));
+});
+
+it("supports test players and waits for a pending save before closing", async () => {
+  const testPlayer = { id: "test-123", name: "Test Player 001" };
+  const profile = { ...baseProfile, discord_id: testPlayer.id, discord_name: testPlayer.name, is_test: true };
+  let finishSave: ((response: Response) => void) | undefined;
+  const fetchMock = vi.fn(async (_url: string, options: RequestInit) => {
+    if (options.method !== "PUT") return new Response(JSON.stringify(profile));
+    Object.assign(profile, JSON.parse(options.body as string));
+    return await new Promise<Response>((resolve) => { finishSave = resolve; });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const onClose = vi.fn();
+  render(<PlayerProfile player={testPlayer} csrf="csrf" onClose={onClose} onAccessError={() => false} />);
+  expect(await screen.findByText("Test User")).toBeVisible();
+  const weight = screen.getByLabelText("Global Weighting");
+  fireEvent.change(weight, { target: { value: "3" } });
+  fireEvent.blur(weight);
+  fireEvent.click(screen.getByRole("button", { name: "Close player information" }));
+  await waitFor(() => expect(finishSave).toBeDefined());
+  expect(onClose).not.toHaveBeenCalled();
+  finishSave!(new Response(JSON.stringify(profile)));
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  expect(profile.weighting).toBe(3);
 });
