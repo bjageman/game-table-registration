@@ -42,14 +42,18 @@ export default function PlayerLookup({ session, onAccessError }: {
     {error && <p role="alert" className="error">Could not load players. {error} <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button></p>}
     {!loading && !error && <>
       <p>{visible.length} {visible.length === 1 ? "player" : "players"}</p>
-      {visible.length ? <ul className="player-lookup-list">{visible.map((player) => <li key={player.discord_id}>
+      {visible.length ? <div className="player-lookup-table">
+        <div className="player-lookup-columns" aria-hidden="true"><span>Star</span><span>Username</span><span>Display Name</span><span>Weight</span><span>Test Label</span></div>
+        <ul className="player-lookup-list">{visible.map((player) => <li key={player.discord_id}>
         <button type="button" className="player-lookup-item" onClick={() => setSelected(player)}>
           <span className="player-lookup-star">{player.guaranteed_seat && <Star size={18} fill="currentColor" aria-label="Always guaranteed" />}</span>
-          <span className="player-lookup-name"><strong>{player.real_name || player.discord_name}</strong>{player.real_name && <small>{player.discord_name}</small>}</span>
+          <span className="player-lookup-username">{player.discord_name}</span>
+          <span className="player-lookup-display-name">{player.real_name || "—"}</span>
           <span className="player-lookup-weight" aria-label={`${player.weighting.toFixed(1)} weighting`}>{player.weighting.toFixed(1)}</span>
-          {player.is_test && <span className="badge">Test User</span>}
+          <span className="player-lookup-test">{player.is_test && <span className="badge">Test User</span>}</span>
         </button>
-      </li>)}</ul> : <p>{players.length ? "No players match your search." : "No players have signed up yet."}</p>}
+      </li>)}</ul>
+      </div> : <p>{players.length ? "No players match your search." : "No players have signed up yet."}</p>}
     </>}
     {selected && <PlayerProfile key={selected.discord_id} player={{ id: selected.discord_id, name: selected.discord_name }}
       csrf={session.csrf} onClose={() => setSelected(undefined)} onAccessError={onAccessError}
