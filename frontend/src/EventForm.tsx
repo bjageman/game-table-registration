@@ -5,6 +5,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
+import { renderTimeViewClock } from "@mui/x-date-pickers/timeViewRenderers";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import {
@@ -259,7 +260,11 @@ export default function EventForm({
                     value={mobileTime}
                     onChange={updateMobileTime}
                     ampm
-                    timeSteps={{ minutes: 15 }}
+                    minutesStep={15}
+                    viewRenderers={{
+                      hours: renderTimeViewClock,
+                      minutes: renderTimeViewClock,
+                    }}
                     slotProps={{
                       textField: {
                         id: `${prefix}-time`,
@@ -278,7 +283,11 @@ export default function EventForm({
                   referenceDate={mobileTime}
                   format="MMMM D, YYYY h:mm A"
                   ampm
-                  timeSteps={{ minutes: 15 }}
+                  minutesStep={15}
+                  viewRenderers={{
+                    hours: renderTimeViewClock,
+                    minutes: renderTimeViewClock,
+                  }}
                   slotProps={{
                     textField: {
                       id: `${prefix}-start`,
