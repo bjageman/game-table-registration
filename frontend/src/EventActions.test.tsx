@@ -19,7 +19,7 @@ it.each([false, true])("asks whether to delete the Discord poll (selected: %s)",
   render(<EventActions event={event} csrf="csrf" onEdit={vi.fn()} onDeleted={onDeleted} onAccessError={() => false} />);
   expect(screen.queryByRole("button", { name: "Edit draft" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Delete signup" }));
-  const checkbox = screen.getByRole("checkbox", { name: "Also delete the poll on Discord" });
+  const checkbox = screen.getByRole("checkbox", { name: "Also delete the signup message on Discord" });
   expect(checkbox).not.toBeChecked();
   expect(fetchMock).not.toHaveBeenCalled();
   if (deletePoll) fireEvent.click(checkbox);

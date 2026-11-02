@@ -30,8 +30,13 @@ from app.announcements import (
 )
 from app.closing import close_and_assign
 from app.config import Settings
-from app.connection_settings import POLL_PERMISSIONS, register_settings
+from app.connection_settings import (
+    POLL_PERMISSIONS,
+    SIGNUP_PERMISSIONS,
+    register_settings,
+)
 from app.discord_api import DiscordAPI
+from app.gateway import SignupGateway
 from app.models import (
     Announcement,
     Event,
@@ -40,8 +45,13 @@ from app.models import (
     LotteryRun,
     PlayerProfile,
     Session,
+    SignupInteraction,
+    TableSignup,
     UserSettings,
 )
+from app.reactions import EMOJIS
+from app.reactions import publication as reaction_publication
+from app.signups import table_rows
 from app.test_signups import (
     add_to_rows,
 )
@@ -120,6 +130,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         stop = StopEvent()
+        gateway = (
+            SignupGateway(engine, config)
+            if config.discord_gateway_enabled and config.configured
+            else None
+        )
+        application.state.gateway = gateway
+        gateway_task = asyncio.create_task(gateway.run_listener()) if gateway else None
 
         def work() -> None:
             while not stop.is_set():
@@ -148,6 +165,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             stop.set()
+            if gateway:
+                await gateway.close()
+            if gateway_task:
+                gateway_task.cancel()
+                await asyncio.gather(gateway_task, return_exceptions=True)
             if worker.is_alive():
                 await asyncio.to_thread(worker.join, 20)
 
@@ -270,10 +292,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "duration_hours": event.duration_hours,
             "tables": event.tables,
             "status": event.status,
+            "signup_mode": event.signup_mode,
             "closes_at": event.closes_at,
             "published_at": event.published_at,
             "archived_at": event.archived_at,
-            "close_error": event.close_error,
+            "close_error": event.close_error or event.reaction_error,
             "is_test": bool(event.test_signups),
             "test_generation": event.test_signups.get("generation")
             if event.test_signups
@@ -334,7 +357,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         if user_id:
             params.update(
-                permissions=str(POLL_PERMISSIONS),
+                permissions=str(
+                    POLL_PERMISSIONS
+                    if config.discord_signup_mode == "poll"
+                    else SIGNUP_PERMISSIONS
+                ),
                 integration_type="0",
                 prompt="consent",
             )
@@ -677,6 +704,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             message_id = event.message_id
             tables = event.tables
             population = event.test_signups
+            if event.signup_mode in ("custom", "reactions"):
+                return list_names(
+                    add_to_rows(table_rows(db, event), population), event.guild_id
+                )
         rows = (
             scoped_discord(request).table_signups(message_id, tables)
             if message_id
@@ -701,6 +732,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             destination(request).discord_channel_id,
         )
         if complete:
+            if event.signup_mode == "reactions" and event.message_id:
+                try:
+                    scoped_discord(request).close_reaction_message(event.message_id)
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        "Could not mark the reaction message closed; "
+                        "late reactions are rejected"
+                    )
+            if event.signup_mode == "custom" and event.message_id:
+                try:
+                    scoped_discord(request).close_signup_message(event.message_id)
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        "Could not remove closed signup controls; "
+                        "further signups are rejected"
+                    )
             try:
                 deliver_event(engine, scoped_discord(request), event_id)
             except Exception:
@@ -985,12 +1032,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(409, "Only drafts and open signups can be deleted.")
             if delete_poll and changed.message_id:
                 scoped_discord(request).delete_poll(changed.message_id)
+            db.execute(delete(TableSignup).where(TableSignup.event_id == event_id))
+            db.execute(
+                delete(SignupInteraction).where(SignupInteraction.event_id == event_id)
+            )
             db.commit()
         return Response(status_code=204)
 
     @app.post("/api/events/{event_id}/publish")
     def publish(event_id: str, request: Request) -> dict[str, Any]:
         authenticated(request, True)
+        if config.discord_signup_mode == "custom" and config.discord_gateway_enabled:
+            gateway = getattr(app.state, "gateway", None)
+            if gateway is None or not gateway.is_ready():
+                raise HTTPException(
+                    503,
+                    "Discord signup listener is not connected. Check the API logs, "
+                    "bot token, and that Discord's Interactions Endpoint URL is blank.",
+                )
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
             if not event or not matches_destination(event, request):
@@ -1002,7 +1061,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             claimed = db.execute(
                 update(Event)
                 .where(Event.id == event_id, Event.status == "draft")
-                .values(status="publishing")
+                .values(
+                    status="publishing",
+                    signup_mode=(
+                        "reactions"
+                        if config.discord_signup_mode == "custom"
+                        else "poll"
+                    ),
+                )
                 .returning(Event.id)
             ).scalar_one_or_none()
             db.commit()
@@ -1010,8 +1076,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(409, "Already published or awaiting publish review")
             db.refresh(event)
             try:
+                closes_at = time.time() + event.duration_hours * 3600
                 message = scoped_discord(request).publish(
-                    {
+                    reaction_publication(event, closes_at)
+                    if event.signup_mode == "reactions"
+                    else {
                         "content": (
                             f"**{'[TEST] ' if event.test_signups else ''}"
                             f"{event.title}**\n"
@@ -1042,10 +1111,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     else time.time()
                 )
                 event.message_id = str(message["id"])
-                event.answers = message["poll"]["answers"]
-                event.closes_at = datetime.fromisoformat(
-                    message["poll"]["expiry"]
-                ).timestamp()
+                if event.signup_mode == "reactions":
+                    event.closes_at = closes_at
+                    # Save the message identity before seeding: an uncertain PUT
+                    # must never cause a second publication on retry.
+                    db.commit()
+                    scoped_discord(request).seed_reactions(
+                        event.message_id, list(EMOJIS[: len(event.tables)])
+                    )
+                else:
+                    event.answers = message["poll"]["answers"]
+                    event.closes_at = datetime.fromisoformat(
+                        message["poll"]["expiry"]
+                    ).timestamp()
                 event.status = "open"
                 db.commit()
             except Exception:

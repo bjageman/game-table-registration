@@ -21,6 +21,35 @@ Register these OAuth redirect URLs in the respective Discord applications:
 - `https://signups-dev.brodin.rocks/api/auth/callback`
 - `https://signups.brodin.rocks/api/auth/callback`
 
+For custom table signups, keep `DISCORD_GATEWAY_ENABLED=true` and
+`DISCORD_SIGNUP_MODE=custom` in the environment file. The existing
+`DISCORD_BOT_TOKEN` is all the listener needs to connect. In Discord Developer
+Portal → the matching application → General Information, **clear the Interactions
+Endpoint URL and save** if one was previously configured. `DISCORD_PUBLIC_KEY`
+is no longer required and can be removed from environment files.
+
+The API starts the Gateway connection automatically, reconnects after network
+interruptions, and closes it on shutdown. Look for `Discord signup Gateway
+connected` in the API logs before publishing. Connection/configuration failures
+are logged, and publication remains blocked while the listener is disconnected.
+Run one API replica with one Uvicorn worker per application. Keep dev and production
+applications separate; stop a hosted dev instance before using its bot locally.
+No tunnel, public interactions URL, port forwarding, or privileged intents are
+needed. Local development continues using the existing LAN IP, PUBLIC_URL, and
+OAuth redirect. Hosted deployments retain their normal website/OAuth HTTPS URLs.
+`DISCORD_SIGNUP_MODE=poll` retains native publication during rollout, and existing
+published native polls continue working in either mode.
+
+For acceptance testing in the dedicated dev server, publish a future event with
+two tables. The bot should add 1️⃣ and 2️⃣ under the signup message. As a regular
+member, react to both; verify the organizer sees that player under both tables.
+Remove 1️⃣ and verify the player remains under only the second table. Try another
+member and close signups; the saved assignments must use those choices. New
+installations require the bot's **Add Reactions** permission in the signup channel.
+Existing menu-based events and native polls continue through their original paths.
+If the bot is disconnected across a signup deadline, closing is held for review
+because Discord cannot reveal when reactions were added during the outage.
+
 Add repository Actions secrets `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_KEY`,
 just as in Tinygrim. Add `DEV_TO_MAIN_SECRET` with a token allowed to create
 pull requests so release PRs trigger the normal CI checks. These secrets are repository scoped and must be configured

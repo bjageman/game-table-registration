@@ -10,8 +10,9 @@ from app.config import Settings
 from app.discord_api import DiscordAPI
 from app.models import Session, UserSettings
 
-# View Channel, Send Messages, Read Message History, Send Polls.
-POLL_PERMISSIONS = (1 << 10) | (1 << 11) | (1 << 16) | (1 << 49)
+# Custom signups need View Channel, Send Messages, and Read Message History.
+SIGNUP_PERMISSIONS = (1 << 10) | (1 << 11) | (1 << 16) | (1 << 6)
+POLL_PERMISSIONS = SIGNUP_PERMISSIONS | (1 << 49)
 
 
 class DestinationInput(BaseModel):
@@ -81,7 +82,8 @@ def register_settings(
         if channel is None:
             raise HTTPException(
                 403,
-                "Choose a text channel you can view where TableSignup can send polls.",
+                "Choose a text channel you can view "
+                "where TableSignup can post signups.",
             )
         with DBSession(engine) as db:
             db.merge(

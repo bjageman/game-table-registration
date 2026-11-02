@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
 import TextField from "@mui/material/TextField";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -90,6 +90,12 @@ export default function EventForm({
     const id = nextId.current++;
     pendingTableFocus.current = id;
     setTables((rows) => [...rows, { id, name: "", capacity: "15" }]);
+  }
+
+  function handleTableEnter(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    if (!event.repeat) addTable();
   }
 
   function updateDesktopStart(value: Dayjs | null) {
@@ -362,11 +368,7 @@ export default function EventForm({
                     error={Boolean(fieldErrors[`name-${table.id}`])}
                     helperText={fieldErrors[`name-${table.id}`]}
                     label={`Table ${index + 1} name`}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
-                      event.preventDefault();
-                      if (!event.repeat) addTable();
-                    }}
+                    onKeyDown={handleTableEnter}
                     value={table.name}
                     onChange={(event) =>
                       updateTable(table.id, { name: event.target.value })
@@ -386,6 +388,7 @@ export default function EventForm({
                     error={Boolean(fieldErrors[`capacity-${table.id}`])}
                     helperText={fieldErrors[`capacity-${table.id}`]}
                     label={`Table ${index + 1} capacity`}
+                    onKeyDown={handleTableEnter}
                     type="number"
                     value={table.capacity}
                     onChange={(event) =>
