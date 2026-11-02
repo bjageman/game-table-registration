@@ -481,6 +481,8 @@ dd {
 .player-lookup-columns,
 .player-lookup-item { min-width: 560px; display: grid; grid-template-columns: 24px minmax(130px, 1fr) minmax(130px, 1fr) 60px 90px; align-items: center; gap: 12px; }
 .player-lookup-columns { padding: 0 4px 8px; color: #52665a; font-size: 0.875rem; font-weight: 650; }
+.player-lookup-sort { min-width: 0; display: inline-flex; align-items: center; justify-content: flex-start; gap: 3px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; white-space: nowrap; }
+.player-lookup-sort:hover { background: transparent; color: #19432f; }
 .player-lookup-list { list-style: none; margin: 0; padding: 0; }
 .player-lookup-list li + li { border-top: 1px solid #dce3d9; }
 .player-lookup-item { width: 100%; padding: 12px 4px; text-align: left; border: 0; background: transparent; }
