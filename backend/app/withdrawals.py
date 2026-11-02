@@ -178,7 +178,9 @@ def withdraw(
         )
         if promoted_id:
             left = next(
-                player for player in run.snapshot["players"] if player["id"] == player_id
+                player
+                for player in run.snapshot["players"]
+                if player["id"] == player_id
             )
             announce_id = db.scalar(
                 select(func.max(Announcement.part)).where(

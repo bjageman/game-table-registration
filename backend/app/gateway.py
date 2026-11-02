@@ -191,11 +191,11 @@ class SignupGateway(discord.Client):
                         str(event.user_id),
                     )
                     if changed:
-                        discord = DiscordAPI(self.config).at(
+                        client = DiscordAPI(self.config).at(
                             str(event.guild_id), str(event.channel_id)
                         )
                         await asyncio.to_thread(
-                            deliver_event, self.engine, discord, event_id
+                            deliver_event, self.engine, client, event_id
                         )
                 except Exception:
                     logger.exception("Could not process an assignment withdrawal")
