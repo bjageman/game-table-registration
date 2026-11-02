@@ -130,9 +130,9 @@ def enqueue_instructions(
                 "content": "If you need to cancel, please react ❌ to withdraw from "
                 "your table and free up a space for a waitlisted player.",
                 "allowed_mentions": {"parse": []},
-                "nonce": hashlib.sha256(f"{event.id}:withdrawal-instructions".encode())[
-                    :24
-                ],
+                "nonce": hashlib.sha256(
+                    f"{event.id}:withdrawal-instructions".encode()
+                ).hexdigest()[:24],
                 "enforce_nonce": True,
             },
             created_at=now,
