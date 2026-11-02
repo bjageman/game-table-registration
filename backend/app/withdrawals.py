@@ -80,8 +80,7 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
                 "waitlist": [
                     dict(player)
                     for player in table.get("waitlist", [])
-                    if player["id"] not in assignments
-                    and player["id"] not in withdrawn
+                    if player["id"] not in assignments and player["id"] not in withdrawn
                 ],
             }
         )
@@ -161,8 +160,7 @@ def withdraw(
             (
                 player["id"]
                 for player in table.get("waitlist", [])
-                if player["id"] not in active_ids
-                and player["id"] not in withdrawn_ids
+                if player["id"] not in active_ids and player["id"] not in withdrawn_ids
             ),
             None,
         )

@@ -12,9 +12,7 @@ depends_on = None
 def upgrade():
     op.add_column(
         "announcements",
-        sa.Column(
-            "kind", sa.String(16), nullable=False, server_default="assignment"
-        ),
+        sa.Column("kind", sa.String(16), nullable=False, server_default="assignment"),
     )
     op.create_table(
         "event_withdrawals",

@@ -1302,9 +1302,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if row.kind == "promotion" and (
                     row.unknown or row.state == "needs_review"
                 ):
-                    discord = scoped_discord(request).at(
-                        event.guild_id, row.channel_id
-                    )
+                    discord = scoped_discord(request).at(event.guild_id, row.channel_id)
                     message_id = None
                     try:
                         message_id = discord.find_announcement(
@@ -1351,7 +1349,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if any(row.state != "sent" or not row.message_id for row in rows):
                 return progress(retry_after=2)
             targets = [row for row in rows if not row.deleted_at]
-            for row in (targets if promotions_only else targets[:3]):
+            for row in targets if promotions_only else targets[:3]:
                 assert row.message_id is not None
                 try:
                     scoped_discord(request).at(
