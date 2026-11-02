@@ -102,6 +102,43 @@ def enqueue(
                 next_attempt=now,
             )
         )
+    enqueue_instructions(db, event, channel_id, now)
+
+
+def enqueue_instructions(
+    db: Session, event: Event, channel_id: str, now: float | None = None
+) -> None:
+    if db.scalar(
+        select(Announcement.id).where(
+            Announcement.event_id == event.id,
+            Announcement.kind == "instructions",
+        )
+    ):
+        return
+    now = now or time.time()
+    part = db.scalar(
+        select(func.max(Announcement.part)).where(Announcement.event_id == event.id)
+    )
+    db.add(
+        Announcement(
+            id=str(uuid.uuid4()),
+            event_id=event.id,
+            part=(part if part is not None else -1) + 1,
+            kind="instructions",
+            channel_id=channel_id,
+            payload={
+                "content": "If you need to cancel, please react ❌ to withdraw from "
+                "your table and free up a space for a waitlisted player.",
+                "allowed_mentions": {"parse": [], "users": []},
+                "nonce": hashlib.sha256(
+                    f"{event.id}:withdrawal-instructions".encode()
+                ).hexdigest()[:24],
+                "enforce_nonce": True,
+            },
+            created_at=now,
+            next_attempt=now,
+        )
+    )
 
 
 def deliver_event(
@@ -113,10 +150,28 @@ def deliver_event(
         with Session(engine) as db:
             row = db.scalar(
                 select(Announcement)
-                .where(Announcement.event_id == event_id, Announcement.state != "sent")
+                .where(
+                    Announcement.event_id == event_id,
+                    Announcement.state.in_(["pending", "sending"]),
+                )
                 .order_by(Announcement.part)
                 .limit(1)
             )
+            event = db.get(Event, event_id)
+            if (
+                row is not None
+                and row.kind in ("promotion", "instructions")
+                and event
+                and event.archived_at
+            ):
+                if row.unknown or row.state == "sending" or row.message_id:
+                    return
+                row.state = "sent"
+                row.deleted_at = now
+                row.token = None
+                row.lease_until = None
+                db.commit()
+                continue
             if row is None or row.state == "needs_review" or row.next_attempt > now:
                 return
             recovering = row.state == "sending"
@@ -148,6 +203,7 @@ def deliver_event(
                 row.payload,
                 row.attempts,
             )
+            row_kind = row.kind
         try:
             if unknown:
                 message_id = discord.find_announcement(
@@ -160,6 +216,20 @@ def deliver_event(
                     )
             else:
                 message_id = str(discord.send_announcement(channel_id, payload)["id"])
+            if row_kind == "instructions":
+                discord.seed_reactions(message_id, ["❌"])
+            deleted_at = None
+            if row_kind == "promotion":
+                with Session(engine) as db:
+                    event = db.get(Event, event_id)
+                    archived = bool(event and event.archived_at)
+                if archived:
+                    try:
+                        discord.delete_poll(message_id)
+                        deleted_at = time.time()
+                    except Exception:
+                        # Keep the message ID so archived-event cleanup can retry.
+                        pass
             with Session(engine) as db:
                 db.execute(
                     update(Announcement)
@@ -167,6 +237,7 @@ def deliver_event(
                     .values(
                         state="sent",
                         message_id=message_id,
+                        deleted_at=deleted_at,
                         token=None,
                         lease_until=None,
                         error=None,
@@ -219,7 +290,7 @@ def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -
     with Session(engine) as db:
         first = (
             select(Announcement.event_id, func.min(Announcement.part).label("part"))
-            .where(Announcement.state != "sent")
+            .where(Announcement.state.in_(["pending", "sending"]))
             .group_by(Announcement.event_id)
             .subquery()
         )
@@ -233,6 +304,10 @@ def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -
                     & (first.c.part == Announcement.part),
                 )
                 .where(
+                    or_(
+                        Announcement.kind.not_in(["promotion", "instructions"]),
+                        Event.archived_at.is_(None),
+                    ),
                     Announcement.state.in_(["pending", "sending"]),
                     Announcement.next_attempt <= time.time(),
                     or_(
@@ -253,7 +328,10 @@ def status(engine: Engine, event_id: str, guild_id: str) -> dict[str, Any]:
         rows = list(
             db.scalars(
                 select(Announcement)
-                .where(Announcement.event_id == event_id)
+                .where(
+                    Announcement.event_id == event_id,
+                    Announcement.kind.in_(["assignment", "instructions"]),
+                )
                 .order_by(Announcement.part)
             )
         )

@@ -95,6 +95,8 @@ export interface EventRecord {
   test_generation?: string | null;
   test_user_count?: number;
   discord_url: string | null;
+  discord_cleanup_remaining?: number;
+  discord_cleanup_error?: string | null;
 }
 
 export interface EventTemplateRecord {
