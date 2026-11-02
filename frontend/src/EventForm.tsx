@@ -14,8 +14,10 @@ import {
   errorMessage,
   mutationOptions,
   type EventRecord,
+  type EventTemplateRecord,
 } from "./api";
-import { validateEvent } from "./eventValidation";
+import { validateEvent, validateTemplate } from "./eventValidation";
+import TemplatePicker from "./TemplatePicker";
 
 interface Props {
   csrf: string;
@@ -78,7 +80,17 @@ export default function EventForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [templates, setTemplates] = useState<EventTemplateRecord[]>([]);
+  const [choosingTemplate, setChoosingTemplate] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState("");
   const isMobile = useMediaQuery("(max-width: 600px)");
+  useEffect(() => {
+    const controller = new AbortController();
+    api<EventTemplateRecord[]>("/templates", { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setTemplates(result); })
+      .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    return () => controller.abort();
+  }, [onAccessError]);
   useEffect(() => {
     if (pendingTableFocus.current === null) return;
     document.getElementById(`${prefix}-name-${pendingTableFocus.current}`)?.focus();
@@ -148,6 +160,45 @@ export default function EventForm({
     );
   }
 
+  function loadTemplate(template: EventTemplateRecord) {
+    setTitle(template.title);
+    setDuration(String(template.duration_hours));
+    setTables(template.tables.map((table, id) => ({ id, name: table.name, capacity: String(table.capacity) })));
+    nextId.current = template.tables.length;
+    setFieldErrors({});
+    setError("");
+    setTemplateNotice(`Loaded template: ${template.title}.`);
+    setChoosingTemplate(false);
+  }
+
+  async function saveTemplate() {
+    if (inFlight.current) return;
+    setError(""); setTemplateNotice("");
+    const errors = validateTemplate({ title, duration, tables });
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      setError([...new Set(Object.values(errors))].join(" "));
+      requestAnimationFrame(() => document.getElementById(`${prefix}-${Object.keys(errors)[0]}`)?.focus());
+      return;
+    }
+    inFlight.current = true;
+    setSaving(true);
+    try {
+      const saved = await api<EventTemplateRecord>("/templates", mutationOptions(csrf, {
+        title: title.trim(),
+        duration_hours: Number(duration),
+        tables: tables.map((table) => ({ name: table.name.trim(), capacity: Number(table.capacity) })),
+      }));
+      setTemplates((current) => [saved, ...current]);
+      setTemplateNotice(`Template saved: ${saved.title}.`);
+    } catch (failure) {
+      if (!onAccessError(failure)) setError(errorMessage(failure));
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (inFlight.current) return;
@@ -215,9 +266,11 @@ export default function EventForm({
 
   return (
     <section className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
-      <h3 id={`${prefix}-heading`}>
-        {draft ? "Edit Event Draft" : "Create Event Draft"}
-      </h3>
+      <div className="section-heading template-heading">
+        <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : "Create Event Draft"}</h3>
+        {templates.length > 0 && <button type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
+      </div>
+      {choosingTemplate && <TemplatePicker templates={templates} onSelect={loadTemplate} onClose={() => setChoosingTemplate(false)} />}
       <form
         noValidate
         onSubmit={(event) => void submit(event)}
@@ -435,9 +488,13 @@ export default function EventForm({
             {error}
           </p>
         )}
+        {templateNotice && <p role="status" className="notice">{templateNotice}</p>}
         <div className="form-actions">
           <button className="primary" type="submit" disabled={saving}>
             {saving ? "Saving draft…" : "Save draft"}
+          </button>
+          <button type="button" onClick={() => void saveTemplate()} disabled={saving}>
+            {saving ? "Saving template…" : "Save as Template"}
           </button>
           <button type="button" onClick={onCancel} disabled={saving}>
             Cancel

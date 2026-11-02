@@ -40,6 +40,7 @@ from app.gateway import SignupGateway
 from app.models import (
     Announcement,
     Event,
+    EventTemplate,
     GuildSettings,
     LoginState,
     LotteryRun,
@@ -93,6 +94,20 @@ class EventInput(BaseModel):
             raise ValueError("Event time must include a timezone")
         if self.starts_at.timestamp() <= time.time() + self.duration_hours * 3600:
             raise ValueError("Event must start after the signup window ends")
+        if len({table.name.casefold() for table in self.tables}) != len(self.tables):
+            raise ValueError("Table names must be unique")
+        return self
+
+
+class EventTemplateInput(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    duration_hours: int = Field(ge=1, le=768)
+    tables: list[TableInput] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_template(self) -> "EventTemplateInput":
+        if not self.title.strip():
+            raise ValueError("Event title cannot be blank")
         if len({table.name.casefold() for table in self.tables}) != len(self.tables):
             raise ValueError("Table names must be unique")
         return self
@@ -654,6 +669,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     select(Event).where(*event_scope(request)).order_by(Event.starts_at)
                 )
             ]
+
+    def serialize_template(template: EventTemplate) -> dict[str, Any]:
+        return {
+            "id": template.id,
+            "title": template.title,
+            "duration_hours": template.duration_hours,
+            "tables": template.tables,
+        }
+
+    @app.get("/api/templates")
+    def templates(request: Request) -> list[dict[str, Any]]:
+        session = authenticated(request, require_destination=False)
+        with DBSession(engine) as db:
+            return [
+                serialize_template(template)
+                for template in db.scalars(
+                    select(EventTemplate)
+                    .where(EventTemplate.user_id == session.user_id)
+                    .order_by(EventTemplate.created_at.desc(), EventTemplate.id)
+                )
+            ]
+
+    @app.post("/api/templates", status_code=201)
+    def create_template(body: EventTemplateInput, request: Request) -> dict[str, Any]:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            template = EventTemplate(
+                id=str(uuid.uuid4()),
+                user_id=session.user_id,
+                title=body.title.strip(),
+                duration_hours=body.duration_hours,
+                tables=[table.model_dump() for table in body.tables],
+                created_at=time.time(),
+            )
+            db.add(template)
+            db.commit()
+            return serialize_template(template)
 
     def list_names(rows: list[dict[str, Any]], guild_id: str) -> list[dict[str, Any]]:
         # Decorate copies for the app; saved results keep Discord names.

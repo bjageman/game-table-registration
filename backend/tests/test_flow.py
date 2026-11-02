@@ -70,6 +70,42 @@ def event_body():
     }
 
 
+def test_templates_save_reusable_details_without_an_event_date_and_are_private(client):
+    headers = login(client)
+    body = {
+        "title": "Friday games",
+        "duration_hours": 24,
+        "tables": [{"name": "Clocktower", "capacity": 15}],
+    }
+    assert client.get("/api/templates").json() == []
+    assert client.post("/api/templates", json=body).status_code == 403
+    created = client.post("/api/templates", headers=headers, json=body)
+    assert created.status_code == 201
+    assert created.json() == {"id": created.json()["id"], **body}
+    assert client.get("/api/templates").json() == [created.json()]
+    assert client.get("/api/events").json() == []
+    assert (
+        client.post(
+            "/api/templates",
+            headers=headers,
+            json={**body, "tables": [body["tables"][0]] * 2},
+        ).status_code
+        == 422
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    login(client)
+    assert client.get("/api/templates").json() == []
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    login(client)
+    assert client.get("/api/templates").json() == [created.json()]
+
+
 def test_login_publish_and_duplicate_protection(client):
     headers = login(client)
     response = client.post("/api/events", headers=headers, json=event_body())

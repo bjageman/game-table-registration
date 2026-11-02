@@ -56,6 +56,16 @@ class Event(Base):
     reaction_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
+class EventTemplate(Base):
+    __tablename__ = "event_templates"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    title: Mapped[str] = mapped_column(String(100))
+    duration_hours: Mapped[int]
+    tables: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
 class TableSignup(Base):
     __tablename__ = "table_signups"
     event_id: Mapped[str] = mapped_column(
