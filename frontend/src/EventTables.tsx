@@ -106,6 +106,9 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               {count ?? "—"}/{table.capacity}
             </span>
           </div>
+          {event.status === "open" && <div className="table-player-header">
+            <span title="Guaranteed table">⭐</span><span>Player</span><span title="Weight">Wt</span>
+          </div>}
           {players?.length ? <ul className="table-players">
             {players.map((player) => <li key={player.id} className="table-player-row">
               {event.status === "open" && <button type="button" className="player-guarantee" disabled={saving} aria-pressed={player.guaranteed_table === table.name}

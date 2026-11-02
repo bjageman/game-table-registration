@@ -56,6 +56,17 @@ it("prefers display names for assigned and waiting players, with Discord name fa
   expect(screen.getByRole("button", { name: "Dan" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Carl Display" })).toBeVisible();
   expect(screen.queryByText("DiscordMary")).not.toBeInTheDocument();
+  expect(screen.queryByText("Wt")).not.toBeInTheDocument();
+});
+
+it("labels the guarantee, player, and weight columns for every open table", () => {
+  render(<TableColumns event={event} rows={[
+    { name: "Table A", players: [{ id: "1", name: "Mary" }] },
+    { name: "Table B", players: [] },
+  ]} />);
+  expect(screen.getAllByText("⭐")).toHaveLength(2);
+  expect(screen.getAllByText("Player")).toHaveLength(2);
+  expect(screen.getAllByText("Wt")).toHaveLength(2);
 });
 
 it("shows saved placements after the Discord signup message is deleted", async () => {
