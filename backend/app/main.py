@@ -1051,6 +1051,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                 for row in rows:
                     if not row.deleted_at:
+                        assert row.message_id is not None
                         scoped_discord(request).at(
                             event.guild_id, row.channel_id
                         ).delete_poll(row.message_id)
