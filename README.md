@@ -14,9 +14,10 @@ Local API reloads also apply pending SQLite migrations before serving requests,
 including after switching branches while the script stays running.
 Press Ctrl+C to stop both. If either server exits, the other is stopped too.
 
-When switching branches, an existing database may reference migrations absent
-from that branch. Use the branch that owns those migrations, or start with a
-separate database without changing the existing one:
+When switching branches, an existing SQLite database may reference migrations
+absent from that branch. `run.sh` saves a timestamped backup of that database
+and starts a fresh `local.db` automatically. To keep branch data separate,
+choose another SQLite file:
 
 ```bash
 DATABASE_URL=sqlite:///./launcher-local.db ./run.sh
