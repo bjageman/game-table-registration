@@ -4,7 +4,7 @@ import hashlib
 import math
 from typing import Any
 
-VERSION = "guaranteed-weighted-matching-v2"
+VERSION = "guaranteed-weighted-matching-v3"
 
 
 class GuaranteeConflict(ValueError):
@@ -29,6 +29,8 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
             raise ValueError("Player weights must be between 0.1 and 10")
         if not p["choices"] or not set(p["choices"]) <= capacities.keys():
             raise ValueError("Each player must select existing tables")
+        if p.get("guaranteed_table") and p["guaranteed_table"] not in p["choices"]:
+            raise ValueError("Guaranteed table must be one of the player's choices")
 
     def digest(label: str) -> str:
         return hashlib.sha256(f"{seed}\0{label}".encode()).hexdigest()
@@ -40,7 +42,13 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
 
     order = sorted(
         by_id,
-        key=lambda pid: (not by_id[pid].get("guaranteed_seat", False), *priority(pid)),
+        key=lambda pid: (
+            not (
+                by_id[pid].get("guaranteed_seat", False)
+                or by_id[pid].get("guaranteed_table")
+            ),
+            *priority(pid),
+        ),
     )
     rank = {pid: i for i, pid in enumerate(order)}
     choices = {
@@ -51,7 +59,11 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
     assignments: dict[str, str] = {}
 
     def place(pid: str, seen: set[str]) -> bool:
-        for name in choices[pid]:
+        for name in (
+            [by_id[pid]["guaranteed_table"]]
+            if by_id[pid].get("guaranteed_table")
+            else choices[pid]
+        ):
             if name in seen:
                 continue
             seen.add(name)
@@ -68,7 +80,9 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         return False
 
     for pid in order:
-        if not place(pid, set()) and by_id[pid].get("guaranteed_seat"):
+        if not place(pid, set()) and (
+            by_id[pid].get("guaranteed_seat") or by_id[pid].get("guaranteed_table")
+        ):
             raise GuaranteeConflict(
                 "Guaranteed seats exceed capacity for the selected tables. "
                 "Adjust guaranteed seats or table capacity before closing signups."

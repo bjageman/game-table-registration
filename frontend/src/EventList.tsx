@@ -103,6 +103,7 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
           {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
         </span>
         <div className="event-header-actions">
+          {(event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
           {event.status !== "draft" && (
           <button type="button" className="event-icon-action"
             aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
@@ -170,7 +171,6 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
             </p>}
             <div className="form-actions">
-              {(event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {canPopulateTestUsers && (event.status === "draft" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>

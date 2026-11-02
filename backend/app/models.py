@@ -76,6 +76,16 @@ class TableSignup(Base):
     choices: Mapped[list[str]] = mapped_column(JSON)
 
 
+class EventPlayerSetting(Base):
+    __tablename__ = "event_player_settings"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    weighting: Mapped[float | None] = mapped_column(Float, nullable=True)
+    guaranteed_table: Mapped[str | None] = mapped_column(String(35), nullable=True)
+
+
 class SignupInteraction(Base):
     __tablename__ = "signup_interactions"
     id: Mapped[str] = mapped_column(String(32), primary_key=True)

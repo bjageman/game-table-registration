@@ -283,7 +283,19 @@ def test_signup_endpoint_is_authorized_and_scoped_to_guild(client):
         db.commit()
     players = [{"name": "A", "players": [{"id": "1", "name": "Mary"}]}]
     client.app.state.discord.table_signups.return_value = players
-    assert client.get(path).json() == players
+    assert client.get(path).json() == [
+        {
+            "name": "A",
+            "players": [
+                {
+                    **players[0]["players"][0],
+                    "weighting": 1.0,
+                    "guaranteed_table": None,
+                    "guaranteed_seat": False,
+                }
+            ],
+        }
+    ]
     with DBSession(client.app.state.engine) as db:
         db.get(Event, event["id"]).guild_id = "other-guild"
         db.commit()
@@ -649,6 +661,51 @@ def closing_message(finalized=True, future=False, counts=None):
             },
         }
     }
+
+
+def test_event_player_settings_are_scoped_and_frozen_for_assignment(client):
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.table_signups.return_value = [
+        {"name": "A", "players": [{"id": "1", "name": "Mary"}]},
+        {"name": "B", "players": [{"id": "1", "name": "Mary"}]},
+    ]
+    discord.bot.return_value = {"username": "Mary"}
+    assert (
+        client.put(
+            "/api/players/1", headers=headers, json={"real_name": ""}
+        ).status_code
+        == 200
+    )
+    setting = path + "/players/1/settings"
+    assert client.put(setting, json={"guaranteed_table": "B"}).status_code == 403
+    assert (
+        client.put(setting, headers=headers, json={"guaranteed_table": "C"}).status_code
+        == 422
+    )
+    assert (
+        client.put(setting, headers=headers, json={"guaranteed_table": "B"}).status_code
+        == 200
+    )
+    assert (
+        client.put(setting, headers=headers, json={"weighting": 2.5}).status_code == 200
+    )
+    rows = client.get(path + "/signups").json()
+    assert rows[0]["players"][0]["guaranteed_table"] == "B"
+    assert rows[1]["players"][0]["weighting"] == 2.5
+    assert client.get("/api/players/1").json()["weighting"] == 1.0
+    assert client.get("/api/players/1").json()["guaranteed_seat"] is False
+    discord.poll_message.return_value = closing_message()
+    closed = client.post(path + "/close", headers=headers)
+    assert closed.status_code == 200
+    run = client.get(path + "/assignments").json()
+    mary = next(p for p in run["snapshot"]["players"] if p["id"] == "1")
+    assert mary["weight"] == 2.5
+    assert mary["guaranteed_table"] == "B"
+    assert run["result"]["assignments"]["1"] == "B"
+    assert (
+        client.put(setting, headers=headers, json={"weighting": 3}).status_code == 409
+    )
 
 
 def test_close_signups_assigns_once_and_replays_saved_results(client):
@@ -1229,11 +1286,17 @@ def test_display_names_are_guild_scoped_and_clear_to_discord_name(client):
         "id": "123",
         "name": "MaryDiscord",
         "display_name": "Mary Display",
+        "weighting": 1.0,
+        "guaranteed_table": None,
+        "guaranteed_seat": False,
     }
     client.put("/api/players/123", headers=headers, json={"real_name": "   "})
     assert client.get(path + "/signups").json()[0]["players"][0] == {
         "id": "123",
         "name": "MaryDiscord",
+        "weighting": 1.0,
+        "guaranteed_table": None,
+        "guaranteed_seat": False,
     }
 
 

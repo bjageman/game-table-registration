@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 from app.announcements import enqueue
 from app.discord_api import DiscordAPI
 from app.lottery import VERSION, GuaranteeConflict, assign
-from app.models import Event, GuildSettings, LotteryRun, PlayerProfile
+from app.models import (
+    Event,
+    EventPlayerSetting,
+    GuildSettings,
+    LotteryRun,
+    PlayerProfile,
+)
 from app.signups import players as signup_players
 
 LEASE_SECONDS = 120
@@ -144,6 +150,13 @@ def close_and_assign(
                     )
                 )
             }
+            for setting in db.scalars(
+                select(EventPlayerSetting).where(
+                    EventPlayerSetting.event_id == event_id
+                )
+            ):
+                if setting.weighting is not None:
+                    weights[setting.discord_id] = setting.weighting
         guarantees = event.close_guarantees
         if guarantees is None:
             guarantees = {
@@ -157,6 +170,15 @@ def close_and_assign(
                     )
                 )
             }
+            for setting in db.scalars(
+                select(EventPlayerSetting).where(
+                    EventPlayerSetting.event_id == event_id
+                )
+            ):
+                if setting.guaranteed_table:
+                    guarantees.setdefault(setting.discord_id, {})[
+                        "guaranteed_table"
+                    ] = setting.guaranteed_table
         adjust_weights = event.close_adjust_weights
         if adjust_weights is None:
             settings = db.get(GuildSettings, event.guild_id)
@@ -207,7 +229,14 @@ def close_and_assign(
 
     def with_guarantees(snapshot: dict[str, Any]) -> dict[str, Any]:
         for player in snapshot["players"]:
-            player.update(guarantees.get(player["id"], {}))
+            saved = guarantees.get(player["id"], {})
+            player.update(
+                {
+                    key: value
+                    for key, value in saved.items()
+                    if key != "guaranteed_table" or value in player["choices"]
+                }
+            )
         return snapshot
 
     preflight = True

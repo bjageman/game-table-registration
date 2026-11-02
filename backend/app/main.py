@@ -41,6 +41,7 @@ from app.gateway import SignupGateway
 from app.models import (
     Announcement,
     Event,
+    EventPlayerSetting,
     EventTemplate,
     GuildSettings,
     LoginState,
@@ -129,6 +130,12 @@ class PlayerProfileInput(BaseModel):
     @classmethod
     def clean_real_name(cls, value: str) -> str:
         return value.strip()
+
+
+class EventPlayerSettingInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    weighting: float | None = Field(default=None, ge=0.1, le=10.0, allow_inf_nan=False)
+    guaranteed_table: str | None = None
 
 
 class TestPopulationInput(BaseModel):
@@ -715,33 +722,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             return serialize_template(template)
 
-    def list_names(rows: list[dict[str, Any]], guild_id: str) -> list[dict[str, Any]]:
+    def list_names(
+        rows: list[dict[str, Any]], guild_id: str, event_id: str | None = None
+    ) -> list[dict[str, Any]]:
         # Decorate copies for the app; saved results keep Discord names.
         with DBSession(engine) as db:
-            names = {
-                profile.discord_id: profile.real_name
+            profiles = {
+                profile.discord_id: profile
                 for profile in db.scalars(
                     select(PlayerProfile).where(
                         PlayerProfile.guild_id == guild_id,
-                        PlayerProfile.real_name != "",
                     )
                 )
             }
+            settings = (
+                {
+                    setting.discord_id: setting
+                    for setting in db.scalars(
+                        select(EventPlayerSetting).where(
+                            EventPlayerSetting.event_id == event_id
+                        )
+                    )
+                }
+                if event_id
+                else {}
+            )
+
+        def decorate(player: dict[str, Any]) -> dict[str, Any]:
+            profile = profiles.get(player["id"])
+            setting = settings.get(player["id"])
+            result = {**player}
+            if profile and profile.real_name:
+                result["display_name"] = profile.real_name
+            if event_id:
+                result.update(
+                    weighting=(
+                        setting.weighting
+                        if setting and setting.weighting is not None
+                        else profile.weighting
+                        if profile
+                        else 1.0
+                    ),
+                    guaranteed_table=setting.guaranteed_table if setting else None,
+                    guaranteed_seat=profile.guaranteed_seat if profile else False,
+                )
+            return result
+
         return [
             {
                 **row,
                 **{
-                    key: [
-                        {
-                            **player,
-                            **(
-                                {"display_name": names[player["id"]]}
-                                if player["id"] in names
-                                else {}
-                            ),
-                        }
-                        for player in row[key]
-                    ]
+                    key: [decorate(player) for player in row[key]]
                     for key in ("players", "waitlist")
                     if key in row
                 },
@@ -767,7 +798,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             population = event.test_signups
             if event.signup_mode in ("custom", "reactions"):
                 return list_names(
-                    add_to_rows(table_rows(db, event), population), event.guild_id
+                    add_to_rows(table_rows(db, event), population),
+                    event.guild_id,
+                    event.id,
                 )
         rows = (
             scoped_discord(request).table_signups(message_id, tables)
@@ -775,8 +808,77 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else [{"name": table["name"], "players": []} for table in tables]
         )
         return list_names(
-            add_to_rows(rows, population), destination(request).discord_guild_id
+            add_to_rows(rows, population),
+            destination(request).discord_guild_id,
+            event_id,
         )
+
+    @app.put("/api/events/{event_id}/players/{player_id}/settings")
+    def save_event_player_setting(
+        event_id: str, player_id: str, body: EventPlayerSettingInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(player_id)
+        fields = body.model_fields_set
+        if not fields or not fields <= {"weighting", "guaranteed_table"}:
+            raise HTTPException(422, "Specify a weight or guaranteed table")
+        with DBSession(engine) as db:
+            # Serialize edits against the closing claim.
+            claimed = db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id, *event_scope(request), Event.status == "open"
+                )
+                .values(status=Event.status)
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            if not claimed:
+                raise HTTPException(409, "Only open signups can be changed")
+            event = db.get(Event, event_id)
+            assert event is not None
+            if "guaranteed_table" in fields and body.guaranteed_table is not None:
+                if body.guaranteed_table not in {
+                    table["name"] for table in event.tables
+                }:
+                    raise HTTPException(422, "Unknown table")
+                signed_up = any(
+                    p["id"] == player_id and body.guaranteed_table in p["choices"]
+                    for p in (event.test_signups or {}).get("players", [])
+                )
+                if event.signup_mode in ("custom", "reactions"):
+                    signup = db.get(TableSignup, (event_id, player_id))
+                    signed_up = signed_up or bool(
+                        signup and body.guaranteed_table in signup.choices
+                    )
+                elif event.message_id and not signed_up:
+                    signed_up = any(
+                        row["name"] == body.guaranteed_table
+                        and any(p["id"] == player_id for p in row["players"])
+                        for row in scoped_discord(request).table_signups(
+                            event.message_id, event.tables
+                        )
+                    )
+                if not signed_up:
+                    raise HTTPException(422, "Player is not signed up for that table")
+            setting = db.get(EventPlayerSetting, (event_id, player_id))
+            if setting is None:
+                setting = EventPlayerSetting(event_id=event_id, discord_id=player_id)
+                db.add(setting)
+            if "weighting" in fields:
+                setting.weighting = body.weighting
+            if "guaranteed_table" in fields:
+                setting.guaranteed_table = body.guaranteed_table
+            db.commit()
+            profile = db.get(PlayerProfile, (event.guild_id, player_id))
+            return {
+                "weighting": setting.weighting
+                if setting.weighting is not None
+                else profile.weighting
+                if profile
+                else 1.0,
+                "guaranteed_table": setting.guaranteed_table,
+                "guaranteed_seat": profile.guaranteed_seat if profile else False,
+            }
 
     @app.post("/api/events/{event_id}/close")
     def close_signups(
