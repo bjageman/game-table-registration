@@ -985,7 +985,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "further signups are rejected"
                     )
             try:
-                deliver_event(engine, scoped_discord(request), event_id, limit=5)
+                deliver_event(engine, scoped_discord(request), event_id)
             except Exception:
                 logging.getLogger(__name__).exception(
                     "Immediate announcement attempt failed; delivery remains queued"
@@ -1346,7 +1346,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     error="An assignment announcement needs review before its "
                     "Discord messages can be deleted."
                 )
-            if any(row.state != "sent" or not row.message_id for row in rows):
+            if any(
+                not row.deleted_at and (row.state != "sent" or not row.message_id)
+                for row in rows
+            ):
                 return progress(retry_after=2)
             targets = [row for row in rows if not row.deleted_at]
             for row in targets if promotions_only else targets[:3]:

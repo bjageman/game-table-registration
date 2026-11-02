@@ -92,7 +92,7 @@ def test_expired_delivery_claim_reconciles_the_existing_message(tmp_path):
             {"players": []},
         )
         db.flush()
-        row = db.query(Announcement).one()
+        row = db.query(Announcement).filter_by(kind="assignment").one()
         row.state = "sending"
         row.token = "interrupted"
         row.lease_until = 0
@@ -103,8 +103,9 @@ def test_expired_delivery_claim_reconciles_the_existing_message(tmp_path):
     deliver_event(engine, discord, "event")
     discord.send_announcement.assert_not_called()
     with Session(engine) as db:
-        assert db.query(Announcement).one().message_id == "existing"
-        assert db.query(Announcement).one().state == "sent"
+        row = db.query(Announcement).filter_by(kind="assignment").one()
+        assert row.message_id == "existing"
+        assert row.state == "sent"
     engine.dispose()
 
 
