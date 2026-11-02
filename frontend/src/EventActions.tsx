@@ -71,7 +71,7 @@ export default function EventActions({
           {event.discord_url && <label className="delete-poll-option">
             <input type="checkbox" checked={deletePoll} disabled={busy}
               onChange={(event) => setDeletePoll(event.target.checked)} />
-            Also delete the poll on Discord
+            Also delete the signup message on Discord
           </label>}
         </ConfirmationDialog>
       )}

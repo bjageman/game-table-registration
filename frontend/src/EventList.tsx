@@ -111,7 +111,7 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
           </button>
           )}
           {event.discord_url && (
-            <DiscordLink className="button event-icon-action" url={event.discord_url} label={`View Discord poll for ${event.title}`}>
+            <DiscordLink className="button event-icon-action" url={event.discord_url} label={`View Discord signup for ${event.title}`}>
               <Eye size={18} aria-hidden="true" />
             </DiscordLink>
           )}

@@ -1,5 +1,7 @@
 import math
+import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from fastapi import HTTPException
@@ -203,6 +205,99 @@ class DiscordAPI:
             f"/channels/{self.settings.discord_channel_id}/messages/{message_id}",
         )
 
+    def close_signup_message(self, message_id: str) -> None:
+        # Keep the event description and deadline; remove the interactive button.
+        self.bot(
+            "PATCH",
+            f"/channels/{self.settings.discord_channel_id}/messages/{message_id}",
+            json={"components": []},
+        )
+
+    def close_reaction_message(self, message_id: str) -> None:
+        path = f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+        message = self.bot("GET", path)
+        marker = "**Signups closed. Reactions no longer change entries.**"
+        content = str(message.get("content") or "")
+        if marker not in content:
+            content = f"{content}\n\n{marker}"
+        self.bot(
+            "PATCH",
+            path,
+            json={
+                "content": content,
+                "allowed_mentions": {"parse": []},
+            },
+        )
+
+    def seed_reactions(self, message_id: str, emojis: list[str]) -> None:
+        for emoji in emojis:
+            path = (
+                f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+                f"/reactions/{quote(emoji, safe='')}/@me"
+            )
+            for attempt in range(10):
+                try:
+                    self.bot("PUT", path)
+                    break
+                except DiscordRequestError as error:
+                    if error.discord_status != 429 or attempt == 9:
+                        raise
+                    time.sleep(max(error.retry_after, 0.5))
+
+    def reaction_players(
+        self, message_id: str, tables: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        from app.reactions import EMOJIS
+
+        players: dict[str, dict[str, Any]] = {}
+        for index, table in enumerate(tables):
+            after = 0
+            while True:
+                for attempt in range(10):
+                    try:
+                        rows = self.request_items(
+                            f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+                            f"/reactions/{quote(EMOJIS[index], safe='')}",
+                            headers={
+                                "Authorization": (
+                                    f"Bot {self.settings.discord_bot_token}"
+                                )
+                            },
+                            params={
+                                "limit": 100,
+                                "type": 0,
+                                **({"after": str(after)} if after else {}),
+                            },
+                        )
+                        break
+                    except DiscordRequestError as error:
+                        if error.discord_status != 429 or attempt == 9:
+                            raise
+                        time.sleep(max(error.retry_after, 0.5))
+                for user in rows:
+                    if user.get("bot"):
+                        continue
+                    pid = str(user["id"])
+                    player = players.setdefault(
+                        pid,
+                        {
+                            "id": pid,
+                            "name": user.get("global_name") or user["username"],
+                            "choices": [],
+                        },
+                    )
+                    if table["name"] not in player["choices"]:
+                        player["choices"].append(table["name"])
+                if len(rows) < 100:
+                    break
+                cursor = max(int(user["id"]) for user in rows)
+                if cursor <= after:
+                    raise HTTPException(
+                        502, "Discord reaction pagination did not advance"
+                    )
+                after = cursor
+        return [players[pid] for pid in sorted(players)]
+
     def manager_context(
         self, user_id: str, guild_id: str
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
@@ -224,7 +319,11 @@ class DiscordAPI:
         bot_member = self.bot("GET", f"/guilds/{guild_id}/members/{bot['id']}")
         channels = self.bot_items(f"/guilds/{guild_id}/channels")
         result = []
-        required = (1 << 10) | (1 << 11) | (1 << 16) | (1 << 49)
+        required = (1 << 10) | (1 << 11) | (1 << 16)
+        if self.settings.discord_signup_mode == "custom":
+            required |= 1 << 6
+        if self.settings.discord_signup_mode == "poll":
+            required |= 1 << 49
         for channel in channels:
             if channel.get("type") != 0:
                 continue

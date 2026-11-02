@@ -125,10 +125,11 @@ def test_delete_discord_poll_failure_is_reported():
         assert error.value.status_code == 502
 
 
-def test_channel_picker_respects_user_and_bot_overwrites():
+@pytest.mark.parametrize("mode", ["custom", "poll"])
+def test_channel_picker_respects_user_and_bot_overwrites(mode):
     from app.connection_settings import POLL_PERMISSIONS
 
-    api = DiscordAPI(Settings(_env_file=None))
+    api = DiscordAPI(Settings(_env_file=None, discord_signup_mode=mode))
     guild = {"id": "100", "owner_id": "other", "name": "Games"}
     roles = [
         {"id": "100", "permissions": str(1 << 10)},
@@ -176,7 +177,8 @@ def test_channel_picker_respects_user_and_bot_overwrites():
     )
     assert api.destination_channels("user", "100") == (
         "Games",
-        [{"id": "101", "name": "public"}],
+        ([{"id": "103", "name": "no-polls"}] if mode == "custom" else [])
+        + [{"id": "101", "name": "public"}],
     )
     roles[1]["permissions"] = "0"
     with pytest.raises(HTTPException) as error:
@@ -208,6 +210,20 @@ def test_saved_destination_rejects_lost_channel_access():
     )
     with pytest.raises(HTTPException):
         api.authorize_destination("user")
+
+
+def test_reaction_seeding_retries_discord_rate_limits(monkeypatch):
+    from app.discord_api import DiscordRequestError
+
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(side_effect=[{}, {}, DiscordRequestError(429, 0.3), {}, {}])
+    sleep = Mock()
+    monkeypatch.setattr("app.discord_api.time.sleep", sleep)
+    api.seed_reactions("message", ["1️⃣", "2️⃣", "3️⃣", "4️⃣"])
+    assert api.bot.call_count == 5
+    assert sleep.call_count == 1
+    assert sleep.call_args.args[0] >= 0.3
+    assert "/reactions/3%EF%B8%8F%E2%83%A3/@me" in api.bot.call_args_list[2].args[1]
 
 
 def test_end_poll_uses_discord_expire_endpoint():
