@@ -177,7 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     # retries events left in `closing` after Discord was still
                     # finalizing a poll or reaction synchronization.
                     with DBSession(engine) as db:
-                        due = [
+                        due: list[dict[str, Any]] = [
                             {
                                 "id": event.id,
                                 "guild": event.guild_id,
@@ -193,6 +193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                     Event.closes_at.is_not(None),
                                     Event.closes_at <= time.time(),
                                     Event.message_id.is_not(None),
+                                    Event.channel_id.is_not(None),
                                 )
                                 .limit(50)
                             )
