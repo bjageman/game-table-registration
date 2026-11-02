@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import EventTables, { TableColumns } from "./EventTables";
 import type { EventRecord } from "./api";
@@ -56,4 +56,16 @@ it("prefers display names for assigned and waiting players, with Discord name fa
   expect(screen.getByRole("button", { name: "Dan" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Carl Display" })).toBeVisible();
   expect(screen.queryByText("DiscordMary")).not.toBeInTheDocument();
+});
+
+it("shows saved placements after the Discord signup message is deleted", async () => {
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify([
+    { name: "Table A", players: [{ id: "1", name: "Mary" }], waitlist: [] },
+    { name: "Table B", players: [] },
+  ])));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={{ ...event, status: "assigned", discord_url: null, signup_deleted_at: 1 }} onAccessError={() => false} />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Mary" })).toBeVisible());
+  expect(screen.getByText("1/8")).toBeVisible();
+  expect(fetchMock).toHaveBeenCalledWith("/api/events/event/signups", expect.anything());
 });

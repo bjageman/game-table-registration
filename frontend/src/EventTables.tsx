@@ -20,8 +20,9 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   const [rows, setRows] = useState<TableSignups[]>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const hasSignups = event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
   useEffect(() => {
-    if (!event.discord_url && !event.is_test) return;
+    if (!hasSignups) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
@@ -40,7 +41,7 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
     }
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, attempt, refreshToken, onAccessError, onRefreshingChange]);
+  }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, hasSignups, attempt, refreshToken, onAccessError, onRefreshingChange]);
   return <>
     {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf}
       onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
@@ -48,7 +49,7 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
       Could not refresh signups. {rows ? "Showing the last loaded list. " : ""}{error}{" "}
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
     </p>}
-    <TableColumns event={event} rows={event.discord_url || event.is_test ? rows : event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={setSelectedPlayer} />
+    <TableColumns event={event} rows={hasSignups ? rows : event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={setSelectedPlayer} />
   </>;
 }
 
