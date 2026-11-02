@@ -983,7 +983,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "further signups are rejected"
                     )
             try:
-                deliver_event(engine, scoped_discord(request), event_id)
+                deliver_event(engine, scoped_discord(request), event_id, limit=5)
             except Exception:
                 logging.getLogger(__name__).exception(
                     "Immediate announcement attempt failed; delivery remains queued"
