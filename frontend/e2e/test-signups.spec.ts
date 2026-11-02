@@ -3,8 +3,8 @@ import { test, expect } from "@playwright/test";
 for (const allowed of [true, false]) {
   test(`test signup population is ${allowed ? "available" : "hidden"} for this account`, async ({ page }) => {
     let populated = false;
-    const event = { id: "event", title: "Game Night", status: "draft", starts_at: 3800000000,
-      duration_hours: 24, closes_at: 3799900000, discord_url: null,
+    const event = { id: "event", title: "Game Night", status: "open", starts_at: 3800000000,
+      duration_hours: 24, closes_at: 3799900000, discord_url: "https://discord.com/channels/guild/channel/message",
       tables: [{ name: "Table A", capacity: 8 }] };
     await page.route("**/api/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -34,3 +34,12 @@ for (const allowed of [true, false]) {
     expect(populated).toBe(true);
   });
 }
+
+test("test user population stays hidden until a draft is published", async ({ page }) => {
+  await page.route("**/api/me", (route) => route.fulfill({ json: { username: "organizer", csrf: "csrf", can_populate_test_users: true } }));
+  await page.route("**/api/events", (route) => route.fulfill({ json: [{ id: "draft", title: "Draft Night", status: "draft", starts_at: 3800000000,
+    duration_hours: 24, closes_at: null, discord_url: null, tables: [{ name: "Table A", capacity: 8 }] }] }));
+  await page.goto("/");
+  await page.getByRole("button", { name: /^Draft Night/ }).click();
+  await expect(page.getByRole("dialog", { name: "Draft Night", exact: true }).getByRole("button", { name: "Populate Test Users" })).toHaveCount(0);
+});

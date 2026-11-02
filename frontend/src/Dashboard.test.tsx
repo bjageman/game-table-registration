@@ -43,6 +43,21 @@ it("opens event details from a compact event listing", async () => {
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+it("shows Populate Test Users only after publishing", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  const published = { ...draft, id: "published", title: "Published games", status: "open", discord_url: "https://discord.com/channels/guild/channel/message" };
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(
+    path === "/api/events" ? [draft, published] : [{ name: "Clocktower", players: [] }],
+  ))));
+  render(<Dashboard {...props} session={{ ...props.session, can_populate_test_users: true }} />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Friday games/ }));
+  expect(screen.queryByRole("button", { name: "Populate Test Users" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Close event" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Published games/ }));
+  expect(screen.getByRole("button", { name: "Populate Test Users" })).toBeVisible();
+});
+
 it("offers retry after a failed request instead of showing an empty list", async () => {
   const fetchMock = vi
     .fn()

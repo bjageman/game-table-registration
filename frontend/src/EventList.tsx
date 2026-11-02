@@ -172,7 +172,7 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
             </p>}
             <div className="form-actions">
               {event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-              {canPopulateTestUsers && (event.status === "draft" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+              {canPopulateTestUsers && event.status === "open" && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
             {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} refreshToken={refreshToken} onAccessError={actions.onAccessError} />}
             {(event.status === "publishing" ||
