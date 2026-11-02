@@ -127,3 +127,20 @@ def test_conflicting_guarantees_rejected():
         p["guaranteed_seat"] = True
     with pytest.raises(GuaranteeConflict, match="exceed capacity"):
         assign(data, "seed")
+
+
+def test_table_guarantee_seats_player_at_that_specific_table():
+    data = snapshot([["A", "B"], ["A"], ["B"]])
+    data["players"][0]["guaranteed_table"] = "B"
+    for seed in range(40):
+        assert assign(data, str(seed))["assignments"]["0"] == "B"
+
+
+def test_conflicting_table_guarantees_rejected():
+    from app.lottery import GuaranteeConflict
+
+    data = snapshot([["A", "B"], ["A"]])
+    data["players"][0]["guaranteed_table"] = "A"
+    data["players"][1]["guaranteed_table"] = "A"
+    with pytest.raises(GuaranteeConflict):
+        assign(data, "seed")

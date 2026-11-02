@@ -1,12 +1,20 @@
 import TableTitle from "./TableTitle";
 import PlayerProfile from "./PlayerProfile";
 import { useEffect, useState } from "react";
-import { api, errorMessage, type EventRecord } from "./api";
+import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
+
+interface SignupPlayer { id: string; name: string; display_name?: string; weighting?: number; guaranteed_table?: string | null; guaranteed_seat?: boolean }
+type SortColumn = "guarantee" | "player" | "weight";
+type SortState = { column: SortColumn; descending: boolean };
+
+function isGuaranteedAtTable(player: SignupPlayer, table: string): boolean {
+  return player.guaranteed_table === table || Boolean(player.guaranteed_seat && !player.guaranteed_table);
+}
 
 export interface TableSignups {
   name: string;
-  players: { id: string; name: string; display_name?: string }[];
-  waitlist?: { id: string; name: string; display_name?: string }[];
+  players: SignupPlayer[];
+  waitlist?: SignupPlayer[];
 }
 
 export default function EventTables({ event, csrf, onAccessError, refreshToken = 0, onRefreshingChange }: {
@@ -19,8 +27,26 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   const [selectedPlayer, setSelectedPlayer] = useState<{ id: string; name: string }>();
   const [rows, setRows] = useState<TableSignups[]>();
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [editingWeight, setEditingWeight] = useState<string>();
+  const [weight, setWeight] = useState("");
+  const [saving, setSaving] = useState(false);
   const hasSignups = event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
+  async function saveSetting(player: SignupPlayer, change: { weighting?: number; guaranteed_table?: string | null }) {
+    if (saving) return;
+    setSaving(true); setActionError("");
+    try {
+      const saved = await api<{ weighting: number; guaranteed_table: string | null; guaranteed_seat: boolean }>(
+        `/events/${encodeURIComponent(event.id)}/players/${encodeURIComponent(player.id)}/settings`,
+        { ...mutationOptions(csrf, change), method: "PUT" },
+      );
+      setRows((current) => current?.map((row) => ({ ...row, players: row.players.map((entry) => entry.id === player.id ? { ...entry, ...saved } : entry) })));
+      setEditingWeight(undefined);
+    } catch (failure) {
+      if (!onAccessError(failure)) setActionError(errorMessage(failure));
+    } finally { setSaving(false); }
+  }
   useEffect(() => {
     if (!hasSignups) return;
     const controller = new AbortController();
@@ -49,22 +75,60 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
       Could not refresh signups. {rows ? "Showing the last loaded list. " : ""}{error}{" "}
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
     </p>}
-    <TableColumns event={event} rows={hasSignups ? rows : event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={setSelectedPlayer} />
+    {actionError && <p role="alert" className="error">Could not save player setting. {actionError}</p>}
+    <TableColumns event={event} rows={hasSignups ? rows : event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={setSelectedPlayer}
+      editingWeight={editingWeight} weight={weight} saving={saving} onWeightChange={setWeight}
+      onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 1)); }}
+      onCancelWeight={() => setEditingWeight(undefined)}
+      onSaveWeight={(player) => { const value = Number(weight); if (weight.trim() && Number.isFinite(value) && value >= 0.1 && value <= 10) { if (value === (player.weighting ?? 1)) setEditingWeight(undefined); else void saveSetting(player, { weighting: value }); } else setActionError("Choose a weight from 0.1 to 10."); }}
+      onToggleGuarantee={(player, table) => void saveSetting(player, { guaranteed_table: player.guaranteed_table === table ? null : table })} />
   </>;
 }
 
-export function TableColumns({ event, rows, error = "", onSelect }: {
+export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee }: {
   event: Pick<EventRecord, "tables" | "status">;
   rows?: TableSignups[];
   error?: string;
   onSelect?: (player: { id: string; name: string }) => void;
+  editingWeight?: string;
+  weight?: string;
+  saving?: boolean;
+  onWeightChange?: (value: string) => void;
+  onEditWeight?: (player: SignupPlayer, table: string) => void;
+  onCancelWeight?: () => void;
+  onSaveWeight?: (player: SignupPlayer) => void;
+  onToggleGuarantee?: (player: SignupPlayer, table: string) => void;
 }) {
+  const [sorts, setSorts] = useState<Record<string, SortState>>({});
+  function sortTable(table: string, column: SortColumn) {
+    setSorts((current) => ({
+      ...current,
+      [table]: {
+        column,
+        descending: current[table]?.column === column ? !current[table].descending : false,
+      },
+    }));
+  }
   return (
     <ul className="event-tables" aria-label="Tables">
       {event.tables.map((table) => {
         const row = rows?.find((row) => row.name === table.name);
         const players = row?.players;
         const count = rows ? players?.length : undefined;
+        const sort = sorts[table.name];
+        const sortedPlayers = players && sort && event.status === "open" ? [...players].sort((a, b) => {
+          const difference = sort.column === "guarantee"
+            ? Number(isGuaranteedAtTable(b, table.name)) - Number(isGuaranteedAtTable(a, table.name))
+            : sort.column === "weight"
+              ? (a.weighting ?? 1) - (b.weighting ?? 1)
+              : (a.display_name || a.name).localeCompare(b.display_name || b.name, undefined, { sensitivity: "base" });
+          return sort.descending ? -difference : difference;
+        }) : players;
+        const header = (column: SortColumn, label: string, accessibleLabel: string) => <button type="button" className="table-player-sort"
+          aria-label={`Sort ${table.name} by ${accessibleLabel}${sort?.column === column ? `, ${sort.descending ? "descending" : "ascending"}` : ""}`}
+          aria-pressed={sort?.column === column} onClick={() => sortTable(table.name, column)}>
+          {label}{sort?.column === column && <span aria-hidden="true">{sort.descending ? "▼" : "▲"}</span>}
+        </button>;
         return <li key={table.name} className="event-table">
           <div className="table-heading">
             <TableTitle>{table.name}</TableTitle>
@@ -72,10 +136,24 @@ export function TableColumns({ event, rows, error = "", onSelect }: {
               {count ?? "—"}/{table.capacity}
             </span>
           </div>
+          {event.status === "open" && <div className="table-player-header">
+            {header("guarantee", "⭐", "guarantee")}{header("player", "Player", "player")}{header("weight", "Wt", "weight")}
+          </div>}
           {players?.length ? <ul className="table-players">
-            {players.map((player) => <li key={player.id}>
+            {sortedPlayers?.map((player) => <li key={player.id} className={event.status === "open" ? "table-player-row" : "table-assigned-player"}>
+              {event.status === "open" && <button type="button" className="player-guarantee" disabled={saving} aria-pressed={player.guaranteed_table === table.name}
+                aria-label={`${player.guaranteed_table === table.name ? "Remove" : "Guarantee"} ${player.display_name || player.name} at ${table.name}`}
+                title={player.guaranteed_table === table.name ? "Remove table guarantee" : player.guaranteed_seat && !player.guaranteed_table ? "Profile guarantees a seat at one selected table; click to guarantee this table" : "Guarantee this table"}
+                onClick={() => onToggleGuarantee?.(player, table.name)}>{isGuaranteedAtTable(player, table.name) ? "⭐" : "⚪"}</button>}
               {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog"
-                title="View Player Information" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
+                title={player.display_name || player.name} aria-label={player.display_name || player.name}
+                onClick={() => onSelect(player)}>{event.status === "open" ? <>{(player.display_name || player.name).slice(0, 26)}{(player.display_name || player.name).length > 26 ? "…" : ""}</> : player.display_name || player.name}</button> : event.status === "open" ? (player.display_name || player.name).slice(0, 26) : player.display_name || player.name}
+              {event.status === "open" && (editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
+                <input type="text" inputMode="decimal" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)}
+                  onBlur={() => onSaveWeight?.(player)} onKeyDown={(key) => { if (key.key === "Escape") { key.preventDefault(); onCancelWeight?.(); } }} disabled={saving} autoFocus />
+              </form> : <button type="button" className={`player-weight ${(player.weighting ?? 1) < 1 ? "low" : (player.weighting ?? 1) > 1 ? "high" : ""}`}
+                title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 1).toFixed(1)}`} disabled={saving}
+                onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 1).toFixed(1)}</button>)}
             </li>)}
           </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : "Loading signups…"}</p>}
           {event.status === "assigned" && row && <div className="table-waitlist">
