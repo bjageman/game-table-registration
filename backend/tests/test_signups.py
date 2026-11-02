@@ -256,6 +256,8 @@ def test_closed_or_unpublished_events_reject_all_changes(custom_client, state):
 
 
 def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
+    from app.announcements import dispatch_due
+
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
     dispatch(custom_client, interaction(event, "select", values=["0", "1"]))
@@ -284,7 +286,10 @@ def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
     client.app.state.discord.end_poll.assert_not_called()
     client.app.state.discord.voter_users.assert_not_called()
     client.app.state.discord.close_signup_message.assert_called_with("message")
-    assert client.app.state.discord.send_announcement.call_count == 1
+    dispatch_due(
+        client.app.state.engine, lambda guild, channel: client.app.state.discord
+    )
+    assert client.app.state.discord.send_announcement.call_count == 3
     assert (
         "Signups are closed"
         in dispatch(custom_client, interaction(event, "select")).json()["data"][
