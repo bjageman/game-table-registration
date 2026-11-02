@@ -192,6 +192,11 @@ def withdraw(
                 if promoted_id.startswith("test-")
                 else f"<@{promoted_id}>"
             )
+            left_name = (
+                clean(left["name"])
+                if player_id.startswith("test-")
+                else f"<@{player_id}>"
+            )
             announce_id = db.scalar(
                 select(func.max(Announcement.part)).where(
                     Announcement.event_id == event_id
@@ -201,9 +206,13 @@ def withdraw(
             content = (
                 f"**{clean(event.title)} — Table Update**\n"
                 f"{promoted_name} has been promoted to **{clean(table_name)}** "
-                f"after {clean(left['name'])} left their seat.\n"
+                f"after {left_name} left their seat.\n"
             )
-            mentions = [promoted_id] if not promoted_id.startswith("test-") else []
+            mentions = [
+                user_id
+                for user_id in (promoted_id, player_id)
+                if not user_id.startswith("test-")
+            ]
             db.add(
                 Announcement(
                     id=str(uuid.uuid4()),
