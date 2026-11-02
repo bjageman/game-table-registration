@@ -69,6 +69,39 @@ it("labels the guarantee, player, and weight columns for every open table", () =
   expect(screen.getAllByText("Wt")).toHaveLength(2);
 });
 
+it("sorts each table by guarantee, player, or weight and reverses on a second click", () => {
+  render(<TableColumns event={event} onSelect={() => {}} rows={[
+    { name: "Table A", players: [
+      { id: "1", name: "Zoe", weighting: 2 },
+      { id: "2", name: "Amy", weighting: 1, guaranteed_table: "Table A" },
+      { id: "3", name: "Bill", weighting: 0.5 },
+    ] },
+    { name: "Table B", players: [
+      { id: "4", name: "Yara", weighting: 3 },
+      { id: "5", name: "Carl", weighting: 1 },
+    ] },
+  ]} />);
+  const tables = document.querySelectorAll(".event-table");
+  const names = (index: number) => Array.from(tables[index].querySelectorAll(".table-player-row .player-name"), (node) => node.textContent);
+  expect(names(0)).toEqual(["Zoe", "Amy", "Bill"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort Table A by player" }));
+  expect(names(0)).toEqual(["Amy", "Bill", "Zoe"]);
+  expect(names(1)).toEqual(["Yara", "Carl"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort Table A by player, ascending" }));
+  expect(names(0)).toEqual(["Zoe", "Bill", "Amy"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort Table A by weight" }));
+  expect(names(0)).toEqual(["Bill", "Amy", "Zoe"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort Table A by weight, ascending" }));
+  expect(names(0)).toEqual(["Zoe", "Amy", "Bill"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort Table A by guarantee" }));
+  expect(names(0)).toEqual(["Amy", "Zoe", "Bill"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort Table A by guarantee, ascending" }));
+  expect(names(0)).toEqual(["Zoe", "Bill", "Amy"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort Table B by player" }));
+  expect(names(1)).toEqual(["Carl", "Yara"]);
+  expect(names(0)).toEqual(["Zoe", "Bill", "Amy"]);
+});
+
 it("shows saved placements after the Discord signup message is deleted", async () => {
   const fetchMock = vi.fn(async () => new Response(JSON.stringify([
     { name: "Table A", players: [{ id: "1", name: "Mary" }], waitlist: [] },
@@ -96,10 +129,29 @@ it("edits a weight for the event and selects one guaranteed table", async () => 
   await waitFor(() => expect(screen.getByRole("button", { name: "Remove Mary at Table A" })).toBeVisible());
   expect(screen.getByRole("button", { name: "Guarantee Mary at Table B" })).toBeVisible();
   fireEvent.click(screen.getAllByRole("button", { name: "Edit weight for Mary: 1.0" })[0]);
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Weight for Mary" }), { target: { value: "2.5" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  const weight = screen.getByRole("textbox", { name: "Weight for Mary" });
+  expect(weight).toHaveValue("1");
+  expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  fireEvent.change(weight, { target: { value: "2.5" } });
+  fireEvent.blur(weight);
   await waitFor(() => expect(screen.getAllByRole("button", { name: "Edit weight for Mary: 2.5" })).toHaveLength(2));
   expect(fetchMock.mock.calls[1][0]).toContain("/events/event/players/1/settings");
   expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ guaranteed_table: "Table A" });
   expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ weighting: 2.5 });
+});
+
+it("closes an inline weight edit without saving on Escape", async () => {
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify([
+    { name: "Table A", players: [{ id: "1", name: "Mary", weighting: 1 }] },
+    { name: "Table B", players: [] },
+  ])));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Edit weight for Mary: 1.0" }));
+  const weight = screen.getByRole("textbox", { name: "Weight for Mary" });
+  fireEvent.change(weight, { target: { value: "3" } });
+  fireEvent.keyDown(weight, { key: "Escape" });
+  expect(screen.queryByRole("textbox", { name: "Weight for Mary" })).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });

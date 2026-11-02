@@ -4,6 +4,12 @@ import { useEffect, useState } from "react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
 interface SignupPlayer { id: string; name: string; display_name?: string; weighting?: number; guaranteed_table?: string | null; guaranteed_seat?: boolean }
+type SortColumn = "guarantee" | "player" | "weight";
+type SortState = { column: SortColumn; descending: boolean };
+
+function isGuaranteedAtTable(player: SignupPlayer, table: string): boolean {
+  return player.guaranteed_table === table || Boolean(player.guaranteed_seat && !player.guaranteed_table);
+}
 
 export interface TableSignups {
   name: string;
@@ -74,7 +80,7 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
       editingWeight={editingWeight} weight={weight} saving={saving} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 1)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
-      onSaveWeight={(player) => { const value = Number(weight); if (weight.trim() && Number.isFinite(value) && value >= 0.1 && value <= 10) void saveSetting(player, { weighting: value }); else setActionError("Choose a weight from 0.1 to 10."); }}
+      onSaveWeight={(player) => { const value = Number(weight); if (weight.trim() && Number.isFinite(value) && value >= 0.1 && value <= 10) { if (value === (player.weighting ?? 1)) setEditingWeight(undefined); else void saveSetting(player, { weighting: value }); } else setActionError("Choose a weight from 0.1 to 10."); }}
       onToggleGuarantee={(player, table) => void saveSetting(player, { guaranteed_table: player.guaranteed_table === table ? null : table })} />
   </>;
 }
@@ -93,12 +99,36 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
   onSaveWeight?: (player: SignupPlayer) => void;
   onToggleGuarantee?: (player: SignupPlayer, table: string) => void;
 }) {
+  const [sorts, setSorts] = useState<Record<string, SortState>>({});
+  function sortTable(table: string, column: SortColumn) {
+    setSorts((current) => ({
+      ...current,
+      [table]: {
+        column,
+        descending: current[table]?.column === column ? !current[table].descending : false,
+      },
+    }));
+  }
   return (
     <ul className="event-tables" aria-label="Tables">
       {event.tables.map((table) => {
         const row = rows?.find((row) => row.name === table.name);
         const players = row?.players;
         const count = rows ? players?.length : undefined;
+        const sort = sorts[table.name];
+        const sortedPlayers = players && sort && event.status === "open" ? [...players].sort((a, b) => {
+          const difference = sort.column === "guarantee"
+            ? Number(isGuaranteedAtTable(b, table.name)) - Number(isGuaranteedAtTable(a, table.name))
+            : sort.column === "weight"
+              ? (a.weighting ?? 1) - (b.weighting ?? 1)
+              : (a.display_name || a.name).localeCompare(b.display_name || b.name, undefined, { sensitivity: "base" });
+          return sort.descending ? -difference : difference;
+        }) : players;
+        const header = (column: SortColumn, label: string, accessibleLabel: string) => <button type="button" className="table-player-sort"
+          aria-label={`Sort ${table.name} by ${accessibleLabel}${sort?.column === column ? `, ${sort.descending ? "descending" : "ascending"}` : ""}`}
+          aria-pressed={sort?.column === column} onClick={() => sortTable(table.name, column)}>
+          {label}{sort?.column === column && <span aria-hidden="true">{sort.descending ? "▼" : "▲"}</span>}
+        </button>;
         return <li key={table.name} className="event-table">
           <div className="table-heading">
             <TableTitle>{table.name}</TableTitle>
@@ -107,20 +137,20 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
             </span>
           </div>
           {event.status === "open" && <div className="table-player-header">
-            <span title="Guaranteed table">⭐</span><span>Player</span><span title="Weight">Wt</span>
+            {header("guarantee", "⭐", "guarantee")}{header("player", "Player", "player")}{header("weight", "Wt", "weight")}
           </div>}
           {players?.length ? <ul className="table-players">
-            {players.map((player) => <li key={player.id} className="table-player-row">
+            {sortedPlayers?.map((player) => <li key={player.id} className="table-player-row">
               {event.status === "open" && <button type="button" className="player-guarantee" disabled={saving} aria-pressed={player.guaranteed_table === table.name}
                 aria-label={`${player.guaranteed_table === table.name ? "Remove" : "Guarantee"} ${player.display_name || player.name} at ${table.name}`}
                 title={player.guaranteed_table === table.name ? "Remove table guarantee" : player.guaranteed_seat && !player.guaranteed_table ? "Profile guarantees a seat at one selected table; click to guarantee this table" : "Guarantee this table"}
-                onClick={() => onToggleGuarantee?.(player, table.name)}>{player.guaranteed_table === table.name || (player.guaranteed_seat && !player.guaranteed_table) ? "⭐" : "⚪"}</button>}
+                onClick={() => onToggleGuarantee?.(player, table.name)}>{isGuaranteedAtTable(player, table.name) ? "⭐" : "⚪"}</button>}
               {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog"
                 title={player.display_name || player.name} aria-label={player.display_name || player.name}
                 onClick={() => onSelect(player)}>{(player.display_name || player.name).slice(0, 26)}{(player.display_name || player.name).length > 26 ? "…" : ""}</button> : (player.display_name || player.name).slice(0, 26)}
               {event.status === "open" && (editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
-                <input type="number" min="0.1" max="10" step="0.1" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)} disabled={saving} autoFocus />
-                <button type="submit" disabled={saving}>Save</button><button type="button" onClick={onCancelWeight} disabled={saving}>Cancel</button>
+                <input type="text" inputMode="decimal" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)}
+                  onBlur={() => onSaveWeight?.(player)} onKeyDown={(key) => { if (key.key === "Escape") { key.preventDefault(); onCancelWeight?.(); } }} disabled={saving} autoFocus />
               </form> : <button type="button" className={`player-weight ${(player.weighting ?? 1) < 1 ? "low" : (player.weighting ?? 1) > 1 ? "high" : ""}`}
                 title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 1).toFixed(1)}`} disabled={saving}
                 onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 1).toFixed(1)}</button>)}

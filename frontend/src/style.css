@@ -386,6 +386,10 @@ dd {
 .table-player-header, .table-player-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 42px; align-items: center; gap: 5px; min-width: 0; }
 .table-player-header { border-bottom: 1px solid #dce3d9; padding-bottom: 5px; color: #52665a; font-size: 0.8rem; font-weight: 650; }
 .table-player-header > :last-child { text-align: right; }
+.table-player-sort { display: inline-flex; align-items: center; justify-content: flex-start; gap: 2px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.table-player-sort:hover { background: transparent; color: #285841; text-decoration: underline; }
+.table-player-sort > span { font-size: 0.65rem; }
+.table-player-sort:last-child { justify-content: flex-end; }
 .table-player-row { margin: 3px 0; }
 .table-player-row .player-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-guarantee, .player-weight { border: 0; background: transparent; padding: 1px 3px; flex-shrink: 0; }
@@ -393,8 +397,8 @@ dd {
 .player-weight { justify-self: end; font-variant-numeric: tabular-nums; color: #222; }
 .player-weight.low { color: #831d1d; }
 .player-weight.high { color: #185c36; }
-.player-weight-editor { grid-column: 2 / -1; display: flex; gap: 3px; flex-wrap: wrap; }
-.player-weight-editor input { width: 62px; }
+.player-weight-editor { grid-column: 3; min-width: 0; }
+.player-weight-editor input { box-sizing: border-box; width: 100%; padding: 1px 2px; border: 1px solid #bdc9c0; border-radius: 2px; font-size: inherit; font-variant-numeric: tabular-nums; text-align: right; }
 .table-waitlist { margin-top: 20px; }
 .table-waitlist h4, .table-waitlist h5 { font-weight: 650; margin-bottom: 8px; }
 .table-waitlist ol { list-style: decimal; padding-left: 20px; }
