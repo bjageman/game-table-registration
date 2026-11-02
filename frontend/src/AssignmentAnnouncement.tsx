@@ -3,7 +3,7 @@ import DiscordLink from "./DiscordLink";
 import ConfirmationDialog from "./ConfirmationDialog";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 
-interface Delivery { status: "pending" | "sent" | "needs_review" | "unavailable"; error: string | null; url: string | null; }
+interface Delivery { status: "pending" | "sent" | "needs_review" | "unavailable" | "deleted"; error: string | null; url: string | null; }
 
 export default function AssignmentAnnouncement({ event, csrf, refreshToken, onAccessError }: {
   event: EventRecord; csrf: string; refreshToken: number; onAccessError: (error: unknown) => boolean;
@@ -41,8 +41,9 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken, onAc
     {error && <p role="alert" className="error">{error}</p>}
     {delivery?.status === "sent" && delivery.url && <p><DiscordLink url={delivery.url} label="View Assignment Announcement">View Assignment Announcement</DiscordLink></p>}
     {delivery?.status === "pending" && <p role="status">Assignment announcement queued for Discord.</p>}
+    {delivery?.status === "deleted" && <p>Assignment announcement removed from Discord.</p>}
     {delivery?.error && <p className="error">{delivery.error}</p>}
-    {delivery && (delivery.status === "needs_review" || delivery.status === "unavailable" || delivery.error) && <button type="button" onClick={() => setConfirming(true)}>{delivery.status === "unavailable" ? "Announce Assignments" : "Retry Announcement"}</button>}
+    {delivery && !event.archived_at && (delivery.status === "needs_review" || delivery.status === "unavailable" || delivery.error) && <button type="button" onClick={() => setConfirming(true)}>{delivery.status === "unavailable" ? "Announce Assignments" : "Retry Announcement"}</button>}
     {confirming && <ConfirmationDialog title="Announce assignments?" busy={busy} error={error}
       onCancel={() => setConfirming(false)} onConfirm={() => void retry()}>
       <p>{delivery?.status === "unavailable" ? "Posts the saved table placements to Discord." : "Check Discord for an existing announcement before confirming a retry. This sends the saved placements and does not redraw them."}</p>

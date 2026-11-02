@@ -2,6 +2,7 @@ import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
 import { Eye, RefreshCw, X } from "lucide-react";
 import ArchiveEvent from "./ArchiveEvent";
+import DeleteSignupMessage from "./DeleteSignupMessage";
 import EventTables from "./EventTables";
 import DiscordLink from "./DiscordLink";
 import PopulateTestUsers from "./PopulateTestUsers";
@@ -168,6 +169,7 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
             </p>}
             <div className="form-actions">
               {(event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+              {event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {canPopulateTestUsers && (event.status === "draft" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
             {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} refreshToken={refreshToken} onAccessError={actions.onAccessError} />}

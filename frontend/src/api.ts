@@ -50,7 +50,7 @@ export async function api<T>(
         ? body.detail
         : issues.length
           ? issues.map((issue: { msg: string }) => issue.msg).join(" ")
-          : "The request could not be completed. Please try again.",
+          : `Request failed (HTTP ${response.status}). Refresh and try again.`,
       issues,
     );
   }
@@ -89,6 +89,7 @@ export interface EventRecord {
   closes_at: number | null;
   published_at?: number | null;
   archived_at?: number | null;
+  signup_deleted_at?: number | null;
   close_error?: string | null;
   is_test?: boolean;
   test_generation?: string | null;

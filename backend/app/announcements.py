@@ -273,13 +273,17 @@ def status(engine: Engine, event_id: str, guild_id: str) -> dict[str, Any]:
         if not rows:
             return {"status": "unavailable", "error": None, "url": None}
         state = (
-            "sent"
+            "deleted"
+            if all(row.deleted_at for row in rows)
+            else "sent"
             if all(row.state == "sent" for row in rows)
             else "needs_review"
             if any(row.state == "needs_review" for row in rows)
             else "pending"
         )
-        first = next((row for row in rows if row.message_id), None)
+        first = next(
+            (row for row in rows if row.message_id and not row.deleted_at), None
+        )
         return {
             "status": state,
             "error": next((row.error for row in rows if row.error), None),

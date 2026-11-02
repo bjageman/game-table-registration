@@ -10,7 +10,7 @@ function props() {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   return { event, csrf: "csrf", onUpdated: vi.fn(), onAccessError: vi.fn(() => false) };
 }
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 it("requires confirmation and sends the close operation with CSRF", async () => {
   const parameters = props();
@@ -26,6 +26,20 @@ it("requires confirmation and sends the close operation with CSRF", async () => 
   await waitFor(() => expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: "assigned" })));
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(fetchMock).toHaveBeenCalledWith("/api/events/event/close", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }) }));
+});
+
+it("remembers message deletion and sends the selected close option", async () => {
+  const parameters = props();
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ...event, status: "assigned", discord_url: null })));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<CloseSignups {...parameters} />);
+  fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Also delete the signup message on Discord" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
+  expect(screen.getByRole("checkbox", { name: "Also delete the signup message on Discord" })).toBeChecked();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/events/event/close?delete_signup_message=true", expect.anything()));
 });
 
 it("continues only after explicit closing responses and blocks duplicate confirmation", async () => {

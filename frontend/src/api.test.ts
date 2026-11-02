@@ -38,7 +38,7 @@ it("shows a useful message when a proxy returns a non-JSON error page", async ()
   );
   await expect(api("/events")).rejects.toMatchObject({
     status: 502,
-    message: "The request could not be completed. Please try again.",
+    message: "Request failed (HTTP 502). Refresh and try again.",
   });
 });
 
