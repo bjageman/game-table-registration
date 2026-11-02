@@ -10,10 +10,6 @@ import LoadingIndicator from "./LoadingIndicator";
 interface Profile { discord_id: string; discord_name: string; real_name: string; weighting: number; is_test?: boolean; guaranteed_seat?: boolean; }
 type ProfileChange = { real_name?: string; weighting?: number; guaranteed_seat?: boolean };
 
-function displayWeight(value: number): string {
-  return Number.isInteger(value) ? value.toFixed(1) : String(value);
-}
-
 export default function PlayerProfile({ player, csrf, onClose, onAccessError, onSaved }: {
   player: { id: string; name: string };
   csrf: string;
@@ -33,7 +29,6 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
   const [profile, setProfile] = useState<Profile>();
   const [realName, setRealName] = useState("");
   const [weighting, setWeighting] = useState("1");
-  const [editingWeight, setEditingWeight] = useState(false);
   const [guaranteedSeat, setGuaranteedSeat] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingWeight, setSavingWeight] = useState(false);
@@ -77,7 +72,6 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
         if (change.weighting !== undefined) {
           setWeighting((current) => Number(current) === change.weighting ? String(updated.weighting) : current);
           if (submitted.current.weighting === change.weighting) submitted.current.weighting = updated.weighting;
-          setEditingWeight(false);
         }
         if (change.guaranteed_seat !== undefined) {
           setGuaranteedSeat((current) => current === change.guaranteed_seat ? Boolean(updated.guaranteed_seat) : current);
@@ -113,14 +107,13 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
     }
   }
   function saveWeight(): boolean {
-    if (!editingWeight || !profileRef.current) return true;
+    if (!profileRef.current) return true;
     const value = Number(weighting);
     if (!weighting.trim() || !Number.isFinite(value) || value < 0.1 || value > 10) {
       setError("Choose a weighting from 0.1 to 10.");
       return false;
     }
     if (value === submitted.current.weighting) {
-      setEditingWeight(false);
       return true;
     }
     setSavingWeight(true);
@@ -156,13 +149,11 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
         onChange={(event) => { setRealName(event.target.value); setNotice(""); }}
         onBlur={saveName} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
         slotProps={{ htmlInput: { maxLength: 100 } }} />
-      {editingWeight ? <div className="profile-weight-edit"><FormField label="Global Weighting" type="number" value={weighting} fullWidth disabled={savingWeight} autoFocus
+      <div className="profile-weight-edit"><FormField label="Global Weighting" type="number" value={weighting} fullWidth disabled={savingWeight}
         onChange={(event) => { setWeighting(event.target.value); setNotice(""); }}
         onBlur={() => { saveWeight(); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
         slotProps={{ htmlInput: { min: 0.1, max: 10, step: 0.1 } }} />
-        </div>
-        : <div className="profile-weight-display"><dl><dt>Global Weighting</dt><dd>{displayWeight(profile.weighting)}</dd></dl>
-          <button type="button" disabled={savingWeight} aria-label="Edit global weighting" onClick={() => { setEditingWeight(true); setNotice(""); }}>Edit</button></div>}
+      </div>
       <FormControlLabel label="Guaranteed Seat" control={<Checkbox checked={guaranteedSeat}
         onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }, "Guaranteed seat saved."); }} />} />
       {notice && <p role="status">{notice}</p>}

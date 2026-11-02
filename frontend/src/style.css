@@ -475,8 +475,8 @@ dd {
 .player-name:hover { background: transparent; color: #19432f; }
 
 .player-discord-name { margin-bottom: 24px; }
-.profile-weight-display, .profile-weight-edit { display: flex; align-items: center; gap: 12px; }
-.profile-weight-display dl, .profile-weight-edit > div { flex: 1; min-width: 0; margin: 0; }
+.profile-weight-edit { display: flex; align-items: center; gap: 12px; }
+.profile-weight-edit > div { flex: 1; min-width: 0; margin: 0; }
 /* Reserve room for floating labels and keep spacing independent of field type. */
 .form-fields {
   display: flex;
