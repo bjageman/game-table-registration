@@ -9,7 +9,7 @@ interface Player { discord_id: string; discord_name: string; real_name: string; 
 type SortKey = "guaranteed_seat" | "discord_name" | "real_name" | "weighting" | "is_test";
 type SortOrder = { key: SortKey; direction: "asc" | "desc" };
 const sortHeaders: { key: SortKey; label: string }[] = [
-  { key: "guaranteed_seat", label: "Guaranteed" },
+  { key: "guaranteed_seat", label: "Priority" },
   { key: "discord_name", label: "Username" },
   { key: "real_name", label: "Display Name" },
   { key: "weighting", label: "Weight" },
