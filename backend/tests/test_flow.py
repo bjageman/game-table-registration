@@ -1228,6 +1228,85 @@ def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
     assert client.post(path + "/archive", headers=headers).status_code == 404
 
 
+def test_close_can_delete_signup_message_and_archive_can_delete_announcements(client):
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    closed = client.post(path + "/close?delete_signup_message=true", headers=headers)
+    assert closed.status_code == 200
+    assert closed.json()["discord_url"] is None
+    assert closed.json()["signup_deleted_at"] > 0
+    scoped = client.app.state.discord.at.return_value
+    scoped.delete_poll.assert_called_once_with("message")
+    archived = client.post(
+        path + "/archive?delete_discord_messages=true", headers=headers
+    )
+    assert archived.status_code == 200
+    assert archived.json()["archived_at"] > 0
+    assert scoped.delete_poll.call_count == 2
+    assert client.get(path + "/announcement").json()["status"] == "deleted"
+    assert (
+        client.post(
+            path + "/announcement/retry", headers=headers, json={"confirm_repost": True}
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            path + "/archive?delete_discord_messages=true", headers=headers
+        ).status_code
+        == 200
+    )
+    assert scoped.delete_poll.call_count == 2
+
+
+def test_failed_archive_discord_cleanup_can_be_retried(client):
+    from app.discord_api import DiscordRequestError
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    scoped = client.app.state.discord.at.return_value
+    scoped.delete_poll.side_effect = [DiscordRequestError(403), None, None]
+    failed = client.post(
+        path + "/archive?delete_discord_messages=true", headers=headers
+    )
+    assert failed.status_code == 502
+    assert (
+        next(
+            row for row in client.get("/api/events").json() if row["id"] == event["id"]
+        )["archived_at"]
+        is None
+    )
+    assert (
+        client.post(
+            path + "/archive?delete_discord_messages=true", headers=headers
+        ).status_code
+        == 200
+    )
+    assert scoped.delete_poll.call_count == 3
+    assert (
+        next(
+            row for row in client.get("/api/events").json() if row["id"] == event["id"]
+        )["discord_url"]
+        is None
+    )
+
+
+def test_assigned_signup_message_can_be_deleted_later(client):
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    deleted = client.post(path + "/signup-message/delete", headers=headers)
+    assert deleted.status_code == 200
+    assert deleted.json()["discord_url"] is None
+    assert (
+        client.post(path + "/signup-message/delete", headers=headers).status_code == 200
+    )
+    client.app.state.discord.at.return_value.delete_poll.assert_called_once_with(
+        "message"
+    )
+
+
 def test_draft_cannot_be_archived(client):
     headers = login(client)
     event = client.post("/api/events", headers=headers, json=event_body()).json()

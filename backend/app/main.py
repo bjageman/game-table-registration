@@ -296,6 +296,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "closes_at": event.closes_at,
             "published_at": event.published_at,
             "archived_at": event.archived_at,
+            "signup_deleted_at": event.signup_deleted_at,
             "close_error": event.close_error or event.reaction_error,
             "is_test": bool(event.test_signups),
             "test_generation": event.test_signups.get("generation")
@@ -308,7 +309,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 f"https://discord.com/channels/{event.guild_id}/"
                 f"{event.channel_id or config.discord_channel_id}/{event.message_id}"
             )
-            if event.message_id
+            if event.message_id and not event.signup_deleted_at
             else None,
         }
 
@@ -718,7 +719,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.post("/api/events/{event_id}/close")
-    def close_signups(event_id: str, request: Request) -> Response:
+    def close_signups(
+        event_id: str, request: Request, delete_signup_message: bool = False
+    ) -> Response:
         session = authenticated(request, True)
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
@@ -732,7 +735,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             destination(request).discord_channel_id,
         )
         if complete:
-            if event.signup_mode == "reactions" and event.message_id:
+            if (
+                event.signup_mode == "reactions"
+                and event.message_id
+                and not event.signup_deleted_at
+            ):
                 try:
                     scoped_discord(request).close_reaction_message(event.message_id)
                 except Exception:
@@ -740,7 +747,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "Could not mark the reaction message closed; "
                         "late reactions are rejected"
                     )
-            if event.signup_mode == "custom" and event.message_id:
+            if (
+                event.signup_mode == "custom"
+                and event.message_id
+                and not event.signup_deleted_at
+            ):
                 try:
                     scoped_discord(request).close_signup_message(event.message_id)
                 except Exception:
@@ -754,6 +765,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 logging.getLogger(__name__).exception(
                     "Immediate announcement attempt failed; delivery remains queued"
                 )
+            if delete_signup_message:
+                with DBSession(engine) as db:
+                    saved = db.get(Event, event_id)
+                    assert saved is not None
+                    remove_signup_message(db, saved, request)
+                    db.commit()
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
             assert event is not None
@@ -859,6 +876,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             run = db.get(LotteryRun, event_id)
             if event.status != "assigned" or run is None:
                 raise HTTPException(409, "Placements have not been determined yet")
+            if event.archived_at is not None:
+                raise HTTPException(409, "Archived events cannot be announced again")
             rows = list(
                 db.scalars(
                     select(Announcement).where(
@@ -988,8 +1007,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             assert event is not None
             return serialize(event)
 
+    def remove_signup_message(db: DBSession, event: Event, request: Request) -> None:
+        if event.message_id and not event.signup_deleted_at:
+            scoped_discord(request).at(
+                event.guild_id, event.channel_id or config.discord_channel_id
+            ).delete_poll(event.message_id)
+            event.signup_deleted_at = time.time()
+
+    @app.post("/api/events/{event_id}/signup-message/delete")
+    def delete_signup_message(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned":
+                raise HTTPException(409, "Close signups before deleting the message")
+            remove_signup_message(db, event, request)
+            db.commit()
+            return serialize(event)
+
     @app.post("/api/events/{event_id}/archive")
-    def archive_event(event_id: str, request: Request) -> dict[str, Any]:
+    def archive_event(
+        event_id: str, request: Request, delete_discord_messages: bool = False
+    ) -> dict[str, Any]:
         authenticated(request, True)
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
@@ -997,6 +1038,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(404, "Event not found")
             if event.status != "assigned" or db.get(LotteryRun, event_id) is None:
                 raise HTTPException(409, "Only assigned events can be archived")
+            if delete_discord_messages:
+                rows = list(
+                    db.scalars(
+                        select(Announcement).where(Announcement.event_id == event_id)
+                    )
+                )
+                if any(row.state != "sent" or not row.message_id for row in rows):
+                    raise HTTPException(
+                        409,
+                        "Resolve the Discord announcement before deleting messages",
+                    )
+                for row in rows:
+                    if not row.deleted_at:
+                        scoped_discord(request).at(
+                            event.guild_id, row.channel_id
+                        ).delete_poll(row.message_id)
+                        row.deleted_at = time.time()
+                remove_signup_message(db, event, request)
             db.execute(
                 update(Event)
                 .where(

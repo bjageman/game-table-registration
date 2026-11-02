@@ -38,6 +38,7 @@ class Event(Base):
     status: Mapped[str] = mapped_column(String(32), default="draft")
     created_by: Mapped[str] = mapped_column(String(32))
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    signup_deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     closes_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     test_signups: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     archived_at: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -126,6 +127,7 @@ class Announcement(Base):
     token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     lease_until: Mapped[float | None] = mapped_column(Float, nullable=True)
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
