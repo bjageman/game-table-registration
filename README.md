@@ -26,6 +26,12 @@ The frontend defaults to http://localhost:5180. For access from another device,
 set `DEV_HOST=0.0.0.0` and `PUBLIC_URL=http://your-host:5180` in `.env`, and
 register `PUBLIC_URL` plus `/api/auth/callback` in Discord's OAuth2 settings.
 
+To rename the site, change its footer, or show a header logo, copy
+`branding.example.json` to `branding/branding.json` and edit it. This file stays
+on the server and is ignored by Git. Restart the API after changing it; without
+the file, the site uses the TableSignup defaults. See
+[deployment](docs/deployment.md) for separate hosted dev and production files.
+
 See [backend setup](docs/backend.md) and [frontend setup](docs/frontend.md) for
 configuration details and alternative startup methods.
 

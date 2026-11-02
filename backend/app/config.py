@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     test_signup_user_ids: str = ""
     announcement_worker_enabled: bool = True
     database_url: str = "sqlite:///./local.db"
+    branding_config_file: str = "branding/branding.json"
     public_url: str = "http://localhost:5180"
     discord_client_id: str = ""
     discord_client_secret: str = ""

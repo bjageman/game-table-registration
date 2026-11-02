@@ -13,5 +13,6 @@ test-results/
 .mypy_cache/
 .ruff_cache/
 *.tsbuildinfo
+/branding/
 
 !.env.*.example

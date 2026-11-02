@@ -165,7 +165,7 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
                 </div>
               )}
             </dl>
-            {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups stored in TableSignup. Announcements will be marked TEST.</p>}
+            {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
             <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
