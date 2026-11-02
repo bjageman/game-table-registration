@@ -187,12 +187,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                 "deleted": event.signup_deleted_at,
                             }
                             for event in db.scalars(
-                                select(Event).where(
+                                select(Event)
+                                .where(
                                     Event.status.in_(["open", "closing"]),
                                     Event.closes_at.is_not(None),
                                     Event.closes_at <= time.time(),
                                     Event.message_id.is_not(None),
-                                ).limit(50)
+                                )
+                                .limit(50)
                             )
                         ]
                     for event in due:
