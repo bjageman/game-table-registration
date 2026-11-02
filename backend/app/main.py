@@ -173,6 +173,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         def work() -> None:
             while not stop.is_set():
                 try:
+                    # Close expired signups from durable event state. This also
+                    # retries events left in `closing` after Discord was still
+                    # finalizing a poll or reaction synchronization.
+                    with DBSession(engine) as db:
+                        due = [
+                            {
+                                "id": event.id,
+                                "guild": event.guild_id,
+                                "channel": event.channel_id,
+                                "message": event.message_id,
+                                "mode": event.signup_mode,
+                                "deleted": event.signup_deleted_at,
+                            }
+                            for event in db.scalars(
+                                select(Event).where(
+                                    Event.status.in_(["open", "closing"]),
+                                    Event.closes_at.is_not(None),
+                                    Event.closes_at <= time.time(),
+                                    Event.message_id.is_not(None),
+                                ).limit(50)
+                            )
+                        ]
+                    for event in due:
+                        target = config.model_copy(
+                            update={
+                                "discord_guild_id": event["guild"],
+                                "discord_channel_id": event["channel"],
+                            }
+                        )
+                        discord = client_for(target)
+                        try:
+                            complete = close_and_assign(
+                                engine,
+                                discord,
+                                event["id"],
+                                "system:auto",
+                                event["channel"],
+                            )
+                            if complete and event["message"] and not event["deleted"]:
+                                if event["mode"] == "custom":
+                                    discord.close_signup_message(event["message"])
+                                elif event["mode"] == "reactions":
+                                    discord.close_reaction_message(event["message"])
+                        except Exception:
+                            logging.getLogger(__name__).exception(
+                                "Automatic signup closing failed for event %s",
+                                event["id"],
+                            )
                     dispatch_due(
                         engine,
                         lambda guild, channel: client_for(
