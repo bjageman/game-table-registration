@@ -676,9 +676,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for profile in db.scalars(
                 select(PlayerProfile).where(PlayerProfile.guild_id == guild_id)
             ):
-                found[profile.discord_id] = player_data(
-                    profile.discord_id, profile
-                )
+                found[profile.discord_id] = player_data(profile.discord_id, profile)
             for player_id, name in db.execute(
                 select(TableSignup.discord_id, TableSignup.discord_name)
                 .join(Event, Event.id == TableSignup.event_id)
