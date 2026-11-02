@@ -16,6 +16,14 @@ Set EMAIL and a different random hexadecimal POSTGRES_PASSWORD for each environm
 Fill in Discord credentials separately; use a separate dev Discord application,
 bot and test server/channel to avoid publishing test polls into production.
 Restrict permissions with `chmod 600 .env.dev .env.prod`.
+To customize the website name, footer, or header logo, copy
+`branding.example.json` to `branding/dev/branding.json` or
+`branding/prod/branding.json` in the persistent server checkout. These files
+are ignored by Git and mounted read-only into the matching API container.
+The logo URL must be HTTPS or a root-relative path that your web server serves.
+If a branding file is absent, the site uses TableSignup defaults. The API reads
+the file at startup, so redeploy after changing it. For local `./run.sh`, use
+`branding/branding.json`; `compose.yml` mounts that same directory.
 Register these OAuth redirect URLs in the respective Discord applications:
 
 - `https://signups-dev.brodin.rocks/api/auth/callback`

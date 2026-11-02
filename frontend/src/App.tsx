@@ -18,7 +18,19 @@ type AuthState =
   | { kind: "ready"; session: ModeratorSession }
   | { kind: "error" | "forbidden"; message: string };
 
+interface Branding { name: string; tagline: string; logo_url: string | null }
+const defaultBranding: Branding = { name: "TableSignup", tagline: "Made for your next game night.", logo_url: null };
+
 export default function App() {
+  const [branding, setBranding] = useState<Branding>(defaultBranding);
+  useEffect(() => {
+    const controller = new AbortController();
+    api<Branding>("/branding", { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setBranding(result); })
+      .catch(() => { /* Keep the default branding if the public config is unavailable. */ });
+    return () => controller.abort();
+  }, []);
+  useEffect(() => { document.title = branding.name; }, [branding.name]);
   const [page, setPage] = useState(() => window.location.hash === "#/settings" ? "settings" : "events");
   useEffect(() => {
     const changed = () => setPage(window.location.hash === "#/settings" ? "settings" : "events");
@@ -96,7 +108,7 @@ export default function App() {
     <div className="app-shell">
       <header className="site-header">
         <div>
-          <h1><a className="home-link" href="/">TableSignup</a></h1>
+          <h1><a className="home-link" href="/">{branding.logo_url && <img className="brand-logo" src={branding.logo_url} alt="" />}{branding.name}</a></h1>
         </div>
         {auth.kind === "ready" && (
           <div className="account">
@@ -187,7 +199,7 @@ export default function App() {
           ) : <Dashboard key={auth.session.destination ?? "legacy"} session={auth.session} onAccessError={onAccessError} />
         )}
       </main>
-      <footer>Made for your next game night.</footer>
+      <footer>{branding.tagline}</footer>
     </div>
   );
 }

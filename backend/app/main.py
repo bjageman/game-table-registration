@@ -29,6 +29,7 @@ from app.announcements import (
 from app.announcements import (
     status as announcement_status,
 )
+from app.branding import load_branding
 from app.closing import close_and_assign
 from app.config import Settings
 from app.connection_settings import (
@@ -148,6 +149,7 @@ class RetryAnnouncementInput(BaseModel):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or Settings()
+    branding = load_branding(config.branding_config_file)
     if settings is None and os.environ.get("TABLESIGNUP_LOCAL_AUTO_MIGRATE") == "1":
         if not config.database_url.startswith("sqlite:"):
             raise RuntimeError("Local automatic migrations require a SQLite database")
@@ -203,9 +205,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if worker.is_alive():
                 await asyncio.to_thread(worker.join, 20)
 
-    app = FastAPI(title="TableSignup", lifespan=lifespan)
+    app = FastAPI(title=branding.name, lifespan=lifespan)
     app.state.engine = engine
     app.state.discord = DiscordAPI(config)
+
+    @app.get("/api/branding")
+    def public_branding() -> dict[str, str | None]:
+        return branding.model_dump()
 
     def cookie(response: Response, name: str, value: str, age: int) -> None:
         response.set_cookie(
