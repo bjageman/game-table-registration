@@ -26,7 +26,7 @@ def announcement_event(
                 Event.starts_at > time.time(),
                 Announcement.channel_id == channel_id,
                 Announcement.message_id == message_id,
-                Announcement.kind.in_(["assignment", "promotion"]),
+                Announcement.kind.in_(["assignment", "promotion", "instructions"]),
                 Announcement.state == "sent",
                 Announcement.deleted_at.is_(None),
             )
@@ -115,7 +115,7 @@ def withdraw(
                 Event.starts_at > time.time(),
                 Announcement.channel_id == channel_id,
                 Announcement.message_id == message_id,
-                Announcement.kind.in_(["assignment", "promotion"]),
+                Announcement.kind.in_(["assignment", "promotion", "instructions"]),
                 Announcement.state == "sent",
                 Announcement.deleted_at.is_(None),
             )
@@ -192,8 +192,6 @@ def withdraw(
                 f"**{clean(event.title)} — Table Update**\n"
                 f"<@{promoted_id}> has been promoted to **{clean(table_name)}** "
                 f"after {clean(left['name'])} left their seat.\n"
-                "Before the event starts, react with ❌ to this message to "
-                "leave your assigned table."
             )
             mentions = [promoted_id] if not promoted_id.startswith("test-") else []
             db.add(

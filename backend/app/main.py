@@ -25,6 +25,7 @@ from app.announcements import (
     deliver_event,
     dispatch_due,
     enqueue,
+    enqueue_instructions,
 )
 from app.announcements import (
     status as announcement_status,
@@ -1100,11 +1101,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(409, "Placements have not been determined yet")
             if event.archived_at is not None:
                 raise HTTPException(409, "Archived events cannot be announced again")
+            existing = db.scalar(
+                select(Announcement.id)
+                .where(Announcement.event_id == event_id)
+                .limit(1)
+            )
+            creating = existing is None
+            announcement_channel = (
+                event.channel_id or destination(request).discord_channel_id
+            )
+            if creating:
+                enqueue(db, event, announcement_channel, run.result, run.snapshot)
+            else:
+                enqueue_instructions(db, event, announcement_channel)
             rows = list(
                 db.scalars(
                     select(Announcement).where(
                         Announcement.event_id == event_id,
-                        Announcement.kind == "assignment",
+                        Announcement.kind.in_(["assignment", "instructions"]),
                         Announcement.state != "sent",
                     )
                 )
@@ -1117,19 +1131,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ):
                 raise HTTPException(
                     409, "Check Discord before confirming a possible repost"
-                )
-            creating = not rows and not db.scalar(
-                select(Announcement.id)
-                .where(Announcement.event_id == event_id)
-                .limit(1)
-            )
-            if creating:
-                enqueue(
-                    db,
-                    event,
-                    event.channel_id or destination(request).discord_channel_id,
-                    run.result,
-                    run.snapshot,
                 )
             for row in rows:
                 changed = db.execute(

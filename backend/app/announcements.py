@@ -68,9 +68,6 @@ def payloads(
     introduction = (
         f"**{'[TEST] ' if is_test else ''}{clean(event.title)} — Table Assignments**"
         f"\n[Signup message]({poll_url})\n\n"
-        "Before the event starts, react with ❌ to this message to leave "
-        "your assigned table. "
-        "The next eligible waitlisted player will be promoted.\n\n"
     )
     return [
         {
@@ -105,6 +102,43 @@ def enqueue(
                 next_attempt=now,
             )
         )
+    enqueue_instructions(db, event, channel_id, now)
+
+
+def enqueue_instructions(
+    db: Session, event: Event, channel_id: str, now: float | None = None
+) -> None:
+    if db.scalar(
+        select(Announcement.id).where(
+            Announcement.event_id == event.id,
+            Announcement.kind == "instructions",
+        )
+    ):
+        return
+    now = now or time.time()
+    part = db.scalar(
+        select(func.max(Announcement.part)).where(Announcement.event_id == event.id)
+    )
+    db.add(
+        Announcement(
+            id=str(uuid.uuid4()),
+            event_id=event.id,
+            part=(part if part is not None else -1) + 1,
+            kind="instructions",
+            channel_id=channel_id,
+            payload={
+                "content": "If you need to cancel, please react ❌ to withdraw from "
+                "your table and free up a space for a waitlisted player.",
+                "allowed_mentions": {"parse": []},
+                "nonce": hashlib.sha256(f"{event.id}:withdrawal-instructions".encode())[
+                    :24
+                ],
+                "enforce_nonce": True,
+            },
+            created_at=now,
+            next_attempt=now,
+        )
+    )
 
 
 def deliver_event(
@@ -126,7 +160,7 @@ def deliver_event(
             event = db.get(Event, event_id)
             if (
                 row is not None
-                and row.kind == "promotion"
+                and row.kind in ("promotion", "instructions")
                 and event
                 and event.archived_at
             ):
@@ -182,6 +216,8 @@ def deliver_event(
                     )
             else:
                 message_id = str(discord.send_announcement(channel_id, payload)["id"])
+            if row_kind == "instructions":
+                discord.seed_reactions(message_id, ["❌"])
             deleted_at = None
             if row_kind == "promotion":
                 with Session(engine) as db:
@@ -269,7 +305,8 @@ def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -
                 )
                 .where(
                     or_(
-                        Announcement.kind != "promotion", Event.archived_at.is_(None)
+                        Announcement.kind.not_in(["promotion", "instructions"]),
+                        Event.archived_at.is_(None),
                     ),
                     Announcement.state.in_(["pending", "sending"]),
                     Announcement.next_attempt <= time.time(),
@@ -293,7 +330,7 @@ def status(engine: Engine, event_id: str, guild_id: str) -> dict[str, Any]:
                 select(Announcement)
                 .where(
                     Announcement.event_id == event_id,
-                    Announcement.kind == "assignment",
+                    Announcement.kind.in_(["assignment", "instructions"]),
                 )
                 .order_by(Announcement.part)
             )
