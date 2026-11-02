@@ -182,6 +182,16 @@ def withdraw(
                 for player in run.snapshot["players"]
                 if player["id"] == player_id
             )
+            promoted = next(
+                player
+                for player in run.snapshot["players"]
+                if player["id"] == promoted_id
+            )
+            promoted_name = (
+                clean(promoted["name"])
+                if promoted_id.startswith("test-")
+                else f"<@{promoted_id}>"
+            )
             announce_id = db.scalar(
                 select(func.max(Announcement.part)).where(
                     Announcement.event_id == event_id
@@ -190,7 +200,7 @@ def withdraw(
             part = (announce_id if announce_id is not None else -1) + 1
             content = (
                 f"**{clean(event.title)} — Table Update**\n"
-                f"<@{promoted_id}> has been promoted to **{clean(table_name)}** "
+                f"{promoted_name} has been promoted to **{clean(table_name)}** "
                 f"after {clean(left['name'])} left their seat.\n"
             )
             mentions = [promoted_id] if not promoted_id.startswith("test-") else []
