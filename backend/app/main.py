@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 import re
 import secrets
 import time
@@ -140,6 +141,13 @@ class RetryAnnouncementInput(BaseModel):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or Settings()
+    if settings is None and os.environ.get("TABLESIGNUP_LOCAL_AUTO_MIGRATE") == "1":
+        if not config.database_url.startswith("sqlite:"):
+            raise RuntimeError("Local automatic migrations require a SQLite database")
+        from alembic import command
+        from alembic.config import Config
+
+        command.upgrade(Config("alembic.ini"), "head")
     engine = create_engine(config.database_url, pool_pre_ping=True)
 
     @asynccontextmanager
