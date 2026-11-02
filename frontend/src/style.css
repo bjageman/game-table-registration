@@ -391,6 +391,7 @@ dd {
 .table-player-sort > span { font-size: 0.65rem; }
 .table-player-sort:last-child { justify-content: flex-end; }
 .table-player-row { margin: 3px 0; }
+.table-assigned-player { margin: 3px 0; }
 .table-player-row .player-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-guarantee, .player-weight { border: 0; background: transparent; padding: 1px 3px; flex-shrink: 0; }
 .player-guarantee { color: #54401b; font-size: 1.1rem; }

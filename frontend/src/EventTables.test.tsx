@@ -49,11 +49,12 @@ it("refreshes names and counts when votes are added and removed, and stops on cl
 
 it("prefers display names for assigned and waiting players, with Discord name fallback", () => {
   render(<TableColumns event={{ ...event, status: "assigned" }} onSelect={() => {}} rows={[
-    { name: "Table A", players: [{ id: "1", name: "DiscordMary", display_name: "Mary Display" }, { id: "2", name: "Dan" }], waitlist: [{ id: "3", name: "DiscordCarl", display_name: "Carl Display" }] },
+    { name: "Table A", players: [{ id: "1", name: "DiscordMary", display_name: "Mary Display" }, { id: "2", name: "A very long assigned player name" }], waitlist: [{ id: "3", name: "DiscordCarl", display_name: "Carl Display" }] },
     { name: "Table B", players: [] },
   ]} />);
   expect(screen.getByRole("button", { name: "Mary Display" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Dan" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "A very long assigned player name" })).toHaveTextContent("A very long assigned player name");
+  expect(screen.getByRole("button", { name: "Mary Display" }).closest("li")).toHaveClass("table-assigned-player");
   expect(screen.getByRole("button", { name: "Carl Display" })).toBeVisible();
   expect(screen.queryByText("DiscordMary")).not.toBeInTheDocument();
   expect(screen.queryByText("Wt")).not.toBeInTheDocument();
