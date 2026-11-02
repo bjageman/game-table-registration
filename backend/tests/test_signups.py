@@ -1,7 +1,6 @@
-"""Exercise signed Discord signups without sending messages to Discord."""
+"""Exercise Discord signup logic without sending messages to Discord."""
 
 import itertools
-import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +10,7 @@ from unittest.mock import Mock
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from nacl.signing import SigningKey
+from httpx import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_flow import event_body, login
@@ -26,11 +25,11 @@ from app.models import (
     SignupInteraction,
     TableSignup,
 )
+from app.signups import handle
 
 
 @pytest.fixture
 def custom_client(tmp_path):
-    signing_key = SigningKey.generate()
     settings = Settings(
         _env_file=None,
         announcement_worker_enabled=False,
@@ -38,7 +37,7 @@ def custom_client(tmp_path):
         discord_client_id="123",
         discord_client_secret="secret",
         discord_bot_token="token",
-        discord_public_key=signing_key.verify_key.encode().hex(),
+        discord_gateway_enabled=False,
         discord_guild_id="guild",
         discord_channel_id="channel",
         owner_discord_id="owner",
@@ -51,24 +50,16 @@ def custom_client(tmp_path):
     app.state.discord.publish.return_value = {"id": "message"}
     app.state.discord.send_announcement.return_value = {"id": "announcement"}
     with TestClient(app) as client:
-        yield client, signing_key, settings
+        yield client, None, settings
     app.state.engine.dispose()
 
 
-def signed(custom_client, payload, *, timestamp=None, key=None):
-    client, signing_key, _ = custom_client
-    body = json.dumps(payload).encode()
-    timestamp = str(int(time.time()) if timestamp is None else timestamp)
-    signature = (key or signing_key).sign(timestamp.encode() + body).signature.hex()
-    return client.post(
-        "/api/discord/interactions",
-        content=body,
-        headers={
-            "Content-Type": "application/json",
-            "X-Signature-Ed25519": signature,
-            "X-Signature-Timestamp": timestamp,
-        },
-    )
+def dispatch(custom_client, payload):
+    client, _, settings = custom_client
+    try:
+        return Response(200, json=handle(client.app.state.engine, settings, payload))
+    except HTTPException as error:
+        return Response(error.status_code, json={"detail": error.detail})
 
 
 ids = itertools.count(1000)
@@ -127,58 +118,37 @@ def test_custom_publication_and_duplicate_guard(custom_client):
     assert client.app.state.discord.publish.call_count == 1
 
 
-def test_signed_ping_and_signature_validation(custom_client):
+def test_http_interactions_endpoint_is_removed(custom_client):
     client, _, _ = custom_client
-    ping = {"type": 1, "application_id": "123"}
-    assert signed(custom_client, ping).json() == {"type": 1}
-    assert client.post("/api/discord/interactions", json=ping).status_code == 401
-    assert signed(custom_client, ping, key=SigningKey.generate()).status_code == 401
-    assert (
-        signed(custom_client, ping, timestamp=int(time.time()) - 600).status_code == 401
-    )
-    assert signed(custom_client, {**ping, "application_id": "456"}).status_code == 401
-    _, key, _ = custom_client
-    timestamp = str(int(time.time()))
-    signature = key.sign(timestamp.encode() + b"{}").signature.hex()
-    assert (
-        client.post(
-            "/api/discord/interactions",
-            content=b'{"type":1}',
-            headers={
-                "X-Signature-Timestamp": timestamp,
-                "X-Signature-Ed25519": signature,
-            },
-        ).status_code
-        == 401
-    )
+    assert client.post("/api/discord/interactions", json={"type": 1}).status_code == 404
 
 
 def test_players_choose_review_replace_and_withdraw_in_discord(custom_client):
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
-    response = signed(custom_client, interaction(event)).json()
+    response = dispatch(custom_client, interaction(event)).json()
     assert response["type"] == 4
     assert response["data"]["flags"] == 64
     assert "Saved tables: None" in response["data"]["content"]
     choices = response["data"]["components"][0]["components"][0]
     assert choices["max_values"] == 2
     assert [o["label"] for o in choices["options"]] == ["A", "B"]
-    saved = signed(
+    saved = dispatch(
         custom_client, interaction(event, "select", values=["0", "1"])
     ).json()
     assert saved["type"] == 7  # Update only the private menu, never the shared message.
     assert "Saved tables: A, B" in saved["data"]["content"]
-    signed(custom_client, interaction(event, "select", user="2", values=["1"]))
-    reviewed = signed(custom_client, interaction(event)).json()
+    dispatch(custom_client, interaction(event, "select", user="2", values=["1"]))
+    reviewed = dispatch(custom_client, interaction(event)).json()
     assert all(
         o["default"]
         for o in reviewed["data"]["components"][0]["components"][0]["options"]
     )
-    signed(custom_client, interaction(event, "select", values=["0"]))
+    dispatch(custom_client, interaction(event, "select", values=["0"]))
     rows = client.get(path + "/signups", headers=headers).json()
     assert [p["id"] for p in rows[0]["players"]] == ["1"]
     assert [p["id"] for p in rows[1]["players"]] == ["2"]
-    withdrawn = signed(custom_client, interaction(event, "withdraw")).json()
+    withdrawn = dispatch(custom_client, interaction(event, "withdraw")).json()
     assert "withdrawn from all tables" in withdrawn["data"]["content"]
     rows = client.get(path + "/signups", headers=headers).json()
     assert rows[0]["players"] == []
@@ -192,8 +162,8 @@ def test_players_choose_review_replace_and_withdraw_in_discord(custom_client):
 def test_invalid_choices_do_not_replace_saved_signup(custom_client, values):
     client, _, _ = custom_client
     _, event, _ = publish(custom_client)
-    signed(custom_client, interaction(event, "select"))
-    result = signed(custom_client, interaction(event, "select", values=values)).json()
+    dispatch(custom_client, interaction(event, "select"))
+    result = dispatch(custom_client, interaction(event, "select", values=values)).json()
     assert result["data"]["flags"] == 64
     assert "valid tables" in result["data"]["content"]
     with Session(client.app.state.engine) as db:
@@ -210,7 +180,7 @@ def test_destination_scoping(custom_client, field, value):
     payload[field] = value
     assert (
         "no longer available"
-        in signed(custom_client, payload).json()["data"]["content"]
+        in dispatch(custom_client, payload).json()["data"]["content"]
     )
     with Session(client.app.state.engine) as db:
         assert db.get(TableSignup, (event["id"], "1")) is None
@@ -221,7 +191,9 @@ def test_controls_require_original_message_or_private_app_menu(custom_client):
     _, event, _ = publish(custom_client)
     opening = interaction(event)
     opening["message"]["id"] = "another-message"
-    assert "original event" in signed(custom_client, opening).json()["data"]["content"]
+    assert (
+        "original event" in dispatch(custom_client, opening).json()["data"]["content"]
+    )
     for message in (
         {"flags": 0, "author": {"id": "123"}},
         {"flags": 64, "author": {"id": "456"}},
@@ -230,7 +202,7 @@ def test_controls_require_original_message_or_private_app_menu(custom_client):
         selecting["message"] = message
         assert (
             "original event"
-            in signed(custom_client, selecting).json()["data"]["content"]
+            in dispatch(custom_client, selecting).json()["data"]["content"]
         )
     with Session(client.app.state.engine) as db:
         assert db.get(TableSignup, (event["id"], "1")) is None
@@ -240,15 +212,15 @@ def test_retries_do_not_restore_older_choices(custom_client):
     client, _, _ = custom_client
     _, event, _ = publish(custom_client)
     first = interaction(event, "select")
-    response = signed(custom_client, first).json()
-    signed(custom_client, interaction(event, "select", values=["1"]))
-    assert signed(custom_client, first).json() == response
+    response = dispatch(custom_client, first).json()
+    dispatch(custom_client, interaction(event, "select", values=["1"]))
+    assert dispatch(custom_client, first).json() == response
     with Session(client.app.state.engine) as db:
         assert db.get(TableSignup, (event["id"], "1")).choices == ["B"]
     withdrawal = interaction(event, "withdraw")
-    signed(custom_client, withdrawal)
-    signed(custom_client, interaction(event, "select"))
-    signed(custom_client, withdrawal)
+    dispatch(custom_client, withdrawal)
+    dispatch(custom_client, interaction(event, "select"))
+    dispatch(custom_client, withdrawal)
     with Session(client.app.state.engine) as db:
         assert db.get(TableSignup, (event["id"], "1")).choices == ["A"]
 
@@ -259,7 +231,7 @@ def test_retries_do_not_restore_older_choices(custom_client):
 def test_closed_or_unpublished_events_reject_all_changes(custom_client, state):
     client, _, _ = custom_client
     _, event, _ = publish(custom_client)
-    signed(custom_client, interaction(event, "select"))
+    dispatch(custom_client, interaction(event, "select"))
     with Session(client.app.state.engine) as db:
         record = db.get(Event, event["id"])
         if state == "deadline":
@@ -268,7 +240,9 @@ def test_closed_or_unpublished_events_reject_all_changes(custom_client, state):
             record.status = state
         db.commit()
     for action in ("open", "select", "withdraw"):
-        result = signed(custom_client, interaction(event, action, values=["1"])).json()
+        result = dispatch(
+            custom_client, interaction(event, action, values=["1"])
+        ).json()
         assert "Signups are closed" in result["data"]["content"]
     with Session(client.app.state.engine) as db:
         assert db.get(TableSignup, (event["id"], "1")).choices == ["A"]
@@ -277,9 +251,9 @@ def test_closed_or_unpublished_events_reject_all_changes(custom_client, state):
 def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
-    signed(custom_client, interaction(event, "select", values=["0", "1"]))
-    signed(custom_client, interaction(event, "select", user="2", values=["0"]))
-    signed(custom_client, interaction(event, "select", user="3", values=["1"]))
+    dispatch(custom_client, interaction(event, "select", values=["0", "1"]))
+    dispatch(custom_client, interaction(event, "select", user="2", values=["0"]))
+    dispatch(custom_client, interaction(event, "select", user="3", values=["1"]))
     response = client.post(path + "/close", headers=headers)
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "assigned"
@@ -306,7 +280,9 @@ def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
     assert client.app.state.discord.send_announcement.call_count == 1
     assert (
         "Signups are closed"
-        in signed(custom_client, interaction(event, "select")).json()["data"]["content"]
+        in dispatch(custom_client, interaction(event, "select")).json()["data"][
+            "content"
+        ]
     )
 
 
@@ -314,7 +290,7 @@ def test_guarantee_conflict_allows_correction_without_losing_signups(custom_clie
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
     for user in ("1", "2"):
-        signed(custom_client, interaction(event, "select", user=user))
+        dispatch(custom_client, interaction(event, "select", user=user))
     with Session(client.app.state.engine) as db:
         for user in ("1", "2"):
             db.add(
@@ -325,21 +301,21 @@ def test_guarantee_conflict_allows_correction_without_losing_signups(custom_clie
     with Session(client.app.state.engine) as db:
         assert db.get(Event, event["id"]).status == "open"
         assert db.get(LotteryRun, event["id"]) is None
-    signed(custom_client, interaction(event, "select", user="2", values=["1"]))
+    dispatch(custom_client, interaction(event, "select", user="2", values=["1"]))
     assert client.post(path + "/close", headers=headers).status_code == 200
 
 
 def test_deleted_event_cleans_signups_and_rejects_old_controls(custom_client):
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
-    signed(custom_client, interaction(event, "select"))
+    dispatch(custom_client, interaction(event, "select"))
     assert client.delete(path, headers=headers).status_code == 204
     with Session(client.app.state.engine) as db:
         assert list(db.scalars(select(TableSignup))) == []
         assert list(db.scalars(select(SignupInteraction))) == []
     assert (
         "no longer available"
-        in signed(custom_client, interaction(event)).json()["data"]["content"]
+        in dispatch(custom_client, interaction(event)).json()["data"]["content"]
     )
 
 
@@ -351,7 +327,7 @@ def test_concurrent_players_keep_all_signups_and_duplicate_deliveries_are_safe(
     payloads = [interaction(event, "select", user=str(i)) for i in range(1, 9)]
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(
-            pool.map(lambda p: signed(custom_client, p), payloads + [payloads[0]])
+            pool.map(lambda p: dispatch(custom_client, p), payloads + [payloads[0]])
         )
     assert all(r.status_code == 200 for r in results)
     with Session(client.app.state.engine) as db:
@@ -362,38 +338,31 @@ def test_concurrent_players_keep_all_signups_and_duplicate_deliveries_are_safe(
 def test_message_cleanup_failure_does_not_undo_assignments(custom_client):
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
-    signed(custom_client, interaction(event, "select"))
+    dispatch(custom_client, interaction(event, "select"))
     client.app.state.discord.close_signup_message.side_effect = HTTPException(
         502, "Discord unavailable"
     )
     assert client.post(path + "/close", headers=headers).status_code == 200
     assert (
         "Signups are closed"
-        in signed(custom_client, interaction(event, "withdraw")).json()["data"][
+        in dispatch(custom_client, interaction(event, "withdraw")).json()["data"][
             "content"
         ]
     )
 
 
-def test_missing_public_key_blocks_publication_before_claim(custom_client):
-    client, _, settings = custom_client
-    settings.discord_public_key = ""
-    headers = login(client)
-    event = client.post("/api/events", headers=headers, json=event_body()).json()
-    response = client.post(f"/api/events/{event['id']}/publish", headers=headers)
-    assert response.status_code == 503
-    client.app.state.discord.publish.assert_not_called()
-    with Session(client.app.state.engine) as db:
-        assert db.get(Event, event["id"]).status == "draft"
+def test_publication_does_not_require_public_key_or_public_endpoint(custom_client):
+    _, event, _ = publish(custom_client)
+    assert event["signup_mode"] == "custom"
 
 
 def test_signups_and_receipts_survive_application_restart(custom_client):
     client, _, settings = custom_client
     _, event, _ = publish(custom_client)
-    signed(custom_client, interaction(event, "select", values=["1"]))
+    dispatch(custom_client, interaction(event, "select", values=["1"]))
     app = create_app(settings)
     with TestClient(app) as restarted:
-        response = signed(
+        response = dispatch(
             (restarted, custom_client[1], settings), interaction(event)
         ).json()
         assert "Saved tables: B" in response["data"]["content"]
@@ -405,7 +374,7 @@ def test_closing_claim_rejects_late_choices_before_snapshot(custom_client, monke
 
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
-    signed(custom_client, interaction(event, "select"))
+    dispatch(custom_client, interaction(event, "select"))
     entered, release = ThreadEvent(), ThreadEvent()
     original = closing.signup_players
 
@@ -419,7 +388,9 @@ def test_closing_claim_rejects_late_choices_before_snapshot(custom_client, monke
         closing_request = pool.submit(client.post, path + "/close", headers=headers)
         try:
             assert entered.wait(5)
-            response = signed(custom_client, interaction(event, "select", values=["1"]))
+            response = dispatch(
+                custom_client, interaction(event, "select", values=["1"])
+            )
             assert "Signups are closed" in response.json()["data"]["content"]
         finally:
             release.set()
@@ -435,7 +406,7 @@ def test_custom_signups_share_test_players_and_assignment_settings(custom_client
 
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
-    signed(custom_client, interaction(event, "select"))
+    dispatch(custom_client, interaction(event, "select"))
     assert (
         client.post(
             path + "/test-users", json={"players": 2}, headers=headers
@@ -463,7 +434,7 @@ def test_legacy_poll_controls_cannot_create_database_signups(custom_client):
     with Session(client.app.state.engine) as db:
         db.get(Event, event["id"]).signup_mode = "poll"
         db.commit()
-    response = signed(custom_client, interaction(event, "select"))
+    response = dispatch(custom_client, interaction(event, "select"))
     assert "no longer available" in response.json()["data"]["content"]
     with Session(client.app.state.engine) as db:
         assert db.get(TableSignup, (event["id"], "1")) is None

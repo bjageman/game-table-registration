@@ -1,15 +1,11 @@
-"""Signed Discord interactions for table-specific, database-backed signups."""
+"""Table-specific signup logic shared by Discord Gateway interactions."""
 
-import json
 import time
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
-from nacl.exceptions import BadSignatureError
-from nacl.signing import VerifyKey
+from fastapi import HTTPException
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from app.announcements import clean
 from app.config import Settings
@@ -257,30 +253,3 @@ def handle(engine: Engine, config: Settings, payload: dict[str, Any]) -> dict[st
         )
         db.commit()
         return response
-
-
-def register_interactions(app: FastAPI, engine: Engine, config: Settings) -> None:
-    @app.post("/api/discord/interactions")
-    async def interactions(request: Request) -> dict[str, Any]:
-        if not config.discord_public_key:
-            raise HTTPException(503, "Discord interactions are not configured")
-        body = await request.body()
-        if len(body) > 65536:
-            raise HTTPException(413, "Interaction too large")
-        try:
-            timestamp = request.headers["x-signature-timestamp"]
-            signature = bytes.fromhex(request.headers["x-signature-ed25519"])
-            VerifyKey(bytes.fromhex(config.discord_public_key)).verify(
-                timestamp.encode() + body, signature
-            )
-            if abs(time.time() - int(timestamp)) > 300:
-                raise ValueError("Expired interaction")
-        except (KeyError, ValueError, TypeError, BadSignatureError):
-            raise HTTPException(401, "Invalid Discord signature") from None
-        try:
-            payload = json.loads(body)
-            if not isinstance(payload, dict):
-                raise ValueError
-        except (ValueError, UnicodeDecodeError):
-            raise HTTPException(400, "Invalid interaction JSON") from None
-        return await run_in_threadpool(handle, engine, config, payload)

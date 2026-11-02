@@ -36,6 +36,7 @@ from app.connection_settings import (
     register_settings,
 )
 from app.discord_api import DiscordAPI
+from app.gateway import SignupGateway
 from app.models import (
     Announcement,
     Event,
@@ -48,7 +49,7 @@ from app.models import (
     TableSignup,
     UserSettings,
 )
-from app.signups import publication, register_interactions, table_rows
+from app.signups import publication, table_rows
 from app.test_signups import (
     add_to_rows,
 )
@@ -127,6 +128,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         stop = StopEvent()
+        gateway = (
+            SignupGateway(engine, config)
+            if config.discord_gateway_enabled and config.configured
+            else None
+        )
+        application.state.gateway = gateway
+        gateway_task = asyncio.create_task(gateway.run_listener()) if gateway else None
 
         def work() -> None:
             while not stop.is_set():
@@ -155,13 +163,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             stop.set()
+            if gateway:
+                await gateway.close()
+            if gateway_task:
+                gateway_task.cancel()
+                await asyncio.gather(gateway_task, return_exceptions=True)
             if worker.is_alive():
                 await asyncio.to_thread(worker.join, 20)
 
     app = FastAPI(title="TableSignup", lifespan=lifespan)
     app.state.engine = engine
     app.state.discord = DiscordAPI(config)
-    register_interactions(app, engine, config)
 
     def cookie(response: Response, name: str, value: str, age: int) -> None:
         response.set_cookie(
@@ -1020,14 +1032,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/events/{event_id}/publish")
     def publish(event_id: str, request: Request) -> dict[str, Any]:
         authenticated(request, True)
-        if config.discord_signup_mode == "custom" and not re.fullmatch(
-            r"[0-9a-fA-F]{64}", config.discord_public_key
-        ):
-            raise HTTPException(
-                503,
-                "Configure the Discord public key and Interactions Endpoint URL "
-                "before publishing custom signups.",
-            )
+        if config.discord_signup_mode == "custom" and config.discord_gateway_enabled:
+            gateway = getattr(app.state, "gateway", None)
+            if gateway is None or not gateway.is_ready():
+                raise HTTPException(
+                    503,
+                    "Discord signup listener is not connected. Check the API logs, "
+                    "bot token, and that Discord's Interactions Endpoint URL is blank.",
+                )
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
             if not event or not matches_destination(event, request):

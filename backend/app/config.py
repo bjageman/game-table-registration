@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     discord_client_id: str = ""
     discord_client_secret: str = ""
     discord_bot_token: str = ""
-    discord_public_key: str = ""
+    discord_gateway_enabled: bool = True
     discord_signup_mode: Literal["custom", "poll"] = "custom"
     discord_guild_id: str = ""
     discord_channel_id: str = ""

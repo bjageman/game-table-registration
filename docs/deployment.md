@@ -21,20 +21,24 @@ Register these OAuth redirect URLs in the respective Discord applications:
 - `https://signups-dev.brodin.rocks/api/auth/callback`
 - `https://signups.brodin.rocks/api/auth/callback`
 
-For custom table signups, add each application's **General Information → Public Key**
-as `DISCORD_PUBLIC_KEY` in its environment file and keep `DISCORD_SIGNUP_MODE=custom`.
-After the signed endpoint is deployed, save these **Interactions Endpoint URLs** in
-the respective applications' General Information pages:
+For custom table signups, keep `DISCORD_GATEWAY_ENABLED=true` and
+`DISCORD_SIGNUP_MODE=custom` in the environment file. The existing
+`DISCORD_BOT_TOKEN` is all the listener needs to connect. In Discord Developer
+Portal → the matching application → General Information, **clear the Interactions
+Endpoint URL and save** if one was previously configured. `DISCORD_PUBLIC_KEY`
+is no longer required and can be removed from environment files.
 
-- Dev: `https://signups-dev.brodin.rocks/api/discord/interactions`
-- Production: `https://signups.brodin.rocks/api/discord/interactions`
-
-Discord sends a signed PING when saving; the endpoint must be publicly reachable
-over HTTPS. Use a separate application per environment because an application has
-one interactions endpoint. No new OAuth redirect, Gateway worker, or privileged
-intent is needed. Until setup is complete, custom publication is blocked before
-sending any message. Set `DISCORD_SIGNUP_MODE=poll` to retain native publication
-during rollout. Existing published native polls continue working in either mode.
+The API starts the Gateway connection automatically, reconnects after network
+interruptions, and closes it on shutdown. Look for `Discord signup Gateway
+connected` in the API logs before publishing. Connection/configuration failures
+are logged, and publication remains blocked while the listener is disconnected.
+Run one API replica with one Uvicorn worker per application. Keep dev and production
+applications separate; stop a hosted dev instance before using its bot locally.
+No tunnel, public interactions URL, port forwarding, or privileged intents are
+needed. Local development continues using the existing LAN IP, PUBLIC_URL, and
+OAuth redirect. Hosted deployments retain their normal website/OAuth HTTPS URLs.
+`DISCORD_SIGNUP_MODE=poll` retains native publication during rollout, and existing
+published native polls continue working in either mode.
 
 For acceptance testing in the dedicated dev server, publish a future event with
 two tables. As a regular server member, click **Choose tables / My signup**, select
