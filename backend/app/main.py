@@ -669,6 +669,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not player_id.isascii() or not player_id.isdecimal() or len(player_id) > 32:
             raise HTTPException(422, "Invalid Discord user ID")
 
+    @app.get("/api/players")
+    def players(request: Request) -> list[dict[str, Any]]:
+        authenticated(request)
+        guild_id = destination(request).discord_guild_id
+        found: dict[str, dict[str, Any]] = {}
+        with DBSession(engine) as db:
+            for profile in db.scalars(
+                select(PlayerProfile).where(PlayerProfile.guild_id == guild_id)
+            ):
+                found[profile.discord_id] = player_data(profile.discord_id, profile)
+            for player_id, name in db.execute(
+                select(TableSignup.discord_id, TableSignup.discord_name)
+                .join(Event, Event.id == TableSignup.event_id)
+                .where(Event.guild_id == guild_id)
+            ):
+                found.setdefault(player_id, player_data(player_id, None, name))
+            for snapshot in db.scalars(
+                select(LotteryRun.snapshot)
+                .join(Event, Event.id == LotteryRun.event_id)
+                .where(Event.guild_id == guild_id)
+            ):
+                for player in snapshot.get("players", []):
+                    player_id = str(player.get("id", ""))
+                    name = player.get("name")
+                    if player_id and isinstance(name, str):
+                        found.setdefault(player_id, player_data(player_id, None, name))
+                        if player.get("is_test"):
+                            found[player_id]["is_test"] = True
+        return sorted(
+            found.values(),
+            key=lambda player: (
+                (player["real_name"] or player["discord_name"]).casefold(),
+                player["discord_id"],
+            ),
+        )
+
     @app.get("/api/players/{player_id}")
     def player_profile(
         player_id: str, request: Request, signup_name: str | None = None
@@ -691,6 +727,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         authenticated(request, True)
         valid_player_id(player_id)
+        if all(
+            value is None
+            for value in (body.real_name, body.guaranteed_seat, body.weighting)
+        ):
+            raise HTTPException(422, "Specify a profile setting to update")
         with DBSession(engine) as db:
             profile = db.get(
                 PlayerProfile, (destination(request).discord_guild_id, player_id)

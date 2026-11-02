@@ -14,6 +14,8 @@ Keep the shared application's DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, and DISC
 
 Each user selects an active server and channel under Settings. The Discord install link requests View Channel, Send Messages, Read Message History, and Add Reactions, without Administrator. Native poll publication mode additionally requests Send Polls. Channel discovery and saves recheck server ownership/Manage Server and effective channel permissions for both the user and bot. Event and profile operations recheck current access; event queries/mutations are scoped to the selected server/channel. Events store their original channel independently of later settings changes. Profiles remain scoped to their server and survive event deletion.
 
+GET `/api/players` returns the selected server's saved profiles and players present in signup or assignment history, sorted by saved display name or Discord name. It requires the same current moderator access as other profile operations.
+
 DISCORD_GUILD_ID, DISCORD_CHANNEL_ID, OWNER_DISCORD_ID, and MODERATOR_ROLE_IDS remain optional legacy defaults. Existing events in that default server have their channel captured by the destinations migration; retain those env defaults through that migration. New users can authenticate without belonging to the legacy server and are directed to Settings. Shared bot credentials are never accepted or returned by the settings API.
 
 Requires Python 3.12+ and uv. Run `uv sync --frozen`, `uv run alembic upgrade head`, then `uv run uvicorn app.main:app --app-dir backend --host 127.0.0.1`. Direct development defaults to an ignored SQLite local.db. Compose and CI use PostgreSQL.
