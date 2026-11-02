@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { Star } from "lucide-react";
 import PlayerProfile from "./PlayerProfile";
 import { api, errorMessage, type ModeratorSession } from "./api";
 import { FormField } from "./FormFields";
 import LoadingIndicator from "./LoadingIndicator";
 
-interface Player { discord_id: string; discord_name: string; real_name: string; is_test: boolean; }
+interface Player { discord_id: string; discord_name: string; real_name: string; weighting: number; guaranteed_seat: boolean; is_test: boolean; }
 
 export default function PlayerLookup({ session, onAccessError }: {
   session: ModeratorSession;
@@ -43,7 +44,9 @@ export default function PlayerLookup({ session, onAccessError }: {
       <p>{visible.length} {visible.length === 1 ? "player" : "players"}</p>
       {visible.length ? <ul className="player-lookup-list">{visible.map((player) => <li key={player.discord_id}>
         <button type="button" className="player-lookup-item" onClick={() => setSelected(player)}>
-          <span><strong>{player.real_name || player.discord_name}</strong>{player.real_name && <small>{player.discord_name}</small>}</span>
+          <span className="player-lookup-star">{player.guaranteed_seat && <Star size={18} fill="currentColor" aria-label="Always guaranteed" />}</span>
+          <span className="player-lookup-name"><strong>{player.real_name || player.discord_name}</strong>{player.real_name && <small>{player.discord_name}</small>}</span>
+          <span className="player-lookup-weight" aria-label={`${player.weighting.toFixed(1)} weighting`}>{player.weighting.toFixed(1)}</span>
           {player.is_test && <span className="badge">Test User</span>}
         </button>
       </li>)}</ul> : <p>{players.length ? "No players match your search." : "No players have signed up yet."}</p>}
