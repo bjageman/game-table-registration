@@ -46,45 +46,32 @@ def payloads(
     if waiting:
         sections.append(("**Waitlist**", waiting))
     chunks: list[tuple[str, list[str]]] = []
-    content: list[str] = []
-    mentions: list[str] = []
-
-    def flush() -> None:
-        if content:
-            chunks.append(("\n".join(content), list(mentions)))
-            content.clear()
-            mentions.clear()
-
     for header, entries in sections:
-        if (
-            sum(len(s) + 1 for s in content) + len(header) + len(entries[0][0]) + 2
-            > 1400
-        ):
-            flush()
-        content.append(header)
+        content = [header]
+        mentions: list[str] = []
         for line, mention in entries:
             if (
                 sum(len(s) + 1 for s in content) + len(line) + 1 > 1400
                 or mention
                 and len(mentions) >= 100
             ):
-                flush()
-                content.append(header + " (continued)")
+                chunks.append(("\n".join(content), mentions))
+                content = [header + " (continued)"]
+                mentions = []
             content.append(line)
             if mention:
                 mentions.append(mention)
-        content.append("")
-    flush()
+        chunks.append(("\n".join(content), mentions))
     poll_url = (
         f"https://discord.com/channels/{event.guild_id}/{channel_id}/{event.message_id}"
     )
+    introduction = (
+        f"**{'[TEST] ' if is_test else ''}{clean(event.title)} — Table Assignments**"
+        f"\n[Signup message]({poll_url})\n\n"
+    )
     return [
         {
-            "content": (
-                f"**{'[TEST] ' if is_test else ''}{clean(event.title)} "
-                "— Table Assignments "
-                f"({i + 1}/{len(chunks)})**\n[Signup message]({poll_url})\n\n{body}"
-            ),
+            "content": (introduction if i == 0 else "") + body,
             "allowed_mentions": {"parse": [], "users": mentions},
             "nonce": hashlib.sha256(f"{event.id}:assignments:{i}".encode()).hexdigest()[
                 :24
