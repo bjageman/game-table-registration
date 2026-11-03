@@ -267,12 +267,15 @@ def close_and_assign(
                         **player,
                         "weight": weights.get(player["id"], 1.0),
                     }
-            participants = {
-                player["id"]: player
-                for player in apply_manager_players(
-                    db, event, list(participants.values()), weights
-                )
-            }
+            with Session(engine) as manager_db:
+                manager_event = manager_db.get(Event, event_id)
+                assert manager_event is not None
+                participants = {
+                    player["id"]: player
+                    for player in apply_manager_players(
+                        manager_db, manager_event, list(participants.values()), weights
+                    )
+                }
             assign(
                 with_guarantees(
                     {"tables": tables, "players": list(participants.values())}
