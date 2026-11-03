@@ -409,6 +409,12 @@ dd {
 .table-player-sort > span { font-size: 0.65rem; }
 .table-player-sort:last-child { justify-content: flex-end; }
 .table-player-row { margin: 3px 0; }
+.table-player-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 42px 26px; align-items: center; gap: 5px; min-width: 0; }
+.table-assigned-player { display: grid; grid-template-columns: minmax(0, 1fr) 26px; align-items: center; gap: 5px; min-width: 0; }
+.remove-signup-player { border: 0; border-radius: 4px; background: transparent; color: #a32626; font-size: 1rem; font-weight: 700; padding: 2px 5px; }
+.remove-signup-player:hover { background: #fce8e8; }
+.add-signup-player { margin-top: 8px; }
+.add-player-results { max-height: 45vh; overflow: auto; }
 .table-assigned-player { margin: 3px 0; }
 .table-player-row .player-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-guarantee, .player-weight { border: 0; background: transparent; padding: 1px 3px; flex-shrink: 0; }

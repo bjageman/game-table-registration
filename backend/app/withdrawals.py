@@ -232,3 +232,44 @@ def withdraw(
             )
         db.commit()
         return True
+
+
+def manager_remove(engine: Engine, guild_id: str, event_id: str, player_id: str) -> bool:
+    """Remove an assigned player and silently promote the first eligible waitlisted player."""
+    with Session(engine) as db:
+        claimed = db.execute(
+            update(Event)
+            .where(
+                Event.id == event_id,
+                Event.guild_id == guild_id,
+                Event.status == "assigned",
+                Event.archived_at.is_(None),
+            )
+            .values(status=Event.status)
+            .returning(Event.id)
+        ).scalar_one_or_none()
+        if claimed is None:
+            return False
+        run = db.get(LotteryRun, event_id)
+        if run is None:
+            return False
+        current = current_result(db, run)
+        table_name = current["assignments"].get(player_id)
+        if table_name is None:
+            return False
+        table = next(row for row in run.result["tables"] if row["name"] == table_name)
+        active_ids = set(current["assignments"])
+        withdrawn_ids = set(db.scalars(
+            select(EventWithdrawal.discord_id).where(EventWithdrawal.event_id == event_id)
+        ))
+        promoted_id = next((player["id"] for player in table.get("waitlist", [])
+            if player["id"] not in active_ids and player["id"] not in withdrawn_ids), None)
+        db.add(EventWithdrawal(
+            event_id=event_id,
+            discord_id=player_id,
+            table_name=table_name,
+            withdrawn_at=time.time(),
+            promoted_id=promoted_id,
+        ))
+        db.commit()
+        return True

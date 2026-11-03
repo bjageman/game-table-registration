@@ -1,8 +1,9 @@
 import TableTitle from "./TableTitle";
 import PlayerProfile from "./PlayerProfile";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 import LoadingIndicator from "./LoadingIndicator";
+import ConfirmationDialog from "./ConfirmationDialog";
 
 interface SignupPlayer { id: string; name: string; display_name?: string; weighting?: number; guaranteed_table?: string | null; guaranteed_seat?: boolean }
 type SortColumn = "guarantee" | "player" | "weight";
@@ -33,7 +34,60 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   const [editingWeight, setEditingWeight] = useState<string>();
   const [weight, setWeight] = useState("");
   const [saving, setSaving] = useState(false);
+  const [addingTable, setAddingTable] = useState<string>();
+  const [playerQuery, setPlayerQuery] = useState("");
+  const [availablePlayers, setAvailablePlayers] = useState<{ discord_id: string; discord_name: string; real_name: string }[]>([]);
+  const [playersLoading, setPlayersLoading] = useState(false);
+  const [removing, setRemoving] = useState<SignupPlayer>();
+  const addDialog = useRef<HTMLDialogElement>(null);
   const hasSignups = event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
+  const canEditSignups = event.status === "draft" || event.status === "open";
+  const canRemoveSignups = canEditSignups || event.status === "assigned";
+  useEffect(() => {
+    const dialog = addDialog.current;
+    if (addingTable) dialog?.showModal();
+    return () => { if (dialog?.open) dialog.close(); };
+  }, [addingTable]);
+  useEffect(() => {
+    if (!addingTable) return;
+    let active = true;
+    setPlayersLoading(true);
+    api<{ discord_id: string; discord_name: string; real_name: string }[]>("/players")
+      .then((players) => { if (active) setAvailablePlayers(players); })
+      .catch((failure) => { if (active && !onAccessError(failure)) setActionError(errorMessage(failure)); })
+      .finally(() => { if (active) setPlayersLoading(false); });
+    return () => { active = false; };
+  }, [addingTable, onAccessError]);
+  async function addPlayer(player: { discord_id: string; discord_name: string; real_name: string }) {
+    if (!addingTable || saving) return;
+    setSaving(true); setActionError("");
+    try {
+      await api(`/events/${encodeURIComponent(event.id)}/manager-players/${encodeURIComponent(player.discord_id)}`,
+        { ...mutationOptions(csrf, { table: addingTable, name: player.discord_name }), method: "PUT" });
+      const signupPlayer = { id: player.discord_id, name: player.discord_name };
+      setRows((current) => {
+        const value = current ?? event.tables.map((table) => ({ name: table.name, players: [] }));
+        return value.map((row) => row.name === addingTable && !row.players.some((entry) => entry.id === signupPlayer.id)
+          ? { ...row, players: [...row.players, signupPlayer] } : row);
+      });
+      setAddingTable(undefined); setPlayerQuery("");
+      setAttempt((value) => value + 1);
+    } catch (failure) {
+      if (!onAccessError(failure)) setActionError(errorMessage(failure));
+    } finally { setSaving(false); }
+  }
+  async function removePlayer(player: SignupPlayer) {
+    setSaving(true); setActionError("");
+    try {
+      await api(`/events/${encodeURIComponent(event.id)}/manager-players/${encodeURIComponent(player.id)}`,
+        { ...mutationOptions(csrf), method: "DELETE" });
+      setRows((current) => current?.map((row) => ({ ...row, players: row.players.filter((entry) => entry.id !== player.id) })));
+      setRemoving(undefined);
+      setAttempt((value) => value + 1);
+    } catch (failure) {
+      if (!onAccessError(failure)) setActionError(errorMessage(failure));
+    } finally { setSaving(false); }
+  }
   async function saveSetting(player: SignupPlayer, change: { weighting?: number; guaranteed_table?: string | null }) {
     if (saving) return;
     setSaving(true); setActionError("");
@@ -72,12 +126,27 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   return <>
     {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf}
       onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
+    {addingTable && <dialog ref={addDialog} className="event-modal" aria-labelledby="add-player-heading" onCancel={(event) => { event.preventDefault(); if (!saving) { setAddingTable(undefined); setPlayerQuery(""); } }}>
+      <h2 id="add-player-heading">Add a player to {addingTable}</h2>
+      <label className="form-field"><span>Search players</span><input type="search" autoFocus value={playerQuery} onChange={(change) => setPlayerQuery(change.target.value)} /></label>
+      {playersLoading ? <p><LoadingIndicator label="Loading players…" /></p> : <ul className="table-players add-player-results">
+        {availablePlayers.filter((player) => `${player.discord_name} ${player.real_name}`.toLocaleLowerCase().includes(playerQuery.trim().toLocaleLowerCase())).slice(0, 30).map((player) =>
+          <li key={player.discord_id}><button type="button" className="player-name" disabled={saving} onClick={() => void addPlayer(player)}>
+            {player.real_name || player.discord_name} <span className="help">@{player.discord_name}</span>
+          </button></li>)}
+      </ul>}
+      <div className="form-actions"><button type="button" disabled={saving} onClick={() => { setAddingTable(undefined); setPlayerQuery(""); }}>Cancel</button></div>
+    </dialog>}
+    {removing && <ConfirmationDialog title="Remove player from signups?" busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing)}>
+      <p>Remove {removing.display_name || removing.name} from this event’s signups? They will not be notified.</p>
+    </ConfirmationDialog>}
     {error && <p role="alert" className="error">
       Could not refresh signups. {rows ? "Showing the last loaded list. " : ""}{error}{" "}
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
     </p>}
     {actionError && <p role="alert" className="error">Could not save player setting. {actionError}</p>}
-    <TableColumns event={event} rows={hasSignups ? rows : event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={setSelectedPlayer}
+    <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={setSelectedPlayer}
+      canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={setAddingTable} onRemovePlayer={setRemoving}
       editingWeight={editingWeight} weight={weight} saving={saving} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 1)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
@@ -86,7 +155,7 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   </>;
 }
 
-export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee }: {
+export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onRemovePlayer }: {
   event: Pick<EventRecord, "tables" | "status">;
   rows?: TableSignups[];
   error?: string;
@@ -99,6 +168,10 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
   onCancelWeight?: () => void;
   onSaveWeight?: (player: SignupPlayer) => void;
   onToggleGuarantee?: (player: SignupPlayer, table: string) => void;
+  canEditSignups?: boolean;
+  canRemoveSignups?: boolean;
+  onAddPlayer?: (table: string) => void;
+  onRemovePlayer?: (player: SignupPlayer) => void;
 }) {
   const [sorts, setSorts] = useState<Record<string, SortState>>({});
   function sortTable(table: string, column: SortColumn) {
@@ -155,8 +228,10 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               </form> : <button type="button" className={`player-weight ${(player.weighting ?? 1) < 1 ? "low" : (player.weighting ?? 1) > 1 ? "high" : ""}`}
                 title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 1).toFixed(1)}`} disabled={saving}
                 onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 1).toFixed(1)}</button>)}
+              {canRemoveSignups && <button type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from signups`} title="Remove from signups" onClick={() => onRemovePlayer?.(player)}>✕</button>}
             </li>)}
           </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}
+          {canEditSignups && <button type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}
           {event.status === "assigned" && row && <div className="table-waitlist">
             <h4>Waitlist</h4>
             {row.waitlist?.length ? <ol>{row.waitlist.map((player) => <li key={player.id}>
