@@ -414,7 +414,14 @@ dd {
 .remove-signup-player { border: 0; border-radius: 4px; background: transparent; color: #a32626; font-size: 1rem; font-weight: 700; padding: 2px 5px; }
 .remove-signup-player:hover { background: #fce8e8; }
 .add-signup-player { margin-top: 8px; }
-.add-player-results { max-height: 45vh; overflow: auto; }
+.add-player-search { display: grid; gap: 8px; position: relative; }
+.add-player-search label { font-weight: 600; }
+.add-player-search input { width: 100%; padding: 10px 12px; border: 1px solid #84978b; border-radius: 6px; background: #fff; color: inherit; }
+.add-player-results { list-style: none; margin: 0; padding: 4px; max-height: min(40vh, 320px); overflow: auto; border: 1px solid #bdc9c0; border-radius: 6px; background: #fff; box-shadow: 0 8px 20px #10241920; }
+.add-player-results li + li { border-top: 1px solid #e2e8e2; }
+.add-player-results button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; text-align: left; }
+.add-player-results button:hover, .add-player-results button:focus-visible { background: #e8f2ea; }
+.add-player-results button span { font-size: 0.85rem; color: #52665a; }
 .table-assigned-player { margin: 3px 0; }
 .table-player-row .player-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-guarantee, .player-weight { border: 0; background: transparent; padding: 1px 3px; flex-shrink: 0; }
