@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20261102_event_manager_signups"
-down_revision = "20261102_event_player_settings"
+down_revision = "20261102_event_withdrawals"
 branch_labels = None
 depends_on = None
 
