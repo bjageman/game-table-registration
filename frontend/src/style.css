@@ -415,6 +415,7 @@ dd {
 .table-player-sort:last-child { justify-content: flex-end; }
 .table-player-row { margin: 3px 0; }
 .table-player-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 42px 26px; align-items: center; gap: 5px; min-width: 0; }
+.table-player-header.read-only, .table-player-row.read-only { grid-template-columns: minmax(0, 1fr) 42px; }
 .table-assigned-player { display: grid; grid-template-columns: minmax(0, 1fr) 26px; align-items: center; gap: 5px; min-width: 0; }
 .remove-signup-player { border: 0; border-radius: 4px; background: transparent; color: #a32626; font-size: 1rem; font-weight: 700; padding: 2px 5px; }
 .remove-signup-player:hover { background: #fce8e8; }

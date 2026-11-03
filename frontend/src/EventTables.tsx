@@ -224,11 +224,11 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               {count ?? "—"}/{table.capacity}
             </span>
           </div>
-          {event.status === "open" && <div className="table-player-header">
-            {header("guarantee", "⭐", "guarantee")}{header("player", "Player", "player")}{header("weight", "Wt", "weight")}
+          {event.status === "open" && <div className={`table-player-header${readOnly ? " read-only" : ""}`}>
+            {!readOnly && header("guarantee", "⭐", "guarantee")}{readOnly ? <span>Player</span> : header("player", "Player", "player")}{readOnly ? <span>Wt</span> : header("weight", "Wt", "weight")}
           </div>}
           {players?.length ? <ul className="table-players">
-            {sortedPlayers?.map((player) => <li key={player.id} className={event.status === "open" ? "table-player-row" : "table-assigned-player"}>
+            {sortedPlayers?.map((player) => <li key={player.id} className={event.status === "open" ? `table-player-row${readOnly ? " read-only" : ""}` : "table-assigned-player"}>
               {event.status === "open" && !readOnly && <button type="button" className="player-guarantee" disabled={saving} aria-pressed={player.guaranteed_table === table.name}
                 aria-label={`${player.guaranteed_table === table.name ? "Remove" : "Guarantee"} ${player.display_name || player.name} at ${table.name}`}
                 title={player.guaranteed_table === table.name ? "Remove table guarantee" : player.guaranteed_seat && !player.guaranteed_table ? "Profile guarantees a seat at one selected table; click to guarantee this table" : "Guarantee this table"}
