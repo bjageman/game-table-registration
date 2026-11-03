@@ -19,7 +19,7 @@ trap 'rm -rf "$build_dir"' EXIT
 git -C "$repo" archive "$revision" | tar -x -C "$build_dir"
 export APP_ENV_FILE="$env_file"
 export BRANDING_CONFIG_DIR="${BRANDING_CONFIG_DIR:-$repo/branding/$environment}"
-mkdir -p "$BRANDING_CONFIG_DIR"
+mkdir -p "$BRANDING_CONFIG_DIR/public"
 compose=(docker compose --env-file "$env_file" --project-directory "$build_dir" -f "$build_dir/docker-compose.$environment.yml")
 "${compose[@]}" config --quiet
 "${compose[@]}" build --pull

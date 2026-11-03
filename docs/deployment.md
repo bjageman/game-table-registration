@@ -20,6 +20,8 @@ To customize the website name, footer, or header logo, copy
 `branding.example.json` to `branding/dev/branding.json` or
 `branding/prod/branding.json` in the persistent server checkout. These files
 are ignored by Git and mounted read-only into the matching API container.
+Put custom logo files in the matching `branding/dev/public/` or
+`branding/prod/public/` directory; the web container serves these at `/branding/`.
 The logo URL must be HTTPS or a root-relative path that your web server serves.
 If a branding file is absent, the site uses TableSignup defaults. The API reads
 the file at startup, so redeploy after changing it. For local `./run.sh`, use
@@ -99,8 +101,19 @@ not undo migrations. A failed migration stops deployment before API replacement.
 
 ## Philly BOTC setup
 
-The Philly BOTC checkout is `~/Apps/sites/phillybotc/apps/game-table-registration`.
-Copy `branding.phillybotc.example.json` to `branding/prod/branding.json` for its name and Liberty Bell logo.
-Set `SIGNUPS_HOST=signups.phillybotc.com` in the private production environment file.
-Before promotion, configure DNS and register `https://signups.phillybotc.com/api/auth/callback` in Discord.
-The existing GitHub deployment workflow still uses the server checkout above; cloning alone does not move the running deployment.
+The working checkout is `/tank/apps/docker/sites/botc/apps/game-table-registration`.
+The active deployment checkout (used by GitHub Actions) remains
+`/tank/apps/docker/vibes/game-table-registration`. Configure production there;
+files in another checkout do not affect the running service.
+
+Copy `branding.phillybotc.example.json` to `branding/prod/branding.json` and
+`frontend/public/branding/liberty-bell.png` to `branding/prod/public/liberty-bell.png`
+in the active deployment checkout. Set `SIGNUPS_HOST=signups.phillybotc.com`
+in its private `.env.prod`. Register
+`https://signups.phillybotc.com/api/auth/callback` in the production Discord application.
+Redeploy after the owner promotes deployment changes through `dev` to `main`.
+
+Verify HTTPS, `/api/health/ready`, `/api/branding`, and
+`/branding/liberty-bell.png` on the new hostname. `/api/auth/login` must redirect
+to Discord with the new callback URL. Complete a browser login to confirm
+Discord accepts that callback.

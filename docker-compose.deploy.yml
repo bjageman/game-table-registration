@@ -45,6 +45,8 @@ services:
     image: game-table-registration-web:${DEPLOY_ENV}
     build: ./frontend
     restart: unless-stopped
+    volumes:
+      - ${BRANDING_CONFIG_DIR:?Set BRANDING_CONFIG_DIR}/public:/usr/share/nginx/html/branding:ro
     environment:
       VIRTUAL_HOST: ${SIGNUPS_HOST}
       VIRTUAL_PORT: '80'
