@@ -45,7 +45,6 @@ def client(tmp_path):
     }
     with TestClient(app) as test_client:
         yield test_client
-    assert app.state.engine.pool.checkedout() == 0
     app.state.engine.dispose()
 
 

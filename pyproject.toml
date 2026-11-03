@@ -23,7 +23,6 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["backend"]
 testpaths = ["backend/tests"]
-faulthandler_timeout = 60
 
 [tool.ruff]
 src = ["backend"]
