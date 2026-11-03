@@ -86,6 +86,29 @@ export default function App() {
     return () => controller.abort();
   }, [attempt]);
 
+  useEffect(() => {
+    if (auth.kind !== "ready") return;
+    let checking = false;
+    async function refreshSession() {
+      if (checking || document.visibilityState === "hidden") return;
+      checking = true;
+      try {
+        const session = await api<ModeratorSession>("/me");
+        setAuth({ kind: "ready", session });
+      } catch (error) {
+        onAccessError(error);
+      } finally {
+        checking = false;
+      }
+    }
+    window.addEventListener("focus", refreshSession);
+    document.addEventListener("visibilitychange", refreshSession);
+    return () => {
+      window.removeEventListener("focus", refreshSession);
+      document.removeEventListener("visibilitychange", refreshSession);
+    };
+  }, [auth.kind, onAccessError]);
+
   function retry() {
     setAuth({ kind: "loading" });
     setLogoutError("");
