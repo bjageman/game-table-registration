@@ -1,6 +1,0 @@
-# Hosted brand example. Use an absolute APP_ENV_FILE and BRANDING_CONFIG_DIR.
-# docker compose --env-file .env.phillybotc.prod -f docker-compose.example.yml config
-# Set a unique BRAND_ID, DEPLOY_ENV, hostname, credentials, and branding per instance.
-name: game-table-registration-${BRAND_ID:?Set BRAND_ID}-${DEPLOY_ENV:?Set DEPLOY_ENV}
-include:
-  - docker-compose.deploy.yml

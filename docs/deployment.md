@@ -140,9 +140,3 @@ A new brand project starts with an empty database. Moving an existing installati
 requires a deliberate PostgreSQL backup/restore into the new project's database
 and a hostname cutover after stopping the old instance. Renaming a brand does not
 move its data. Do not run old and new instances with the same bot token or hostname.
-
-`docker-compose.example.yml` is a direct Compose alternative using the same hosted
-services. Set `BRAND_ID`, `DEPLOY_ENV`, absolute `APP_ENV_FILE` and
-`BRANDING_CONFIG_DIR`, plus the required password, hostname, and email in the
-selected environment file. Create `BRANDING_CONFIG_DIR/public` before starting it.
-Use the deployment script for remote-branch builds and ordered migrations.
