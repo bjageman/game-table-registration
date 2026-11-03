@@ -1,4 +1,7 @@
+import math
+import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from fastapi import HTTPException
@@ -6,11 +9,19 @@ from fastapi import HTTPException
 from app.config import Settings
 
 
+class DiscordRequestError(HTTPException):
+    def __init__(self, discord_status: int | None, retry_after: float = 0) -> None:
+        super().__init__(502, "Discord request failed. Please try again.")
+        self.retry_after = retry_after
+        self.discord_status = discord_status
+        self.ambiguous = discord_status is None or discord_status >= 500
+
+
 class DiscordAPI:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    def request_json(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
             with httpx.Client(timeout=15) as client:
                 response = client.request(
@@ -22,11 +33,45 @@ class DiscordAPI:
             response.raise_for_status()
             if response.status_code == 204:
                 return {}
-            return dict(response.json())
+            return response.json()
+        except httpx.HTTPStatusError as error:
+            retry_after = 0.0
+            if error.response.status_code == 429:
+                try:
+                    value = float(error.response.json().get("retry_after", 0))
+                    if math.isfinite(value) and value > 0:
+                        retry_after = value
+                except (ValueError, TypeError, AttributeError):
+                    pass
+            raise DiscordRequestError(error.response.status_code, retry_after) from None
         except (httpx.HTTPError, ValueError):
-            raise HTTPException(
-                502, "Discord request failed. Please try again."
-            ) from None
+            raise DiscordRequestError(None) from None
+
+    def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        value = self.request_json(method, path, **kwargs)
+        if not isinstance(value, dict):
+            raise HTTPException(502, "Discord returned an invalid response")
+        return value
+
+    def request_items(self, path: str, **kwargs: Any) -> list[dict[str, Any]]:
+        value = self.request_json("GET", path, **kwargs)
+        if not isinstance(value, list) or any(
+            not isinstance(row, dict) for row in value
+        ):
+            raise HTTPException(502, "Discord returned an invalid list")
+        return value
+
+    def bot_items(self, path: str) -> list[dict[str, Any]]:
+        return self.request_items(
+            path, headers={"Authorization": f"Bot {self.settings.discord_bot_token}"}
+        )
+
+    def at(self, guild_id: str, channel_id: str) -> "DiscordAPI":
+        return DiscordAPI(
+            self.settings.model_copy(
+                update={"discord_guild_id": guild_id, "discord_channel_id": channel_id}
+            )
+        )
 
     def bot(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         return self.request(
@@ -48,11 +93,12 @@ class DiscordAPI:
                 "redirect_uri": self.settings.callback_url,
             },
         )
-        return self.request(
-            "GET",
-            "/users/@me",
-            headers={"Authorization": f"Bearer {token['access_token']}"},
-        )
+        headers = {"Authorization": f"Bearer {token['access_token']}"}
+        user = self.request("GET", "/users/@me", headers=headers)
+        user["guilds"] = self.request_items("/users/@me/guilds", headers=headers)
+        if isinstance(token.get("guild"), dict):
+            user["authorized_guild"] = token["guild"]
+        return user
 
     def authorize(self, user_id: str) -> None:
         member = self.bot(
@@ -97,14 +143,13 @@ class DiscordAPI:
             )
         return rows
 
-    def voters(self, message_id: str, answer_id: int) -> list[dict[str, str]]:
-        players: dict[str, dict[str, str]] = {}
+    def voter_users(self, message_id: str, answer_id: int) -> list[dict[str, Any]]:
+        users_by_id: dict[str, dict[str, Any]] = {}
         after = 0
         while True:
             response = self.bot(
                 "GET",
-                f"/channels/{self.settings.discord_channel_id}/polls/"
-                f"{message_id}/answers/{answer_id}",
+                f"/channels/{self.settings.discord_channel_id}/polls/{message_id}/answers/{answer_id}",
                 params={"limit": 100, **({"after": str(after)} if after else {})},
             )
             users = response.get("users")
@@ -114,12 +159,12 @@ class DiscordAPI:
                 break
             try:
                 for user in users:
-                    if not user.get("bot"):
-                        player_id = str(user["id"])
-                        players[player_id] = {
-                            "id": player_id,
-                            "name": user.get("global_name") or user["username"],
-                        }
+                    user_id = str(user["id"])
+                    if not isinstance(
+                        user.get("global_name") or user.get("username"), str
+                    ):
+                        raise ValueError("Missing user name")
+                    users_by_id[user_id] = user
                 cursor = max(int(user["id"]) for user in users)
             except (KeyError, ValueError, TypeError):
                 raise HTTPException(
@@ -130,10 +175,263 @@ class DiscordAPI:
             after = cursor
             if len(users) < 100:
                 break
-        return sorted(players.values(), key=lambda player: player["name"].casefold())
+        return list(users_by_id.values())
+
+    def voters(self, message_id: str, answer_id: int) -> list[dict[str, str]]:
+        players = [
+            {
+                "id": str(user["id"]),
+                "name": str(user.get("global_name") or user["username"]),
+            }
+            for user in self.voter_users(message_id, answer_id)
+            if not user.get("bot")
+        ]
+        return sorted(players, key=lambda player: player["name"].casefold())
+
+    def poll_message(self, message_id: str) -> dict[str, Any]:
+        return self.bot(
+            "GET", f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+        )
+
+    def end_poll(self, message_id: str) -> None:
+        self.bot(
+            "POST",
+            f"/channels/{self.settings.discord_channel_id}/polls/{message_id}/expire",
+        )
 
     def delete_poll(self, message_id: str) -> None:
         self.bot(
             "DELETE",
             f"/channels/{self.settings.discord_channel_id}/messages/{message_id}",
         )
+
+    def close_signup_message(self, message_id: str) -> None:
+        # Keep the event description and deadline; remove the interactive button.
+        self.bot(
+            "PATCH",
+            f"/channels/{self.settings.discord_channel_id}/messages/{message_id}",
+            json={"components": []},
+        )
+
+    def close_reaction_message(self, message_id: str) -> None:
+        path = f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+        message = self.bot("GET", path)
+        marker = "**Signups closed. Reactions no longer change entries.**"
+        content = str(message.get("content") or "")
+        if marker not in content:
+            content = f"{content}\n\n{marker}"
+        self.bot(
+            "PATCH",
+            path,
+            json={
+                "content": content,
+                "allowed_mentions": {"parse": []},
+            },
+        )
+
+    def seed_reactions(self, message_id: str, emojis: list[str]) -> None:
+        for emoji in emojis:
+            path = (
+                f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+                f"/reactions/{quote(emoji, safe='')}/@me"
+            )
+            for attempt in range(10):
+                try:
+                    self.bot("PUT", path)
+                    break
+                except DiscordRequestError as error:
+                    if error.discord_status != 429 or attempt == 9:
+                        raise
+                    time.sleep(max(error.retry_after, 0.5))
+
+    def reaction_players(
+        self, message_id: str, tables: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        from app.reactions import EMOJIS
+
+        players: dict[str, dict[str, Any]] = {}
+        for index, table in enumerate(tables):
+            after = 0
+            while True:
+                for attempt in range(10):
+                    try:
+                        rows = self.request_items(
+                            f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
+                            f"/reactions/{quote(EMOJIS[index], safe='')}",
+                            headers={
+                                "Authorization": (
+                                    f"Bot {self.settings.discord_bot_token}"
+                                )
+                            },
+                            params={
+                                "limit": 100,
+                                "type": 0,
+                                **({"after": str(after)} if after else {}),
+                            },
+                        )
+                        break
+                    except DiscordRequestError as error:
+                        if error.discord_status != 429 or attempt == 9:
+                            raise
+                        time.sleep(max(error.retry_after, 0.5))
+                for user in rows:
+                    if user.get("bot"):
+                        continue
+                    pid = str(user["id"])
+                    player = players.setdefault(
+                        pid,
+                        {
+                            "id": pid,
+                            "name": user.get("global_name") or user["username"],
+                            "choices": [],
+                        },
+                    )
+                    if table["name"] not in player["choices"]:
+                        player["choices"].append(table["name"])
+                if len(rows) < 100:
+                    break
+                cursor = max(int(user["id"]) for user in rows)
+                if cursor <= after:
+                    raise HTTPException(
+                        502, "Discord reaction pagination did not advance"
+                    )
+                after = cursor
+        return [players[pid] for pid in sorted(players)]
+
+    def manager_context(
+        self, user_id: str, guild_id: str
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+        guild = self.bot("GET", f"/guilds/{guild_id}")
+        member = self.bot("GET", f"/guilds/{guild_id}/members/{user_id}")
+        roles = self.bot_items(f"/guilds/{guild_id}/roles")
+        base = guild_permissions(guild_id, member, roles)
+        if str(guild.get("owner_id")) != user_id and not base & (8 | 32):
+            raise HTTPException(
+                403, "You need Manage Server permission to configure this server."
+            )
+        return guild, member, roles
+
+    def destination_channels(
+        self, user_id: str, guild_id: str
+    ) -> tuple[str, list[dict[str, str]]]:
+        guild, member, roles = self.manager_context(user_id, guild_id)
+        bot = self.bot("GET", "/users/@me")
+        bot_member = self.bot("GET", f"/guilds/{guild_id}/members/{bot['id']}")
+        channels = self.bot_items(f"/guilds/{guild_id}/channels")
+        result = []
+        required = (1 << 10) | (1 << 11) | (1 << 16)
+        if self.settings.discord_signup_mode == "custom":
+            required |= 1 << 6
+        if self.settings.discord_signup_mode == "poll":
+            required |= 1 << 49
+        for channel in channels:
+            if channel.get("type") != 0:
+                continue
+            user_bits = channel_permissions(guild, member, roles, channel, user_id)
+            bot_bits = channel_permissions(
+                guild, bot_member, roles, channel, str(bot["id"])
+            )
+            if user_bits & (1 << 10) and bot_bits & required == required:
+                result.append({"id": str(channel["id"]), "name": str(channel["name"])})
+        return str(guild["name"]), sorted(
+            result, key=lambda row: row["name"].casefold()
+        )
+
+    def authorize_destination(self, user_id: str) -> None:
+        guild, member, roles = self.manager_context(
+            user_id, self.settings.discord_guild_id
+        )
+        channel = self.bot("GET", f"/channels/{self.settings.discord_channel_id}")
+        if str(
+            channel.get("guild_id")
+        ) != self.settings.discord_guild_id or not channel_permissions(
+            guild, member, roles, channel, user_id
+        ) & (1 << 10):
+            raise HTTPException(
+                403, "You no longer have access to the configured channel."
+            )
+
+    def send_announcement(
+        self, channel_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        message = self.bot(
+            "POST", f"/channels/{channel_id}/messages", json=payload, timeout=8
+        )
+        if not isinstance(message.get("id"), str) or not message["id"]:
+            raise DiscordRequestError(None)
+        return message
+
+    def find_announcement(
+        self, channel_id: str, payload: dict[str, Any], attempted_at: float
+    ) -> str | None:
+        from datetime import datetime
+
+        author = str(self.bot("GET", "/users/@me")["id"])
+        before = ""
+        for _ in range(20):
+            path = f"/channels/{channel_id}/messages?limit=100" + (
+                f"&before={before}" if before else ""
+            )
+            messages = self.bot_items(path)
+            if not messages:
+                return None
+            for message in messages:
+                if str(message.get("author", {}).get("id")) == author and (
+                    str(message.get("nonce")) == str(payload["nonce"])
+                    or message.get("content") == payload["content"]
+                ):
+                    return str(message["id"])
+            try:
+                oldest = min(
+                    datetime.fromisoformat(m["timestamp"]).timestamp() for m in messages
+                )
+                cursor = str(min(int(m["id"]) for m in messages))
+            except (KeyError, TypeError, ValueError):
+                raise HTTPException(
+                    502, "Could not verify Discord delivery history"
+                ) from None
+            if oldest < attempted_at - 60 or len(messages) < 100:
+                return None
+            if cursor == before:
+                break
+            before = cursor
+        raise HTTPException(502, "Could not finish checking Discord delivery history")
+
+
+def guild_permissions(
+    guild_id: str, member: dict[str, Any], roles: list[dict[str, Any]]
+) -> int:
+    ids = {guild_id, *map(str, member.get("roles", []))}
+    bits = 0
+    for role in roles:
+        if str(role["id"]) in ids:
+            bits |= int(role["permissions"])
+    return bits
+
+
+def channel_permissions(
+    guild: dict[str, Any],
+    member: dict[str, Any],
+    roles: list[dict[str, Any]],
+    channel: dict[str, Any],
+    user_id: str,
+) -> int:
+    bits = guild_permissions(str(guild["id"]), member, roles)
+    if str(guild.get("owner_id")) == user_id or bits & 8:
+        return (1 << 64) - 1
+    overwrites = channel.get("permission_overwrites", [])
+    for overwrite in overwrites:
+        if str(overwrite["id"]) == str(guild["id"]):
+            bits = (bits & ~int(overwrite["deny"])) | int(overwrite["allow"])
+    denied = allowed = 0
+    for overwrite in overwrites:
+        if overwrite.get("type") == 0 and str(overwrite["id"]) in set(
+            map(str, member.get("roles", []))
+        ):
+            denied |= int(overwrite["deny"])
+            allowed |= int(overwrite["allow"])
+    bits = (bits & ~denied) | allowed
+    for overwrite in overwrites:
+        if overwrite.get("type") == 1 and str(overwrite["id"]) == user_id:
+            bits = (bits & ~int(overwrite["deny"])) | int(overwrite["allow"])
+    return bits

@@ -25,6 +25,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     build: .
+    volumes:
+      - ./branding:/app/branding:ro
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:-local-development-only}@db/tables

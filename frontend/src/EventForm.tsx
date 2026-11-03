@@ -1,10 +1,11 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
 import TextField from "@mui/material/TextField";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
+import { renderTimeViewClock } from "@mui/x-date-pickers/timeViewRenderers";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import {
@@ -13,8 +14,10 @@ import {
   errorMessage,
   mutationOptions,
   type EventRecord,
+  type EventTemplateRecord,
 } from "./api";
-import { validateEvent } from "./eventValidation";
+import { validateEvent, validateTemplate } from "./eventValidation";
+import TemplatePicker from "./TemplatePicker";
 
 interface Props {
   csrf: string;
@@ -25,14 +28,7 @@ interface Props {
 }
 
 function initialTime(): Dayjs {
-  const current = dayjs();
-  const minute =
-    current.minute() +
-    Number(current.second() > 0 || current.millisecond() > 0);
-  return current
-    .minute(Math.ceil(minute / 15) * 15)
-    .second(0)
-    .millisecond(0);
+  return dayjs().add(1, "hour").startOf("hour");
 }
 
 export default function EventForm({
@@ -71,11 +67,42 @@ export default function EventForm({
       : [{ id: 0, name: "", capacity: "15" }],
   );
   const nextId = useRef(tables.length);
+  const pendingTableFocus = useRef<number | null>(null);
+  const scheduleFields = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [templates, setTemplates] = useState<EventTemplateRecord[]>([]);
+  const [choosingTemplate, setChoosingTemplate] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState("");
   const isMobile = useMediaQuery("(max-width: 600px)");
+  useEffect(() => {
+    const controller = new AbortController();
+    api<EventTemplateRecord[]>("/templates", { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setTemplates(result); })
+      .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    return () => controller.abort();
+  }, [onAccessError]);
+  useEffect(() => {
+    if (pendingTableFocus.current === null) return;
+    document.getElementById(`${prefix}-name-${pendingTableFocus.current}`)?.focus();
+    pendingTableFocus.current = null;
+  }, [tables, prefix]);
+
+  function addTable() {
+    if (inFlight.current || tables.length >= 10) return;
+    const id = nextId.current++;
+    pendingTableFocus.current = id;
+    setTables((rows) => [...rows, { id, name: "", capacity: "15" }]);
+  }
+
+  function handleTableEnter(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    if (!event.repeat) addTable();
+  }
+
   function updateDesktopStart(value: Dayjs | null) {
     setStartsAt(value);
     setStartsAtLocal(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "");
@@ -124,6 +151,45 @@ export default function EventForm({
     setTables((rows) =>
       rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
     );
+  }
+
+  function loadTemplate(template: EventTemplateRecord) {
+    setTitle(template.title);
+    setDuration(String(template.duration_hours));
+    setTables(template.tables.map((table, id) => ({ id, name: table.name, capacity: String(table.capacity) })));
+    nextId.current = template.tables.length;
+    setFieldErrors({});
+    setError("");
+    setTemplateNotice(`Loaded template: ${template.title}.`);
+    setChoosingTemplate(false);
+  }
+
+  async function saveTemplate() {
+    if (inFlight.current) return;
+    setError(""); setTemplateNotice("");
+    const errors = validateTemplate({ title, duration, tables });
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      setError([...new Set(Object.values(errors))].join(" "));
+      requestAnimationFrame(() => document.getElementById(`${prefix}-${Object.keys(errors)[0]}`)?.focus());
+      return;
+    }
+    inFlight.current = true;
+    setSaving(true);
+    try {
+      const saved = await api<EventTemplateRecord>("/templates", mutationOptions(csrf, {
+        title: title.trim(),
+        duration_hours: Number(duration),
+        tables: tables.map((table) => ({ name: table.name.trim(), capacity: Number(table.capacity) })),
+      }));
+      setTemplates((current) => [saved, ...current]);
+      setTemplateNotice(`Template saved: ${saved.title}.`);
+    } catch (failure) {
+      if (!onAccessError(failure)) setError(errorMessage(failure));
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -193,9 +259,11 @@ export default function EventForm({
 
   return (
     <section className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
-      <h3 id={`${prefix}-heading`}>
-        {draft ? "Edit Event Draft" : "Create Event Draft"}
-      </h3>
+      <div className="section-heading template-heading">
+        <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : "Create Event Draft"}</h3>
+        {templates.length > 0 && <button type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
+      </div>
+      {choosingTemplate && <TemplatePicker templates={templates} onSelect={loadTemplate} onClose={() => setChoosingTemplate(false)} />}
       <form
         noValidate
         onSubmit={(event) => void submit(event)}
@@ -221,7 +289,7 @@ export default function EventForm({
             }}
           />
           <div className="form-grid event-schedule-fields">
-            <div className="date-time-fields">
+            <div className="date-time-fields" ref={scheduleFields}>
               {isMobile ? (
                 <div className="mobile-date-time-fields">
                   <DatePicker
@@ -245,7 +313,11 @@ export default function EventForm({
                     value={mobileTime}
                     onChange={updateMobileTime}
                     ampm
-                    timeSteps={{ minutes: 15 }}
+                    minutesStep={15}
+                    viewRenderers={{
+                      hours: renderTimeViewClock,
+                      minutes: renderTimeViewClock,
+                    }}
                     slotProps={{
                       textField: {
                         id: `${prefix}-time`,
@@ -259,13 +331,32 @@ export default function EventForm({
               ) : (
                 <DateTimePicker
                   label="Event starts"
+                  onOpen={() => {
+                    scheduleFields.current?.scrollIntoView({
+                      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                        ? "instant"
+                        : "smooth",
+                      block: "start",
+                      inline: "nearest",
+                    });
+                  }}
                   value={startsAt}
                   onChange={updateDesktopStart}
                   referenceDate={mobileTime}
                   format="MMMM D, YYYY h:mm A"
                   ampm
-                  timeSteps={{ minutes: 15 }}
+                  minutesStep={15}
+                  viewRenderers={{
+                    hours: renderTimeViewClock,
+                    minutes: renderTimeViewClock,
+                  }}
                   slotProps={{
+                    desktopPaper: {
+                      sx: {
+                        maxHeight: "calc(100dvh - 32px)",
+                        overflowY: "auto",
+                      },
+                    },
                     textField: {
                       id: `${prefix}-start`,
                       fullWidth: true,
@@ -323,6 +414,7 @@ export default function EventForm({
                     error={Boolean(fieldErrors[`name-${table.id}`])}
                     helperText={fieldErrors[`name-${table.id}`]}
                     label={`Table ${index + 1} name`}
+                    onKeyDown={handleTableEnter}
                     value={table.name}
                     onChange={(event) =>
                       updateTable(table.id, { name: event.target.value })
@@ -342,6 +434,7 @@ export default function EventForm({
                     error={Boolean(fieldErrors[`capacity-${table.id}`])}
                     helperText={fieldErrors[`capacity-${table.id}`]}
                     label={`Table ${index + 1} capacity`}
+                    onKeyDown={handleTableEnter}
                     type="number"
                     value={table.capacity}
                     onChange={(event) =>
@@ -378,12 +471,7 @@ export default function EventForm({
             aria-label="Add table"
             title="Add table"
             disabled={tables.length >= 10}
-            onClick={() =>
-              setTables((rows) => [
-                ...rows,
-                { id: nextId.current++, name: "", capacity: "15" },
-              ])
-            }
+            onClick={addTable}
           >
             <Plus size={18} aria-hidden="true" />
           </button>
@@ -393,9 +481,13 @@ export default function EventForm({
             {error}
           </p>
         )}
+        {templateNotice && <p role="status" className="notice">{templateNotice}</p>}
         <div className="form-actions">
           <button className="primary" type="submit" disabled={saving}>
             {saving ? "Saving draft…" : "Save draft"}
+          </button>
+          <button type="button" onClick={() => void saveTemplate()} disabled={saving}>
+            {saving ? "Saving template…" : "Save as Template"}
           </button>
           <button type="button" onClick={onCancel} disabled={saving}>
             Cancel

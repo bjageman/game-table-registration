@@ -11,10 +11,12 @@ import App from "./App";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  document.title = "TableSignup";
 });
 
-function mockApi(meStatus = 200, configured = true) {
+function mockApi(meStatus = 200, configured = true, branding = { name: "TableSignup", tagline: "Made for your next game night.", logo_url: null as string | null }) {
   const fetchMock = vi.fn(async (path: string) => {
+    if (path === "/api/branding") return new Response(JSON.stringify(branding));
     if (path === "/api/events") return new Response("[]");
     if (path === "/api/me")
       return new Response(
@@ -33,6 +35,16 @@ function mockApi(meStatus = 200, configured = true) {
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
+
+it("uses server branding for the header, browser title, footer, and logo", async () => {
+  mockApi(401, true, { name: "Game Night", tagline: "Find your next table.", logo_url: "https://example.org/logo.svg" });
+  render(<App />);
+  const link = await screen.findByRole("link", { name: "Game Night" });
+  expect(link).toContainElement(link.querySelector("img"));
+  expect(link.querySelector("img")).toHaveAttribute("src", "https://example.org/logo.svg");
+  expect(document.title).toBe("Game Night");
+  expect(screen.getByText("Find your next table.")).toBeVisible();
+});
 
 it("connects signed-out users to Discord OAuth", async () => {
   mockApi(401);

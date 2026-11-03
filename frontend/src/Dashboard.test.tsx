@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import Dashboard from "./Dashboard";
 
@@ -30,7 +30,7 @@ it("opens event details from a compact event listing", async () => {
     vi.fn(async () => new Response(JSON.stringify([draft]))),
   );
   render(<Dashboard {...props} />);
-  const item = await screen.findByRole("button", { name: /Friday games draft 1 table/ });
+  const item = await screen.findByRole("button", { name: /^Friday games/ });
   expect(item).toBeVisible();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   fireEvent.click(item);
@@ -69,4 +69,32 @@ it("passes expired-session errors to the auth boundary", async () => {
   expect(props.onAccessError).toHaveBeenCalledWith(
     expect.objectContaining({ status: 401 }),
   );
+});
+
+it("searches titles and sorts by title/date while respecting archived events", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
+    { ...draft, id: "a", title: "Alpha Night", starts_at: 2000000300 },
+    { ...draft, id: "z", title: "Zebra Night", starts_at: 2000000100 },
+    { ...draft, id: "b", title: "Beta Night", starts_at: 2000000200 },
+    { ...draft, id: "archived", title: "Alpha Archived", starts_at: 2000000400, archived_at: 2000000000 },
+  ]))));
+  render(<Dashboard {...props} />);
+  await screen.findByRole("button", { name: /^Alpha Night/ });
+  const titles = () => within(screen.getByRole("list")).getAllByRole("button").map((button) => button.querySelector(".event-list-title")?.textContent);
+  expect(titles()).toEqual(["Zebra Night", "Beta Night", "Alpha Night"]);
+  for (const [label, expected] of [
+    ["Title: A–Z", ["Alpha Night", "Beta Night", "Zebra Night"]],
+    ["Title: Z–A", ["Zebra Night", "Beta Night", "Alpha Night"]],
+    ["Event Date: Latest First", ["Alpha Night", "Beta Night", "Zebra Night"]],
+  ] as const) {
+    fireEvent.click(screen.getByRole("button", { name: "Sort events" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: label }));
+    expect(titles()).toEqual(expected);
+  }
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search events" }), { target: { value: " ALPHA " } });
+  expect(titles()).toEqual(["Alpha Night"]);
+  fireEvent.click(screen.getByLabelText("Show Archived"));
+  expect(titles()).toEqual(["Alpha Archived", "Alpha Night"]);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search events" }), { target: { value: "Clocktower" } });
+  expect(screen.getByText("No Matching Events")).toBeVisible();
 });

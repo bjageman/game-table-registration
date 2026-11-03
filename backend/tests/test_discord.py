@@ -123,3 +123,165 @@ def test_delete_discord_poll_failure_is_reported():
         with pytest.raises(HTTPException) as error:
             api.delete_poll("message")
         assert error.value.status_code == 502
+
+
+@pytest.mark.parametrize("mode", ["custom", "poll"])
+def test_channel_picker_respects_user_and_bot_overwrites(mode):
+    from app.connection_settings import POLL_PERMISSIONS
+
+    api = DiscordAPI(Settings(_env_file=None, discord_signup_mode=mode))
+    guild = {"id": "100", "owner_id": "other", "name": "Games"}
+    roles = [
+        {"id": "100", "permissions": str(1 << 10)},
+        {"id": "manager", "permissions": "32"},
+        {"id": "bot-role", "permissions": str(POLL_PERMISSIONS)},
+    ]
+    api.bot = Mock(
+        side_effect=lambda method, path: {
+            "/guilds/100": guild,
+            "/guilds/100/members/user": {"roles": ["manager"]},
+            "/users/@me": {"id": "bot"},
+            "/guilds/100/members/bot": {"roles": ["bot-role"]},
+        }[path]
+    )
+    api.bot_items = Mock(
+        side_effect=lambda path: (
+            roles
+            if path.endswith("roles")
+            else [
+                {"id": "101", "name": "public", "type": 0},
+                {
+                    "id": "102",
+                    "name": "hidden",
+                    "type": 0,
+                    "permission_overwrites": [
+                        {"id": "user", "type": 1, "deny": str(1 << 10), "allow": "0"},
+                    ],
+                },
+                {
+                    "id": "103",
+                    "name": "no-polls",
+                    "type": 0,
+                    "permission_overwrites": [
+                        {
+                            "id": "bot-role",
+                            "type": 0,
+                            "deny": str(1 << 49),
+                            "allow": "0",
+                        },
+                    ],
+                },
+                {"id": "104", "name": "voice", "type": 2},
+            ]
+        )
+    )
+    assert api.destination_channels("user", "100") == (
+        "Games",
+        ([{"id": "103", "name": "no-polls"}] if mode == "custom" else [])
+        + [{"id": "101", "name": "public"}],
+    )
+    roles[1]["permissions"] = "0"
+    with pytest.raises(HTTPException) as error:
+        api.destination_channels("user", "100")
+    assert error.value.status_code == 403
+
+
+def test_saved_destination_rejects_lost_channel_access():
+    api = DiscordAPI(
+        Settings(_env_file=None, discord_guild_id="100", discord_channel_id="101")
+    )
+    api.manager_context = Mock(
+        return_value=(
+            {"id": "100", "owner_id": "other"},
+            {"roles": ["manager"]},
+            [
+                {"id": "100", "permissions": "1024"},
+                {"id": "manager", "permissions": "32"},
+            ],
+        )
+    )
+    api.bot = Mock(
+        return_value={
+            "guild_id": "100",
+            "permission_overwrites": [
+                {"id": "user", "type": 1, "deny": "1024", "allow": "0"},
+            ],
+        }
+    )
+    with pytest.raises(HTTPException):
+        api.authorize_destination("user")
+
+
+def test_reaction_seeding_retries_discord_rate_limits(monkeypatch):
+    from app.discord_api import DiscordRequestError
+
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(side_effect=[{}, {}, DiscordRequestError(429, 0.3), {}, {}])
+    sleep = Mock()
+    monkeypatch.setattr("app.discord_api.time.sleep", sleep)
+    api.seed_reactions("message", ["1️⃣", "2️⃣", "3️⃣", "4️⃣"])
+    assert api.bot.call_count == 5
+    assert sleep.call_count == 1
+    assert sleep.call_args.args[0] >= 0.3
+    assert "/reactions/3%EF%B8%8F%E2%83%A3/@me" in api.bot.call_args_list[2].args[1]
+
+
+def test_end_poll_uses_discord_expire_endpoint():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(return_value={})
+    api.end_poll("message")
+    api.bot.assert_called_once_with("POST", "/channels/channel/polls/message/expire")
+
+
+def test_discord_rate_limit_delay_is_preserved():
+    from app.discord_api import DiscordRequestError
+
+    api = DiscordAPI(Settings(_env_file=None))
+    with patch("app.discord_api.httpx.Client") as client:
+        client.return_value.__enter__.return_value.request.return_value = (
+            httpx.Response(
+                429,
+                json={"retry_after": 42.5},
+                request=httpx.Request("POST", "https://discord.com/test"),
+            )
+        )
+        with pytest.raises(DiscordRequestError) as error:
+            api.send_announcement("channel", {"content": "test"})
+        assert error.value.retry_after == 42.5
+        assert not error.value.ambiguous
+
+
+def test_reconcile_announcement_requires_our_bot_and_matches_saved_payload():
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(return_value={"id": "bot"})
+    api.bot_items = Mock(
+        return_value=[
+            {
+                "id": "1",
+                "author": {"id": "other"},
+                "nonce": "nonce",
+                "content": "saved",
+            },
+            {"id": "2", "author": {"id": "bot"}, "content": "saved"},
+        ]
+    )
+    assert (
+        api.find_announcement("channel", {"content": "saved", "nonce": "nonce"}, 0)
+        == "2"
+    )
+
+
+def test_identity_retains_authorized_guild_from_code_exchange():
+    api = DiscordAPI(Settings(_env_file=None))
+    api.request = Mock(
+        side_effect=[
+            {"access_token": "private", "guild": {"id": "100"}},
+            {"id": "123", "username": "Organizer"},
+        ]
+    )
+    api.request_items = Mock(
+        return_value=[{"id": "100", "name": "Server", "owner": True}]
+    )
+    user = api.identity("authorization-code")
+    assert user["authorized_guild"] == {"id": "100"}
+    assert "access_token" not in user

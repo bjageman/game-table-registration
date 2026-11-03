@@ -27,6 +27,8 @@ services:
     restart: unless-stopped
     image: game-table-registration-api:${DEPLOY_ENV:?Set DEPLOY_ENV}
     build: .
+    volumes:
+      - ${BRANDING_CONFIG_DIR:?Set BRANDING_CONFIG_DIR}:/app/branding:ro
     env_file: ${APP_ENV_FILE:?Set APP_ENV_FILE}
     environment:
       DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db/tables

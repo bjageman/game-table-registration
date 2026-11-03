@@ -2,6 +2,7 @@ import ConfirmationDialog from "./ConfirmationDialog";
 import { useRef, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
+import useRememberedCheckbox from "./useRememberedCheckbox";
 
 export default function EventActions({
   event,
@@ -16,7 +17,7 @@ export default function EventActions({
   onDeleted: (event: EventRecord) => void;
   onAccessError: (error: unknown) => boolean;
 }) {
-  const [deletePoll, setDeletePoll] = useState(false);
+  const [deletePoll, setDeletePoll] = useRememberedCheckbox("delete-discord-signup-on-event-delete");
   const isDraft = event.status === "draft";
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,7 +53,6 @@ export default function EventActions({
         title={isDraft ? "Delete Draft" : "Delete Sign-up"}
         onClick={() => {
           setError("");
-          setDeletePoll(false);
           setConfirming(true);
         }}
       >
@@ -67,11 +67,11 @@ export default function EventActions({
           onCancel={() => setConfirming(false)}
           onConfirm={() => void remove()}
         >
-          <p>{isDraft ? "This permanently deletes the unpublished draft and its tables." : "This permanently removes the signup from Gather."}</p>
+          <p>{isDraft ? "This permanently deletes the unpublished draft and its tables." : "This permanently deletes this event and its saved signups."}</p>
           {event.discord_url && <label className="delete-poll-option">
             <input type="checkbox" checked={deletePoll} disabled={busy}
               onChange={(event) => setDeletePoll(event.target.checked)} />
-            Also delete the poll on Discord
+            Also delete the signup message on Discord
           </label>}
         </ConfirmationDialog>
       )}

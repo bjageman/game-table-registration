@@ -12,15 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           command_timeout: 30m
-          script_stop: true
           script: |
             set -eu
             cd /tank/apps/docker/vibes/game-table-registration
             git fetch origin dev:refs/remotes/origin/dev
-            git show origin/dev:scripts/deploy.sh | DEPLOY_REPO="$PWD" bash -s -- dev
+            deploy_script=$(mktemp)
+            trap 'rm -f "$deploy_script"' EXIT
+            git show origin/dev:scripts/deploy.sh > "$deploy_script"
+            DEPLOY_REPO="$PWD" bash "$deploy_script" dev

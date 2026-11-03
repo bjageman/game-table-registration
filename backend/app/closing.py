@@ -1,0 +1,423 @@
+"""Close a Discord poll and commit exactly one immutable lottery result."""
+
+import secrets
+import time
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
+
+from fastapi import HTTPException
+from sqlalchemy import Engine, or_, select, update
+from sqlalchemy.orm import Session
+
+from app.announcements import enqueue
+from app.discord_api import DiscordAPI
+from app.lottery import VERSION, GuaranteeConflict, assign
+from app.models import (
+    Event,
+    EventPlayerSetting,
+    GuildSettings,
+    LotteryRun,
+    PlayerProfile,
+)
+from app.signups import apply_manager_players
+from app.signups import players as signup_players
+
+LEASE_SECONDS = 120
+
+
+class Pending(Exception):
+    pass
+
+
+def poll_data(message: dict[str, Any]) -> tuple[dict[str, Any], float]:
+    try:
+        poll = message["poll"]
+        expiry = datetime.fromisoformat(poll["expiry"])
+        if expiry.tzinfo is None:
+            raise ValueError("Missing timezone")
+        return poll, expiry.timestamp()
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(502, "Discord returned an unreadable poll") from None
+
+
+def reconcile(
+    discord: DiscordAPI,
+    message_id: str,
+    tables: list[dict[str, Any]],
+    saved_answers: list[dict[str, Any]],
+    weights: dict[str, float],
+) -> tuple[dict[str, Any], float]:
+    poll, ended_at = poll_data(discord.poll_message(message_id))
+    results = poll.get("results") or {}
+    if ended_at > time.time() or results.get("is_finalized") is not True:
+        raise Pending(
+            "Discord is finalizing the poll. Placements have not been drawn yet."
+        )
+    try:
+        answers = poll["answers"]
+        expected = {f"{t['name']} · {t['capacity']} seats": t["name"] for t in tables}
+        ids = {a["poll_media"]["text"]: a["answer_id"] for a in answers}
+        if (
+            set(ids) != set(expected)
+            or len(ids) != len(answers)
+            or len(set(ids.values())) != len(ids)
+        ):
+            raise ValueError("Poll answers changed")
+        if any(not isinstance(i, int) or isinstance(i, bool) for i in ids.values()):
+            raise ValueError("Invalid answer IDs")
+        if {a["answer_id"] for a in saved_answers} != set(ids.values()):
+            raise ValueError("Stored answer IDs do not match the poll")
+        counts = {c["id"]: c["count"] for c in results["answer_counts"]}
+        if len(counts) != len(results["answer_counts"]) or not set(counts) <= set(
+            ids.values()
+        ):
+            raise ValueError("Invalid result counts")
+        if any(
+            not isinstance(n, int) or isinstance(n, bool) or n < 0
+            for n in counts.values()
+        ):
+            raise ValueError("Invalid result count")
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(
+            502, "Could not verify the finalized Discord poll"
+        ) from None
+    players: dict[str, dict[str, Any]] = {}
+    for label, name in expected.items():
+        answer_id = ids[label]
+        users = discord.voter_users(message_id, answer_id)
+        if len(users) != counts.get(answer_id, 0):
+            raise Pending(
+                "Discord's voter list is incomplete. No placements have been drawn."
+            )
+        for user in users:
+            if user.get("bot"):
+                continue
+            pid = str(user["id"])
+            player = players.setdefault(
+                pid,
+                {
+                    "id": pid,
+                    "name": user.get("global_name") or user["username"],
+                    "choices": [],
+                    "weight": weights.get(pid, 1.0),
+                },
+            )
+            player["choices"].append(name)
+    return {
+        "tables": tables,
+        "players": [players[pid] for pid in sorted(players)],
+    }, ended_at
+
+
+def close_and_assign(
+    engine: Engine, discord: DiscordAPI, event_id: str, moderator: str, channel_id: str
+) -> bool:
+    token = secrets.token_hex(16)
+    now = time.time()
+    with Session(engine) as db:
+        event = db.get(Event, event_id)
+        if event is None:
+            raise HTTPException(404, "Event not found")
+        if event.status == "assigned":
+            if db.get(LotteryRun, event_id) is None:
+                raise HTTPException(503, "Saved placements are unavailable")
+            return True
+        if event.status not in ("open", "closing") or not event.message_id:
+            raise HTTPException(409, "Only open signups can be closed")
+        if event.signup_mode == "reactions" and (
+            event.reaction_error
+            or event.reaction_checkpoint is None
+            or (
+                event.closes_at
+                and time.time() >= event.closes_at
+                and event.reaction_checkpoint < event.closes_at
+            )
+        ):
+            raise HTTPException(
+                409,
+                event.reaction_error
+                or "Reaction signups are still synchronizing. "
+                "Keep the bot connected and retry; no placements have been drawn.",
+            )
+        previous_status = event.status
+        weights = event.close_weights
+        if weights is None:
+            weights = {
+                p.discord_id: p.weighting
+                for p in db.scalars(
+                    select(PlayerProfile).where(
+                        PlayerProfile.guild_id == event.guild_id
+                    )
+                )
+            }
+            for setting in db.scalars(
+                select(EventPlayerSetting).where(
+                    EventPlayerSetting.event_id == event_id
+                )
+            ):
+                if setting.weighting is not None:
+                    weights[setting.discord_id] = setting.weighting
+        guarantees = event.close_guarantees
+        if guarantees is None:
+            guarantees = {
+                p.discord_id: {
+                    "guaranteed_seat": True,
+                }
+                for p in db.scalars(
+                    select(PlayerProfile).where(
+                        PlayerProfile.guild_id == event.guild_id,
+                        PlayerProfile.guaranteed_seat.is_(True),
+                    )
+                )
+            }
+            for setting in db.scalars(
+                select(EventPlayerSetting).where(
+                    EventPlayerSetting.event_id == event_id
+                )
+            ):
+                if setting.guaranteed_table:
+                    guarantees.setdefault(setting.discord_id, {})[
+                        "guaranteed_table"
+                    ] = setting.guaranteed_table
+        adjust_weights = event.close_adjust_weights
+        if adjust_weights is None:
+            settings = db.get(GuildSettings, event.guild_id)
+            adjust_weights = settings.automatic_weight_adjustment if settings else True
+        seed = event.close_seed or secrets.token_hex(32)
+        claimed = db.execute(
+            update(Event)
+            .where(
+                Event.id == event_id,
+                Event.status.in_(["open", "closing"]),
+                or_(
+                    Event.close_token.is_(None),
+                    Event.close_started_at <= now - LEASE_SECONDS,
+                ),
+            )
+            .values(
+                status="closing",
+                close_token=token,
+                close_started_at=now,
+                close_seed=seed,
+                close_weights=weights,
+                close_guarantees=guarantees,
+                close_adjust_weights=adjust_weights,
+                close_error=None,
+            )
+            .returning(Event.id)
+        ).scalar_one_or_none()
+        db.commit()
+        if not claimed:
+            raise HTTPException(
+                409,
+                "Signup closing is already in progress. Refresh to check its status.",
+            )
+        db.refresh(event)
+        message_id = event.message_id
+        tables = [dict(t) for t in event.tables]
+        answers = list(event.answers or [])
+        test_population = event.test_signups
+        custom = event.signup_mode in ("custom", "reactions")
+        custom_snapshot: dict[str, Any] | None = None
+        if custom:
+            custom_snapshot = {
+                "tables": tables,
+                "players": apply_manager_players(
+                    db,
+                    event,
+                    signup_players(db, event, weights),
+                    weights,
+                ),
+            }
+        custom_ended_at = min(now, event.closes_at or now)
+        assert message_id is not None
+
+    def with_guarantees(snapshot: dict[str, Any]) -> dict[str, Any]:
+        for player in snapshot["players"]:
+            saved = guarantees.get(player["id"], {})
+            player.update(
+                {
+                    key: value
+                    for key, value in saved.items()
+                    if key != "guaranteed_table" or value in player["choices"]
+                }
+            )
+        return snapshot
+
+    preflight = True
+    try:
+        if guarantees and not custom:
+            rows = discord.table_signups(message_id, tables)
+            participants: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                for player in row["players"]:
+                    entry = participants.setdefault(
+                        player["id"],
+                        {
+                            **player,
+                            "choices": [],
+                            "weight": weights.get(player["id"], 1.0),
+                        },
+                    )
+                    entry["choices"].append(row["name"])
+            if test_population:
+                for player in test_population["players"]:
+                    participants[player["id"]] = {
+                        **player,
+                        "weight": weights.get(player["id"], 1.0),
+                    }
+            with Session(engine) as manager_db:
+                manager_event = manager_db.get(Event, event_id)
+                assert manager_event is not None
+                participants = {
+                    player["id"]: player
+                    for player in apply_manager_players(
+                        manager_db, manager_event, list(participants.values()), weights
+                    )
+                }
+            assign(
+                with_guarantees(
+                    {"tables": tables, "players": list(participants.values())}
+                ),
+                seed,
+            )
+        if custom:
+            assert custom_snapshot is not None
+            snapshot, ended_at = custom_snapshot, custom_ended_at
+        else:
+            preflight = False
+            poll, expiry = poll_data(discord.poll_message(message_id))
+            if expiry > time.time() and not (poll.get("results") or {}).get(
+                "is_finalized"
+            ):
+                discord.end_poll(message_id)
+            snapshot, ended_at = reconcile(
+                discord, message_id, tables, answers, weights
+            )
+            with Session(engine) as db:
+                manager_event = db.get(Event, event_id)
+                if manager_event is not None:
+                    snapshot["players"] = apply_manager_players(
+                        db, manager_event, snapshot["players"], weights
+                    )
+        if test_population:
+            snapshot["is_test"] = True
+            snapshot["players"].extend(
+                {
+                    "id": player["id"],
+                    "name": player["name"],
+                    "choices": player["choices"],
+                    "weight": weights.get(player["id"], 1.0),
+                    "is_test": True,
+                }
+                for player in test_population["players"]
+            )
+        snapshot["automatic_weight_adjustment"] = adjust_weights
+        result = assign(with_guarantees(snapshot), seed)
+        with Session(engine) as db:
+            changed = db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id,
+                    Event.status == "closing",
+                    Event.close_token == token,
+                )
+                .values(
+                    status="assigned",
+                    close_token=None,
+                    close_error=None,
+                    closes_at=ended_at,
+                )
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            if not changed:
+                raise HTTPException(
+                    409, "Closing ownership changed. Refresh to see the saved result."
+                )
+            db.add(
+                LotteryRun(
+                    event_id=event_id,
+                    version=VERSION,
+                    seed=seed,
+                    snapshot=snapshot,
+                    result=result,
+                    created_by=moderator,
+                    created_at=time.time(),
+                )
+            )
+            if adjust_weights:
+                profiles = {
+                    p.discord_id: p
+                    for p in db.scalars(
+                        select(PlayerProfile)
+                        .where(PlayerProfile.guild_id == event.guild_id)
+                        .order_by(PlayerProfile.discord_id)
+                        .with_for_update()
+                    )
+                }
+                for player in snapshot["players"]:
+                    profile = profiles.get(player["id"])
+                    if profile is None:
+                        profile = PlayerProfile(
+                            guild_id=event.guild_id,
+                            discord_id=player["id"],
+                            discord_name=player["name"],
+                            weighting=1.0,
+                            is_test=bool(player.get("is_test")),
+                        )
+                        db.add(profile)
+                    delta = Decimal(
+                        "-0.1" if player["id"] in result["assignments"] else "0.1"
+                    )
+                    profile.weighting = float(
+                        min(
+                            Decimal("10"),
+                            max(
+                                Decimal("0.1"), Decimal(str(profile.weighting)) + delta
+                            ),
+                        )
+                    )
+            enqueue(db, event, event.channel_id or channel_id, result, snapshot)
+            db.commit()
+        return True
+    except Exception as failure:
+        if isinstance(failure, GuaranteeConflict):
+            # Permit correcting guarantees and retrying; never save a partial draw.
+            with Session(engine) as db:
+                db.execute(
+                    update(Event)
+                    .where(Event.id == event_id, Event.close_token == token)
+                    .values(
+                        status=previous_status if preflight else "closing",
+                        close_token=None,
+                        close_guarantees=None,
+                        close_weights=None,
+                        close_adjust_weights=None,
+                        close_error=str(failure)[:500],
+                    )
+                )
+                db.commit()
+            raise HTTPException(409, str(failure)) from None
+        pending = isinstance(failure, Pending)
+        message = (
+            str(failure)
+            if pending
+            else "Closing could not be completed. Retry Close Signups to finish safely."
+        )
+        with Session(engine) as db:
+            db.execute(
+                update(Event)
+                .where(Event.id == event_id, Event.close_token == token)
+                .values(close_token=None, close_error=message[:500])
+            )
+            db.commit()
+        if pending:
+            return False
+        if isinstance(failure, HTTPException):
+            raise
+        raise HTTPException(
+            502,
+            "Could not confirm placement completion. "
+            "Refresh or retry Close Signups safely.",
+        ) from None

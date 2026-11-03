@@ -50,7 +50,7 @@ export async function api<T>(
         ? body.detail
         : issues.length
           ? issues.map((issue: { msg: string }) => issue.msg).join(" ")
-          : "The request could not be completed. Please try again.",
+          : `Request failed (HTTP ${response.status}). Refresh and try again.`,
       issues,
     );
   }
@@ -72,6 +72,12 @@ export function errorMessage(error: unknown): string {
 }
 
 export interface ModeratorSession {
+  user_id?: string;
+  organization?: { id: string; name: string } | null;
+  organization_role?: "user" | "editor" | "admin" | null;
+  needs_setup?: boolean;
+  destination?: string;
+  can_populate_test_users?: boolean;
   username: string;
   csrf: string;
 }
@@ -84,7 +90,23 @@ export interface EventRecord {
   tables: { name: string; capacity: number }[];
   status: string;
   closes_at: number | null;
+  published_at?: number | null;
+  archived_at?: number | null;
+  signup_deleted_at?: number | null;
+  close_error?: string | null;
+  is_test?: boolean;
+  test_generation?: string | null;
+  test_user_count?: number;
   discord_url: string | null;
+  discord_cleanup_remaining?: number;
+  discord_cleanup_error?: string | null;
+}
+
+export interface EventTemplateRecord {
+  id: string;
+  title: string;
+  duration_hours: number;
+  tables: { name: string; capacity: number }[];
 }
 
 export function mutationOptions(csrf: string, body?: unknown): RequestInit {

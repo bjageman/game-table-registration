@@ -1,13 +1,20 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    test_signup_user_ids: str = ""
+    announcement_worker_enabled: bool = True
     database_url: str = "sqlite:///./local.db"
+    branding_config_file: str = "branding/branding.json"
     public_url: str = "http://localhost:5180"
     discord_client_id: str = ""
     discord_client_secret: str = ""
     discord_bot_token: str = ""
+    discord_gateway_enabled: bool = True
+    discord_signup_mode: Literal["custom", "poll"] = "custom"
     discord_guild_id: str = ""
     discord_channel_id: str = ""
     owner_discord_id: str = ""
@@ -20,9 +27,6 @@ class Settings(BaseSettings):
                 self.discord_client_id,
                 self.discord_client_secret,
                 self.discord_bot_token,
-                self.discord_guild_id,
-                self.discord_channel_id,
-                self.owner_discord_id,
             )
         )
 

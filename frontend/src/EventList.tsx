@@ -1,7 +1,14 @@
 import { isBackdropClick } from "./dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
 import { Eye, RefreshCw, X } from "lucide-react";
+import ArchiveEvent from "./ArchiveEvent";
+import DeleteDiscordMessages from "./DeleteDiscordMessages";
+import DeleteSignupMessage from "./DeleteSignupMessage";
 import EventTables from "./EventTables";
+import DiscordLink from "./DiscordLink";
+import PopulateTestUsers from "./PopulateTestUsers";
+import AssignmentAnnouncement from "./AssignmentAnnouncement";
+import CloseSignups from "./CloseSignups";
 import EventActions from "./EventActions";
 import type { EventRecord } from "./api";
 import PublishEvent, { type PublicationActions } from "./PublishEvent";
@@ -15,11 +22,15 @@ export function formatTime(timestamp: number): string {
 
 export default function EventList({
   events,
+  canPopulateTestUsers = false,
+  readOnly = false,
   onEdit,
   onDeleted,
   ...actions
 }: {
   events: EventRecord[];
+  canPopulateTestUsers?: boolean;
+  readOnly?: boolean;
   onEdit: (event: EventRecord) => void;
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
@@ -39,14 +50,14 @@ export default function EventList({
               <span className="event-list-top">
                 <span className="event-list-title">{event.title}</span>
                 <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-                  {event.status.replaceAll("_", " ")}
+                  {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
                 </span>
                 <span className="event-table-count">{event.tables.length} {event.tables.length === 1 ? "table" : "tables"}</span>
               </span>
               <span className="event-list-dates help">
                 <span>Event: <ListTime timestamp={event.starts_at} /></span>
                 <span>Signups: {event.closes_at !== null ? <>
-                  <ListTime timestamp={event.closes_at - event.duration_hours * 3600} />
+                  <ListTime timestamp={event.published_at ?? event.closes_at - event.duration_hours * 3600} />
                   {" – "}<ListTime timestamp={event.closes_at} />
                 </> : "Not scheduled"}</span>
               </span>
@@ -56,6 +67,8 @@ export default function EventList({
       </ul>
       {selected && <EventDetails
         event={selected}
+        canPopulateTestUsers={canPopulateTestUsers}
+        readOnly={readOnly}
         onClose={() => setSelectedId(null)}
         onEdit={onEdit}
         onDeleted={onDeleted}
@@ -65,8 +78,10 @@ export default function EventList({
   );
 }
 
-function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
+function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, onDeleted, ...actions }: {
   event: EventRecord;
+  canPopulateTestUsers: boolean;
+  readOnly: boolean;
   onClose: () => void;
   onEdit: (event: EventRecord) => void;
   onDeleted: (event: EventRecord) => void;
@@ -89,24 +104,28 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
       <div className="event-modal-header">
         <h2 id={`event-${event.id}`}>{event.title}</h2>
         <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-          {event.status.replaceAll("_", " ")}
+          {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
         </span>
         <div className="event-header-actions">
+          {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+          {event.status !== "draft" && (
           <button type="button" className="event-icon-action"
             aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
             title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
-            disabled={refreshing || !event.discord_url}
+            disabled={refreshing}
             onClick={() => setRefreshToken((value) => value + 1)}>
             <RefreshCw size={18} aria-hidden="true" />
           </button>
-          {event.discord_url && (
-            <a className="button event-icon-action" href={event.discord_url} target="_blank" rel="noreferrer"
-              aria-label={`View Discord poll for ${event.title} (opens in a new tab)`} title="View Discord Poll">
-              <Eye size={18} aria-hidden="true" />
-            </a>
           )}
-          {event.status === "draft" && <PublishEvent event={event} {...actions} />}
-          {(event.status === "draft" || event.status === "open") && (
+          {event.discord_url && (
+            <DiscordLink className="button event-icon-action" url={event.discord_url} label={`View Discord signup for ${event.title}`}>
+              <Eye size={18} aria-hidden="true" />
+            </DiscordLink>
+          )}
+          {!readOnly && event.status === "assigned" && !event.archived_at && <ArchiveEvent event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+          {!readOnly && event.status === "assigned" && event.archived_at && <DeleteDiscordMessages event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+          {!readOnly && event.status === "draft" && <PublishEvent event={event} {...actions} />}
+          {!readOnly && (event.status === "draft" || event.status === "open") && (
             <>
                 <EventActions
                   event={event}
@@ -150,7 +169,16 @@ function EventDetails({ event, onClose, onEdit, onDeleted, ...actions }: {
                 </div>
               )}
             </dl>
-            <EventTables key={`${event.id}:${event.discord_url}`} event={event} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
+            {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
+            {event.status === "closing" && <p role="status" className="notice">
+              {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
+            </p>}
+            <div className="form-actions">
+              {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+              {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+            </div>
+            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onAccessError={actions.onAccessError} />}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (

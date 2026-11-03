@@ -10,6 +10,9 @@ import {
   type ModeratorSession,
 } from "./api";
 import Dashboard from "./Dashboard";
+import ConnectionSettings from "./ConnectionSettings";
+import LoadingIndicator from "./LoadingIndicator";
+import PlayerLookup from "./PlayerLookup";
 
 type AuthState =
   | { kind: "loading" }
@@ -17,7 +20,25 @@ type AuthState =
   | { kind: "ready"; session: ModeratorSession }
   | { kind: "error" | "forbidden"; message: string };
 
+interface Branding { name: string; tagline: string; logo_url: string | null }
+const defaultBranding: Branding = { name: "TableSignup", tagline: "Made for your next game night.", logo_url: null };
+
 export default function App() {
+  const [branding, setBranding] = useState<Branding>(defaultBranding);
+  useEffect(() => {
+    const controller = new AbortController();
+    api<Branding>("/branding", { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setBranding(result); })
+      .catch(() => { /* Keep the default branding if the public config is unavailable. */ });
+    return () => controller.abort();
+  }, []);
+  useEffect(() => { document.title = branding.name; }, [branding.name]);
+  const [page, setPage] = useState(() => window.location.hash.slice(2) || "events");
+  useEffect(() => {
+    const changed = () => setPage(window.location.hash.slice(2) || "events");
+    window.addEventListener("hashchange", changed);
+    return () => window.removeEventListener("hashchange", changed);
+  }, []);
   const [auth, setAuth] = useState<AuthState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
@@ -27,10 +48,6 @@ export default function App() {
   const onAccessError = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) {
       setAuth({ kind: "signed-out", configured: true });
-      return true;
-    }
-    if (error instanceof ApiError && error.status === 403) {
-      setAuth({ kind: "forbidden", message: errorMessage(error) });
       return true;
     }
     return false;
@@ -69,6 +86,29 @@ export default function App() {
     return () => controller.abort();
   }, [attempt]);
 
+  useEffect(() => {
+    if (auth.kind !== "ready") return;
+    let checking = false;
+    async function refreshSession() {
+      if (checking || document.visibilityState === "hidden") return;
+      checking = true;
+      try {
+        const session = await api<ModeratorSession>("/me");
+        setAuth({ kind: "ready", session });
+      } catch (error) {
+        onAccessError(error);
+      } finally {
+        checking = false;
+      }
+    }
+    window.addEventListener("focus", refreshSession);
+    document.addEventListener("visibilitychange", refreshSession);
+    return () => {
+      window.removeEventListener("focus", refreshSession);
+      document.removeEventListener("visibilitychange", refreshSession);
+    };
+  }, [auth.kind, onAccessError]);
+
   function retry() {
     setAuth({ kind: "loading" });
     setLogoutError("");
@@ -93,10 +133,11 @@ export default function App() {
     <div className="app-shell">
       <header className="site-header">
         <div>
-          <h1><a className="home-link" href="/">Gather</a></h1>
+          <h1><a className="home-link" href="/">{branding.logo_url && <img className="brand-logo" src={branding.logo_url} alt="" />}{branding.name}</a></h1>
         </div>
         {auth.kind === "ready" && (
           <div className="account">
+            {auth.session.organization && <span className="active-organization">{auth.session.organization.name}</span>}
             <button
               className="profile-button"
               aria-haspopup="menu"
@@ -115,6 +156,12 @@ export default function App() {
               anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
               transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
+              <MenuItem component="a" href="#/players" onClick={() => setAccountAnchor(null)}>
+                Player Lookup
+              </MenuItem>
+              <MenuItem component="a" href="#/settings" onClick={() => setAccountAnchor(null)}>
+                Settings
+              </MenuItem>
               <MenuItem
                 disabled={loggingOut}
                 onClick={() => {
@@ -135,7 +182,7 @@ export default function App() {
           </p>
         )}
         {auth.kind === "loading" && (
-          <p role="status">Checking your Discord session…</p>
+          <p><LoadingIndicator label="Checking your Discord session…" /></p>
         )}
         {auth.kind === "signed-out" && (
           <section className="panel sign-in" aria-labelledby="sign-in-heading">
@@ -172,10 +219,18 @@ export default function App() {
           </section>
         )}
         {auth.kind === "ready" && (
-          <Dashboard session={auth.session} onAccessError={onAccessError} />
+          page === "settings" || auth.session.needs_setup ? (
+            <ConnectionSettings csrf={auth.session.csrf} userId={auth.session.user_id} onAccessError={onAccessError}
+              onSaved={async () => {
+                const session = await api<ModeratorSession>("/me");
+                setAuth({ kind: "ready", session });
+              }} />
+          ) : page === "players" ? (
+            <PlayerLookup key={auth.session.destination ?? "legacy"} session={auth.session} onAccessError={onAccessError} />
+          ) : <Dashboard key={`${auth.session.destination ?? "legacy"}:${auth.session.organization?.id ?? "personal"}`} session={auth.session} onAccessError={onAccessError} />
         )}
       </main>
-      <footer>Made for your next game night.</footer>
+      <footer>{branding.tagline}</footer>
     </div>
   );
 }

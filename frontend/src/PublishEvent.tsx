@@ -11,7 +11,7 @@ import {
 
 export interface PublicationActions {
   csrf: string;
-  onUpdated: (event: EventRecord) => void;
+  onUpdated: (event: EventRecord, message?: string) => void;
   onUncertain: (event: EventRecord, message: string) => void;
   onAccessError: (error: unknown) => boolean;
 }
@@ -97,6 +97,7 @@ export default function PublishEvent({
           onCancel={() => setConfirming(false)}
           onConfirm={() => void publish()}
         >
+          <p>Players choose their specific tables directly in Discord. Signing up enters the lottery for those tables.</p>
           <ul className="table-summary">
             {event.tables.map((table) => (
               <li key={table.name}>
