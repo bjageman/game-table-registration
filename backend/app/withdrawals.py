@@ -314,7 +314,6 @@ def manager_remove(engine: Engine, guild_id: str, event_id: str, player_id: str)
                     channel_id=event.channel_id,
                     payload={
                         "content": (
-                            f"**{clean(event.title)} — Table Update**\n"
                             f"{promoted_name} has been promoted from the waitlist "
                             f"to **{clean(table_name)}**.\n"
                         ),
