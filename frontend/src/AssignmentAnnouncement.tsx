@@ -6,8 +6,8 @@ import LoadingIndicator from "./LoadingIndicator";
 
 interface Delivery { status: "pending" | "sent" | "needs_review" | "unavailable" | "deleted"; error: string | null; url: string | null; }
 
-export default function AssignmentAnnouncement({ event, csrf, refreshToken, onAccessError }: {
-  event: EventRecord; csrf: string; refreshToken: number; onAccessError: (error: unknown) => boolean;
+export default function AssignmentAnnouncement({ event, csrf, refreshToken, readOnly = false, onAccessError }: {
+  event: EventRecord; csrf: string; refreshToken: number; readOnly?: boolean; onAccessError: (error: unknown) => boolean;
 }) {
   const [delivery, setDelivery] = useState<Delivery>();
   const [error, setError] = useState("");
@@ -45,7 +45,7 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken, onAc
     {delivery?.status === "pending" && <p role="status">Assignment announcement queued for Discord.</p>}
     {delivery?.status === "deleted" && <p>Assignment announcement removed from Discord.</p>}
     {delivery?.error && <p className="error">{delivery.error}</p>}
-    {delivery && !event.archived_at && (delivery.status === "needs_review" || delivery.status === "unavailable" || delivery.error) && <button type="button" onClick={() => setConfirming(true)}>{delivery.status === "unavailable" ? "Announce Assignments" : "Retry Announcement"}</button>}
+    {!readOnly && delivery && !event.archived_at && (delivery.status === "needs_review" || delivery.status === "unavailable" || delivery.error) && <button type="button" onClick={() => setConfirming(true)}>{delivery.status === "unavailable" ? "Announce Assignments" : "Retry Announcement"}</button>}
     {confirming && <ConfirmationDialog title="Announce assignments?" busy={busy} error={error}
       onCancel={() => setConfirming(false)} onConfirm={() => void retry()}>
       <p>{delivery?.status === "unavailable" ? "Posts the saved table placements to Discord." : "Check Discord for an existing announcement before confirming a retry. This sends the saved placements and does not redraw them."}</p>

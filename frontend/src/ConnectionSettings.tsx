@@ -8,13 +8,15 @@ import DisconnectDiscord from "./DisconnectDiscord";
 import AssignmentSettings from "./AssignmentSettings";
 import { api, errorMessage, mutationOptions } from "./api";
 import LoadingIndicator from "./LoadingIndicator";
+import OrganizationSettings from "./OrganizationSettings";
 
 interface Choice { id: string; name: string; }
 interface Selection { guild_id: string; channel_id: string; guild_name: string; channel_name: string; }
 interface Setup { disconnected?: boolean; selection: Selection | null; connect_url: string; }
 
-export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
+export default function ConnectionSettings({ csrf, userId = "", onSaved, onAccessError }: {
   csrf: string;
+  userId?: string;
   onSaved: () => Promise<void>;
   onAccessError: (error: unknown) => boolean;
 }) {
@@ -75,6 +77,7 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
     <Tabs className="settings-tabs" value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
       <Tab label="Discord" value="discord" id={`${tabId}-discord-tab`} aria-controls={`${tabId}-discord-panel`} />
       <Tab label="Assignments" value="assignments" id={`${tabId}-assignments-tab`} aria-controls={`${tabId}-assignments-panel`} />
+      <Tab label="Organization" value="organization" id={`${tabId}-organization-tab`} aria-controls={`${tabId}-organization-panel`} />
     </Tabs>
     <div role="tabpanel" id={`${tabId}-discord-panel`} aria-labelledby={`${tabId}-discord-tab`} hidden={tab !== "discord"}>
     {!setup && !error && <p><LoadingIndicator label="Loading settings…" /></p>}
@@ -121,6 +124,9 @@ export default function ConnectionSettings({ csrf, onSaved, onAccessError }: {
       {setup?.selection ? <AssignmentSettings key={setup.selection.guild_id} csrf={csrf} onAccessError={onAccessError} />
         : setup ? <a className="button" href={connectUrl}>Connect Discord</a>
         : <p><LoadingIndicator label="Loading settings…" /></p>}
+    </div>
+    <div role="tabpanel" id={`${tabId}-organization-panel`} aria-labelledby={`${tabId}-organization-tab`} hidden={tab !== "organization"}>
+      {tab === "organization" && <OrganizationSettings csrf={csrf} userId={userId} onSaved={onSaved} onAccessError={onAccessError} />}
     </div>
   </section>;
 }

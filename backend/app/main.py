@@ -49,10 +49,14 @@ from app.models import (
     GuildSettings,
     LoginState,
     LotteryRun,
+    Organization,
+    OrganizationMember,
+    OrganizationSelection,
     PlayerProfile,
     Session,
     SignupInteraction,
     TableSignup,
+    UserIdentity,
     UserSettings,
 )
 from app.reactions import EMOJIS
@@ -146,6 +150,19 @@ class ManagerSignupInput(BaseModel):
     model_config = {"extra": "forbid"}
     table: str = Field(min_length=1, max_length=35)
     name: str = Field(min_length=1, max_length=100)
+
+
+class OrganizationInput(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class OrganizationSelectionInput(BaseModel):
+    organization_id: str | None = None
+
+
+class OrganizationMemberInput(BaseModel):
+    user_id: str
+    role: str
 
 
 class TestPopulationInput(BaseModel):
@@ -304,9 +321,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         client: DiscordAPI = request.state.discord
         return client
 
-    def event_scope(request: Request) -> tuple[Any, Any]:
+    def event_scope(request: Request) -> tuple[Any, ...]:
         target = destination(request)
+        organization_id = request.state.organization_id
         return (
+            Event.organization_id == organization_id
+            if organization_id
+            else (
+                Event.organization_id.is_(None)
+                & (Event.created_by == request.state.user_id)
+            ),
             Event.guild_id == target.discord_guild_id,
             func.coalesce(Event.channel_id, config.discord_channel_id)
             == target.discord_channel_id,
@@ -315,7 +339,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def matches_destination(event: Event, request: Request) -> bool:
         target = destination(request)
         return (
-            event.guild_id == target.discord_guild_id
+            (
+                event.organization_id == request.state.organization_id
+                if request.state.organization_id
+                else event.organization_id is None
+                and event.created_by == request.state.user_id
+            )
+            and event.guild_id == target.discord_guild_id
             and (event.channel_id or config.discord_channel_id)
             == target.discord_channel_id
         )
@@ -346,15 +376,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             ):
                 raise HTTPException(403, "Invalid request. Refresh and try again.")
+            request.state.user_id = session.user_id
+            selection = db.get(OrganizationSelection, session.user_id)
+            organization = (
+                db.get(Organization, selection.organization_id) if selection else None
+            )
+            member = (
+                db.get(OrganizationMember, (organization.id, session.user_id))
+                if organization
+                else None
+            )
+            if organization and not member:
+                organization = None
+            request.state.organization_id = organization.id if organization else None
+            request.state.organization_role = (
+                member.role if organization and member else None
+            )
             if not require_destination:
                 return session
+            if mutation and organization and member and member.role == "user":
+                raise HTTPException(
+                    403, "This organization is read-only for your account."
+                )
             saved = db.get(UserSettings, session.user_id)
-            if saved and saved.disconnected:
+            if saved and saved.disconnected and not organization:
                 raise HTTPException(
                     409, "Choose a server and channel in Settings first."
                 )
             target = (
                 config.model_copy(
+                    update={
+                        "discord_guild_id": organization.guild_id,
+                        "discord_channel_id": organization.channel_id,
+                    }
+                )
+                if organization
+                else config.model_copy(
                     update={
                         "discord_guild_id": saved.guild_id,
                         "discord_channel_id": saved.channel_id,
@@ -370,7 +427,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     409, "Choose a server and channel in Settings first."
                 )
             discord = client_for(target)
-            if saved and not require_channel:
+            if organization:
+                pass
+            elif saved and not require_channel:
                 discord.manager_context(session.user_id, target.discord_guild_id)
             elif saved:
                 discord.authorize_destination(session.user_id)
@@ -570,6 +629,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     expires=time.time() + 28800,
                 )
             )
+            db.merge(UserIdentity(id=user["id"], username=user["username"]))
             db.commit()
         response = RedirectResponse(
             config.public_url + "/#/settings"
@@ -586,7 +646,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def me(request: Request) -> dict[str, Any]:
         session = authenticated(request, require_destination=False)
         with DBSession(engine) as db:
+            db.merge(UserIdentity(id=session.user_id, username=session.username))
+            db.commit()
             saved = db.get(UserSettings, session.user_id)
+            selected = db.get(OrganizationSelection, session.user_id)
+            organization = (
+                db.get(Organization, selected.organization_id) if selected else None
+            )
+            membership = (
+                db.get(OrganizationMember, (organization.id, session.user_id))
+                if organization
+                else None
+            )
+            if organization and membership is None:
+                organization = None
             selection = (
                 (
                     "disconnected"
@@ -597,17 +670,269 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else "legacy"
             )
         needs_setup = (
-            (saved.disconnected or not saved.channel_id)
-            if saved
-            else not legacy_access(session.user_id)
+            False
+            if organization
+            else (
+                (saved.disconnected or not saved.channel_id)
+                if saved
+                else not legacy_access(session.user_id)
+            )
         )
         return {
             "username": session.username,
+            "user_id": session.user_id,
             "csrf": session.csrf,
             "needs_setup": needs_setup,
             "destination": selection,
+            "organization": {"id": organization.id, "name": organization.name}
+            if organization
+            else None,
+            "organization_role": membership.role
+            if organization and membership
+            else None,
             "can_populate_test_users": test_users_allowed(session.user_id, config),
         }
+
+    def organization_data(
+        db: DBSession, org: Organization, user_id: str
+    ) -> dict[str, Any]:
+        member = db.get(OrganizationMember, (org.id, user_id))
+        return {
+            "id": org.id,
+            "name": org.name,
+            "created_by": org.created_by,
+            "role": member.role if member else None,
+        }
+
+    @app.get("/api/organizations")
+    def organizations(request: Request) -> dict[str, Any]:
+        session = authenticated(request, require_destination=False)
+        with DBSession(engine) as db:
+            memberships = db.scalars(
+                select(OrganizationMember).where(
+                    OrganizationMember.user_id == session.user_id
+                )
+            ).all()
+            selected = db.get(OrganizationSelection, session.user_id)
+            return {
+                "selected_id": selected.organization_id if selected else None,
+                "organizations": [
+                    organization_data(db, org, session.user_id)
+                    for membership in memberships
+                    if (org := db.get(Organization, membership.organization_id))
+                    is not None
+                ],
+            }
+
+    @app.post("/api/organizations", status_code=201)
+    def create_organization(
+        body: OrganizationInput, request: Request
+    ) -> dict[str, Any]:
+        session = authenticated(request, True, require_destination=False)
+        name = body.name.strip()
+        if not name or len(name.casefold()) > 100:
+            raise HTTPException(422, "Choose a name of up to 100 characters")
+        with DBSession(engine) as db:
+            saved = db.get(UserSettings, session.user_id)
+            if saved and not saved.disconnected and saved.guild_id and saved.channel_id:
+                guild_id, channel_id = saved.guild_id, saved.channel_id
+            elif (
+                legacy_access(session.user_id)
+                and config.discord_guild_id
+                and config.discord_channel_id
+            ):
+                guild_id, channel_id = (
+                    config.discord_guild_id,
+                    config.discord_channel_id,
+                )
+            else:
+                raise HTTPException(
+                    409,
+                    "Connect a Discord server and channel first",
+                )
+            org = Organization(
+                id=str(uuid.uuid4()),
+                name=name,
+                normalized_name=name.casefold(),
+                created_by=session.user_id,
+                guild_id=guild_id,
+                channel_id=channel_id,
+            )
+            db.add(org)
+            db.add(
+                OrganizationMember(
+                    organization_id=org.id, user_id=session.user_id, role="admin"
+                )
+            )
+            try:
+                db.commit()
+            except IntegrityError:
+                raise HTTPException(
+                    409, "Organization name is already in use"
+                ) from None
+            return organization_data(db, org, session.user_id)
+
+    @app.put("/api/organizations/selection")
+    def select_organization(
+        body: OrganizationSelectionInput, request: Request
+    ) -> dict[str, Any]:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            if (
+                body.organization_id
+                and db.get(OrganizationMember, (body.organization_id, session.user_id))
+                is None
+            ):
+                raise HTTPException(403, "You are not a member of this organization")
+            if body.organization_id:
+                db.merge(
+                    OrganizationSelection(
+                        user_id=session.user_id, organization_id=body.organization_id
+                    )
+                )
+            else:
+                db.execute(
+                    delete(OrganizationSelection).where(
+                        OrganizationSelection.user_id == session.user_id
+                    )
+                )
+            db.commit()
+        return {"ok": True}
+
+    @app.get("/api/organizations/users")
+    def find_organization_users(request: Request, q: str = "") -> list[dict[str, str]]:
+        session = authenticated(request, require_destination=False)
+        if len(q.strip()) < 2:
+            return []
+        with DBSession(engine) as db:
+            if not db.scalar(
+                select(OrganizationMember.organization_id)
+                .where(
+                    OrganizationMember.user_id == session.user_id,
+                    OrganizationMember.role == "admin",
+                )
+                .limit(1)
+            ):
+                raise HTTPException(403, "Admin access required")
+            pattern = f"%{q.strip().casefold()}%"
+            return [
+                {"id": user.id, "username": user.username}
+                for user in db.scalars(
+                    select(UserIdentity)
+                    .where(
+                        func.lower(UserIdentity.username).like(pattern)
+                        | UserIdentity.id.like(pattern)
+                    )
+                    .limit(20)
+                )
+            ]
+
+    def require_org_admin(db: DBSession, org_id: str, user_id: str) -> Organization:
+        org = db.get(Organization, org_id)
+        member = db.get(OrganizationMember, (org_id, user_id))
+        if org is None or member is None or member.role != "admin":
+            raise HTTPException(403, "Organization admin access required")
+        return org
+
+    @app.get("/api/organizations/{org_id}/members")
+    def organization_members(org_id: str, request: Request) -> list[dict[str, str]]:
+        session = authenticated(request, require_destination=False)
+        with DBSession(engine) as db:
+            if db.get(OrganizationMember, (org_id, session.user_id)) is None:
+                raise HTTPException(403, "Organization membership required")
+            members = db.scalars(
+                select(OrganizationMember).where(
+                    OrganizationMember.organization_id == org_id
+                )
+            ).all()
+            return [
+                {
+                    "user_id": member.user_id,
+                    "username": (
+                        identity.username
+                        if (identity := db.get(UserIdentity, member.user_id))
+                        else member.user_id
+                    ),
+                    "role": member.role,
+                }
+                for member in members
+            ]
+
+    @app.put("/api/organizations/{org_id}/members/{user_id}")
+    def save_organization_member(
+        org_id: str, user_id: str, body: OrganizationMemberInput, request: Request
+    ) -> dict[str, str]:
+        session = authenticated(request, True, require_destination=False)
+        if body.user_id != user_id or body.role not in ("user", "editor", "admin"):
+            raise HTTPException(422, "Invalid member or permission")
+        with DBSession(engine) as db:
+            org = require_org_admin(db, org_id, session.user_id)
+            if user_id == org.created_by:
+                raise HTTPException(403, "Creator permissions cannot be changed")
+            if db.get(UserIdentity, user_id) is None:
+                raise HTTPException(404, "User not found")
+            db.merge(
+                OrganizationMember(
+                    organization_id=org_id, user_id=user_id, role=body.role
+                )
+            )
+            db.commit()
+        return {"ok": "true"}
+
+    @app.delete("/api/organizations/{org_id}/members/me", status_code=204)
+    def leave_organization(org_id: str, request: Request) -> Response:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            org = db.get(Organization, org_id)
+            if (
+                org is None
+                or db.get(OrganizationMember, (org_id, session.user_id)) is None
+            ):
+                raise HTTPException(404, "Organization not found")
+            if org.created_by == session.user_id:
+                raise HTTPException(409, "Creator must delete the organization")
+            db.execute(
+                delete(OrganizationSelection).where(
+                    OrganizationSelection.user_id == session.user_id,
+                    OrganizationSelection.organization_id == org_id,
+                )
+            )
+            db.execute(
+                delete(OrganizationMember).where(
+                    OrganizationMember.organization_id == org_id,
+                    OrganizationMember.user_id == session.user_id,
+                )
+            )
+            db.commit()
+        return Response(status_code=204)
+
+    @app.delete("/api/organizations/{org_id}", status_code=204)
+    def delete_organization(org_id: str, request: Request) -> Response:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            org = db.get(Organization, org_id)
+            if org is None or org.created_by != session.user_id:
+                raise HTTPException(
+                    403, "Only the creator can delete this organization"
+                )
+            db.execute(
+                update(Event)
+                .where(Event.organization_id == org_id)
+                .values(organization_id=None)
+            )
+            db.execute(
+                delete(OrganizationSelection).where(
+                    OrganizationSelection.organization_id == org_id
+                )
+            )
+            db.execute(
+                delete(OrganizationMember).where(
+                    OrganizationMember.organization_id == org_id
+                )
+            )
+            db.delete(org)
+            db.commit()
+        return Response(status_code=204)
 
     @app.post("/api/auth/logout")
     def logout(request: Request) -> Response:
@@ -1354,6 +1679,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 duration_hours=body.duration_hours,
                 tables=[table.model_dump() for table in body.tables],
                 created_by=session.user_id,
+                organization_id=request.state.organization_id,
                 status="draft",
             )
             db.add(event)

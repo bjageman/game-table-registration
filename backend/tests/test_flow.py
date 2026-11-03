@@ -62,6 +62,125 @@ def login(client):
     }
 
 
+def test_organizations_share_selected_events_and_enforce_member_roles(client):
+    owner_headers = login(client)
+    personal = client.post(
+        "/api/events", headers=owner_headers, json=event_body()
+    ).json()
+    organization = client.post(
+        "/api/organizations", headers=owner_headers, json={"name": "Friday Crew"}
+    )
+    assert organization.status_code == 201
+    org_id = organization.json()["id"]
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=owner_headers,
+            json={"organization_id": org_id},
+        ).status_code
+        == 200
+    )
+    shared = client.post("/api/events", headers=owner_headers, json=event_body()).json()
+    assert [event["id"] for event in client.get("/api/events").json()] == [shared["id"]]
+
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second_headers = login(client)
+    assert client.get("/api/events").json() == []
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner_headers = login(client)
+    assert (
+        client.put(
+            f"/api/organizations/{org_id}/members/second",
+            headers=owner_headers,
+            json={"user_id": "second", "role": "user"},
+        ).status_code
+        == 200
+    )
+
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second_headers = login(client)
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=second_headers,
+            json={"organization_id": org_id},
+        ).status_code
+        == 200
+    )
+    assert [event["id"] for event in client.get("/api/events").json()] == [shared["id"]]
+    assert (
+        client.post(
+            "/api/events", headers=second_headers, json=event_body()
+        ).status_code
+        == 403
+    )
+    client.app.state.discord.authorize.side_effect = HTTPException(
+        403, "Not a Discord manager"
+    )
+    assert [event["id"] for event in client.get("/api/events").json()] == [shared["id"]]
+    client.app.state.discord.authorize.side_effect = None
+    assert client.get(f"/api/events/{personal['id']}/signups").status_code == 404
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner_headers = login(client)
+    assert (
+        client.post(
+            "/api/organizations", headers=owner_headers, json={"name": "FRIDAY CREW"}
+        ).status_code
+        == 409
+    )
+    assert (
+        client.put(
+            f"/api/organizations/{org_id}/members/second",
+            headers=owner_headers,
+            json={"user_id": "second", "role": "editor"},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second_headers = login(client)
+    assert (
+        client.post(
+            "/api/events", headers=second_headers, json=event_body()
+        ).status_code
+        == 201
+    )
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/me", headers=second_headers
+        ).status_code
+        == 204
+    )
+    assert client.get("/api/events").json() == []
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner_headers = login(client)
+    assert (
+        client.delete(f"/api/organizations/{org_id}", headers=owner_headers).status_code
+        == 204
+    )
+    assert {event["id"] for event in client.get("/api/events").json()} == {
+        personal["id"],
+        shared["id"],
+    }
+
+
 def event_body():
     return {
         "title": "Friday games",
