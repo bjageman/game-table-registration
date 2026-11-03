@@ -10,6 +10,32 @@ const event: EventRecord = {
 };
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+it("suggests known players as the manager types and adds the selected player", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/players") return new Response(JSON.stringify([
+      { discord_id: "123", discord_name: "mary", real_name: "Mary Jones" },
+      { discord_id: "456", discord_name: "dan", real_name: "Daniel" },
+    ]));
+    if (url.includes("/manager-players/123") && options?.method === "PUT") return new Response("{}", { status: 200 });
+    return new Response(JSON.stringify([{ name: "Table A", players: [] }, { name: "Table B", players: [] }]));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
+  fireEvent.click(screen.getAllByRole("button", { name: "Add Player" })[0]);
+  const search = screen.getByRole("combobox", { name: "Search players" });
+  fireEvent.change(search, { target: { value: "mar" } });
+  expect(await screen.findByRole("listbox", { name: "Suggested players" })).toBeVisible();
+  expect(screen.getByRole("button", { name: /Mary Jones/ })).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Daniel/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Mary Jones/ }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    "/api/events/event/manager-players/123", expect.objectContaining({ method: "PUT" }),
+  ));
+  expect(await screen.findByRole("button", { name: "mary" })).toBeVisible();
+});
+
 it("refreshes names and counts when votes are added and removed, and stops on close", async () => {
   vi.useFakeTimers();
   const fetchMock = vi.fn()
