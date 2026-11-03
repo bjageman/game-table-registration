@@ -43,6 +43,10 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   const hasSignups = event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
   const canEditSignups = event.status === "draft" || event.status === "open";
   const canRemoveSignups = canEditSignups || event.status === "assigned";
+  const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
+  const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
+    `${player.discord_name} ${player.real_name} ${player.discord_id}`.toLocaleLowerCase().includes(normalizedQuery),
+  ).slice(0, 30) : [];
   useEffect(() => {
     const dialog = addDialog.current;
     if (addingTable) dialog?.showModal();
@@ -51,7 +55,6 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   useEffect(() => {
     if (!addingTable) return;
     let active = true;
-    setPlayersLoading(true);
     api<{ discord_id: string; discord_name: string; real_name: string }[]>("/players")
       .then((players) => { if (active) setAvailablePlayers(players); })
       .catch((failure) => { if (active && !onAccessError(failure)) setActionError(errorMessage(failure)); })
@@ -128,13 +131,22 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
       onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
     {addingTable && <dialog ref={addDialog} className="event-modal" aria-labelledby="add-player-heading" onCancel={(event) => { event.preventDefault(); if (!saving) { setAddingTable(undefined); setPlayerQuery(""); } }}>
       <h2 id="add-player-heading">Add a player to {addingTable}</h2>
-      <label className="form-field"><span>Search players</span><input type="search" autoFocus value={playerQuery} onChange={(change) => setPlayerQuery(change.target.value)} /></label>
-      {playersLoading ? <p><LoadingIndicator label="Loading players…" /></p> : <ul className="table-players add-player-results">
-        {availablePlayers.filter((player) => `${player.discord_name} ${player.real_name}`.toLocaleLowerCase().includes(playerQuery.trim().toLocaleLowerCase())).slice(0, 30).map((player) =>
-          <li key={player.discord_id}><button type="button" className="player-name" disabled={saving} onClick={() => void addPlayer(player)}>
-            {player.real_name || player.discord_name} <span className="help">@{player.discord_name}</span>
-          </button></li>)}
-      </ul>}
+      <div className="add-player-search">
+        <label htmlFor="add-player-query">Search players</label>
+        <input id="add-player-query" type="search" autoFocus autoComplete="off" placeholder="Name or Discord ID"
+          role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls="add-player-suggestions"
+          value={playerQuery} onChange={(change) => setPlayerQuery(change.target.value)} />
+        {playersLoading ? <p><LoadingIndicator label="Loading players…" /></p> : normalizedQuery ? suggestions.length ?
+          <ul id="add-player-suggestions" className="add-player-results" role="listbox" aria-label="Suggested players">
+            {suggestions.map((player) => <li key={player.discord_id} role="option" aria-selected="false">
+              <button type="button" disabled={saving} onClick={() => void addPlayer(player)}>
+                <strong>{player.real_name || player.discord_name}</strong>
+                <span>{player.real_name ? `@${player.discord_name} · ` : ""}{player.discord_id}</span>
+              </button>
+            </li>)}
+          </ul> : <p className="help">No known players match “{playerQuery}”.</p>
+          : <p className="help">Type a name or Discord ID to see known players.</p>}
+      </div>
       <div className="form-actions"><button type="button" disabled={saving} onClick={() => { setAddingTable(undefined); setPlayerQuery(""); }}>Cancel</button></div>
     </dialog>}
     {removing && <ConfirmationDialog title="Remove player from signups?" busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing)}>
@@ -144,9 +156,9 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
       Could not refresh signups. {rows ? "Showing the last loaded list. " : ""}{error}{" "}
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
     </p>}
-    {actionError && <p role="alert" className="error">Could not save player setting. {actionError}</p>}
+    {actionError && <p role="alert" className="error">{actionError}</p>}
     <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={setSelectedPlayer}
-      canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={setAddingTable} onRemovePlayer={setRemoving}
+      canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingTable(table); }} onRemovePlayer={setRemoving}
       editingWeight={editingWeight} weight={weight} saving={saving} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 1)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
