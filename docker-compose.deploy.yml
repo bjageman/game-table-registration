@@ -18,7 +18,7 @@ services:
     build: .
     env_file: ${APP_ENV_FILE:?Set APP_ENV_FILE}
     environment:
-      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db/tables
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db/${DATABASE_NAME:-tables}
     command: [alembic, upgrade, head]
     depends_on:
       db:
@@ -31,7 +31,7 @@ services:
       - ${BRANDING_CONFIG_DIR:?Set BRANDING_CONFIG_DIR}:/app/branding:ro
     env_file: ${APP_ENV_FILE:?Set APP_ENV_FILE}
     environment:
-      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db/tables
+      DATABASE_URL: postgresql+psycopg://tables:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db/${DATABASE_NAME:-tables}
       PUBLIC_URL: https://${SIGNUPS_HOST:?Set SIGNUPS_HOST}
     depends_on:
       migrate:

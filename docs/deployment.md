@@ -117,3 +117,8 @@ Verify HTTPS, `/api/health/ready`, `/api/branding`, and
 `/branding/liberty-bell.png` on the new hostname. `/api/auth/login` must redirect
 to Discord with the new callback URL. Complete a browser login to confirm
 Discord accepts that callback.
+
+Philly production uses the separate PostgreSQL database `phillybotc`, selected
+by `DATABASE_NAME=phillybotc` in the active `.env.prod`. The existing `tables`
+database is retained. Create a new database before running migrations when
+changing this setting; no events or user settings are copied automatically.
