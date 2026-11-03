@@ -232,3 +232,101 @@ def withdraw(
             )
         db.commit()
         return True
+
+
+def manager_remove(
+    engine: Engine, guild_id: str, event_id: str, player_id: str
+) -> bool:
+    """Remove an assigned player and announce any waitlist promotion."""
+    with Session(engine) as db:
+        claimed = db.execute(
+            update(Event)
+            .where(
+                Event.id == event_id,
+                Event.guild_id == guild_id,
+                Event.status == "assigned",
+                Event.archived_at.is_(None),
+            )
+            .values(status=Event.status)
+            .returning(Event.id)
+        ).scalar_one_or_none()
+        if claimed is None:
+            return False
+        run = db.get(LotteryRun, event_id)
+        if run is None:
+            return False
+        event = db.get(Event, event_id)
+        if event is None:
+            return False
+        current = current_result(db, run)
+        table_name = current["assignments"].get(player_id)
+        if table_name is None:
+            return False
+        table = next(row for row in run.result["tables"] if row["name"] == table_name)
+        active_ids = set(current["assignments"])
+        withdrawn_ids = set(
+            db.scalars(
+                select(EventWithdrawal.discord_id).where(
+                    EventWithdrawal.event_id == event_id
+                )
+            )
+        )
+        promoted_id = next(
+            (
+                player["id"]
+                for player in table.get("waitlist", [])
+                if player["id"] not in active_ids and player["id"] not in withdrawn_ids
+            ),
+            None,
+        )
+        removed_at = time.time()
+        db.add(
+            EventWithdrawal(
+                event_id=event_id,
+                discord_id=player_id,
+                table_name=table_name,
+                withdrawn_at=removed_at,
+                promoted_id=promoted_id,
+            )
+        )
+        if promoted_id and event.channel_id:
+            promoted = next(
+                player
+                for player in run.snapshot["players"]
+                if player["id"] == promoted_id
+            )
+            promoted_name = (
+                clean(promoted["name"])
+                if promoted_id.startswith("test-")
+                else f"<@{promoted_id}>"
+            )
+            part = db.scalar(
+                select(func.max(Announcement.part)).where(
+                    Announcement.event_id == event_id
+                )
+            )
+            mentions = [] if promoted_id.startswith("test-") else [promoted_id]
+            db.add(
+                Announcement(
+                    id=str(uuid.uuid4()),
+                    event_id=event_id,
+                    part=(part if part is not None else -1) + 1,
+                    kind="promotion",
+                    channel_id=event.channel_id,
+                    payload={
+                        "content": (
+                            f"{promoted_name} has been promoted from the waitlist "
+                            f"to **{clean(table_name)}**.\n"
+                        ),
+                        "allowed_mentions": {"parse": [], "users": mentions},
+                        "nonce": hashlib.sha256(
+                            f"{event_id}:manager-promotion:{player_id}".encode()
+                        ).hexdigest()[:24],
+                        "enforce_nonce": True,
+                    },
+                    created_at=removed_at,
+                    next_attempt=removed_at,
+                )
+            )
+        db.commit()
+        return True

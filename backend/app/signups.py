@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.announcements import clean
 from app.config import Settings
-from app.models import Event, SignupInteraction, TableSignup
+from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
 def publication(event: Event, closes_at: float) -> dict[str, Any]:
@@ -78,6 +78,66 @@ def table_rows(db: Session, event: Event) -> list[dict[str, Any]]:
         }
         for table in event.tables
     ]
+
+
+def apply_manager_signups(
+    db: Session, event: Event, rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    overrides = list(
+        db.scalars(
+            select(EventManagerSignup).where(EventManagerSignup.event_id == event.id)
+        )
+    )
+    removed = {override.discord_id for override in overrides if override.removed}
+    additions = {
+        override.discord_id: override for override in overrides if not override.removed
+    }
+    by_table = {row["name"]: row for row in rows}
+    for row in rows:
+        row["players"] = [p for p in row["players"] if p["id"] not in removed]
+    for override in additions.values():
+        for table_name in override.choices:
+            table_row = by_table.get(table_name)
+            if table_row is None or any(
+                p["id"] == override.discord_id for p in table_row["players"]
+            ):
+                continue
+            table_row["players"].append(
+                {"id": override.discord_id, "name": override.discord_name}
+            )
+    return rows
+
+
+def apply_manager_players(
+    db: Session,
+    event: Event,
+    participants: list[dict[str, Any]],
+    weights: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
+    overrides = list(
+        db.scalars(
+            select(EventManagerSignup).where(EventManagerSignup.event_id == event.id)
+        )
+    )
+    by_id = {player["id"]: dict(player) for player in participants}
+    for override in overrides:
+        if override.removed:
+            by_id.pop(override.discord_id, None)
+        elif override.choices:
+            player = by_id.setdefault(
+                override.discord_id,
+                {
+                    "id": override.discord_id,
+                    "name": override.discord_name,
+                    "choices": [],
+                    "weight": (weights or {}).get(override.discord_id, 1.0),
+                },
+            )
+            player["name"] = override.discord_name
+            player["choices"] = sorted(
+                set(player.get("choices", [])) | set(override.choices)
+            )
+    return list(by_id.values())
 
 
 def private_message(content: str) -> dict[str, Any]:
@@ -236,6 +296,9 @@ def handle(engine: Engine, config: Settings, payload: dict[str, Any]) -> dict[st
                 db.add(signup)
             signup.discord_name = name[:100]
             signup.choices = choices
+            manager_override = db.get(EventManagerSignup, (event_id, user_id))
+            if manager_override is not None and manager_override.removed:
+                manager_override.removed = False
             notice = "Your table signup has been saved."
         elif action == "withdraw":
             if signup is not None:

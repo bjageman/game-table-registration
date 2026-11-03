@@ -76,6 +76,17 @@ class TableSignup(Base):
     choices: Mapped[list[str]] = mapped_column(JSON)
 
 
+class EventManagerSignup(Base):
+    __tablename__ = "event_manager_signups"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    discord_name: Mapped[str] = mapped_column(String(100))
+    choices: Mapped[list[str]] = mapped_column(JSON, default=list)
+    removed: Mapped[bool] = mapped_column(default=False)
+
+
 class EventPlayerSetting(Base):
     __tablename__ = "event_player_settings"
     event_id: Mapped[str] = mapped_column(

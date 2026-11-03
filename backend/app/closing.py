@@ -20,6 +20,7 @@ from app.models import (
     LotteryRun,
     PlayerProfile,
 )
+from app.signups import apply_manager_players
 from app.signups import players as signup_players
 
 LEASE_SECONDS = 120
@@ -222,7 +223,12 @@ def close_and_assign(
         if custom:
             custom_snapshot = {
                 "tables": tables,
-                "players": signup_players(db, event, weights),
+                "players": apply_manager_players(
+                    db,
+                    event,
+                    signup_players(db, event, weights),
+                    weights,
+                ),
             }
         custom_ended_at = min(now, event.closes_at or now)
         assert message_id is not None
@@ -261,6 +267,15 @@ def close_and_assign(
                         **player,
                         "weight": weights.get(player["id"], 1.0),
                     }
+            with Session(engine) as manager_db:
+                manager_event = manager_db.get(Event, event_id)
+                assert manager_event is not None
+                participants = {
+                    player["id"]: player
+                    for player in apply_manager_players(
+                        manager_db, manager_event, list(participants.values()), weights
+                    )
+                }
             assign(
                 with_guarantees(
                     {"tables": tables, "players": list(participants.values())}
@@ -280,6 +295,12 @@ def close_and_assign(
             snapshot, ended_at = reconcile(
                 discord, message_id, tables, answers, weights
             )
+            with Session(engine) as db:
+                manager_event = db.get(Event, event_id)
+                if manager_event is not None:
+                    snapshot["players"] = apply_manager_players(
+                        db, manager_event, snapshot["players"], weights
+                    )
         if test_population:
             snapshot["is_test"] = True
             snapshot["players"].extend(

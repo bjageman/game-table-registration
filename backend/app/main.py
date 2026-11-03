@@ -43,6 +43,7 @@ from app.gateway import SignupGateway
 from app.models import (
     Announcement,
     Event,
+    EventManagerSignup,
     EventPlayerSetting,
     EventTemplate,
     GuildSettings,
@@ -56,7 +57,7 @@ from app.models import (
 )
 from app.reactions import EMOJIS
 from app.reactions import publication as reaction_publication
-from app.signups import table_rows
+from app.signups import apply_manager_signups, table_rows
 from app.test_signups import (
     add_to_rows,
 )
@@ -66,7 +67,7 @@ from app.test_signups import (
 from app.test_signups import (
     generate as generate_test_users,
 )
-from app.withdrawals import current_result
+from app.withdrawals import current_result, manager_remove
 
 
 def digest(token: str) -> str:
@@ -139,6 +140,12 @@ class EventPlayerSettingInput(BaseModel):
     model_config = {"extra": "forbid"}
     weighting: float | None = Field(default=None, ge=0.1, le=10.0, allow_inf_nan=False)
     guaranteed_table: str | None = None
+
+
+class ManagerSignupInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    table: str = Field(min_length=1, max_length=35)
+    name: str = Field(min_length=1, max_length=100)
 
 
 class TestPopulationInput(BaseModel):
@@ -887,6 +894,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/events/{event_id}/signups")
     def event_signups(event_id: str, request: Request) -> list[dict[str, Any]]:
         authenticated(request)
+        custom_result: tuple[list[dict[str, Any]], str] | None = None
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
             if event is None or not matches_destination(event, request):
@@ -901,21 +909,123 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tables = event.tables
             population = event.test_signups
             if event.signup_mode in ("custom", "reactions"):
-                return list_names(
-                    add_to_rows(table_rows(db, event), population),
+                custom_result = (
+                    apply_manager_signups(
+                        db, event, add_to_rows(table_rows(db, event), population)
+                    ),
                     event.guild_id,
-                    event.id,
                 )
+                db.rollback()
+        if custom_result is not None:
+            return list_names(custom_result[0], custom_result[1], event_id)
         rows = (
             scoped_discord(request).table_signups(message_id, tables)
             if message_id
             else [{"name": table["name"], "players": []} for table in tables]
         )
-        return list_names(
-            add_to_rows(rows, population),
-            destination(request).discord_guild_id,
-            event_id,
-        )
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            rows = apply_manager_signups(db, event, add_to_rows(rows, population))
+            guild_id = event.guild_id
+            db.rollback()
+        return list_names(rows, guild_id, event_id)
+
+    @app.put("/api/events/{event_id}/manager-players/{player_id}")
+    def add_manager_player(
+        event_id: str, player_id: str, body: ManagerSignupInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            claimed = db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id,
+                    *event_scope(request),
+                    Event.status.in_(["draft", "open"]),
+                )
+                .values(status=Event.status)
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            if not claimed:
+                raise HTTPException(409, "Only draft or open signups can be changed")
+            event = db.get(Event, event_id)
+            assert event is not None
+            if body.table not in {table["name"] for table in event.tables}:
+                raise HTTPException(422, "Unknown table")
+            profile = db.get(PlayerProfile, (event.guild_id, player_id))
+            if player_id.startswith("test-") and (
+                profile is None or not profile.is_test
+            ):
+                raise HTTPException(404, "Player not found")
+            override = db.get(EventManagerSignup, (event_id, player_id))
+            if override is None:
+                override = EventManagerSignup(
+                    event_id=event_id,
+                    discord_id=player_id,
+                    discord_name=body.name.strip(),
+                    choices=[body.table],
+                    removed=False,
+                )
+                db.add(override)
+            else:
+                override.discord_name = body.name.strip()
+                override.choices = sorted(set(override.choices) | {body.table})
+                override.removed = False
+            db.commit()
+            return {"ok": True}
+
+    @app.delete("/api/events/{event_id}/manager-players/{player_id}")
+    def remove_manager_player(
+        event_id: str, player_id: str, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            assigned_guild = event.guild_id if event.status == "assigned" else None
+        if assigned_guild:
+            if not manager_remove(engine, assigned_guild, event_id, player_id):
+                raise HTTPException(409, "Player is not currently assigned")
+            return {"ok": True}
+        with DBSession(engine) as db:
+            claimed = db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id,
+                    *event_scope(request),
+                    Event.status.in_(["draft", "open"]),
+                )
+                .values(status=Event.status)
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            if not claimed:
+                raise HTTPException(409, "Only draft or open signups can be changed")
+            event = db.get(Event, event_id)
+            assert event is not None
+            override = db.get(EventManagerSignup, (event_id, player_id))
+            if override is None:
+                override = EventManagerSignup(
+                    event_id=event_id,
+                    discord_id=player_id,
+                    discord_name="",
+                    choices=[],
+                    removed=True,
+                )
+                db.add(override)
+            else:
+                override.choices = []
+                override.removed = True
+            if event.signup_mode in ("custom", "reactions"):
+                signup = db.get(TableSignup, (event_id, player_id))
+                if signup is not None:
+                    db.delete(signup)
+            db.commit()
+            return {"ok": True}
 
     @app.put("/api/events/{event_id}/players/{player_id}/settings")
     def save_event_player_setting(

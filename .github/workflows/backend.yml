@@ -44,7 +44,7 @@ jobs:
           uv run alembic downgrade base
           uv run alembic upgrade head
       - name: Run tests
-        run: uv run pytest
+        run: PGOPTIONS="-c lock_timeout=10000" timeout --signal=TERM --kill-after=10s 180s uv run pytest
       - name: Audit installed dependencies for known vulnerabilities
         run: uvx pip-audit --path .venv/lib/python3.12/site-packages
   compose:
