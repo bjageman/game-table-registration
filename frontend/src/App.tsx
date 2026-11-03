@@ -24,15 +24,15 @@ interface Branding { name: string; tagline: string; logo_url: string | null }
 const defaultBranding: Branding = { name: "TableSignup", tagline: "Made for your next game night.", logo_url: null };
 
 export default function App() {
-  const [branding, setBranding] = useState<Branding>(defaultBranding);
+  const [branding, setBranding] = useState<Branding | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     api<Branding>("/branding", { signal: controller.signal })
       .then((result) => { if (!controller.signal.aborted) setBranding(result); })
-      .catch(() => { /* Keep the default branding if the public config is unavailable. */ });
+      .catch(() => { if (!controller.signal.aborted) setBranding(defaultBranding); });
     return () => controller.abort();
   }, []);
-  useEffect(() => { document.title = branding.name; }, [branding.name]);
+  useEffect(() => { document.title = branding?.name ?? "Loading…"; }, [branding?.name]);
   const [page, setPage] = useState(() => window.location.hash.slice(2) || "events");
   useEffect(() => {
     const changed = () => setPage(window.location.hash.slice(2) || "events");
@@ -133,7 +133,7 @@ export default function App() {
     <div className="app-shell">
       <header className="site-header">
         <div>
-          <h1><a className="home-link" href="/">{branding.logo_url && <img className="brand-logo" src={branding.logo_url} alt="" />}{branding.name}</a></h1>
+          {branding && <h1><a className="home-link" href="/">{branding.logo_url && <img className="brand-logo" src={branding.logo_url} alt="" />}{branding.name}</a></h1>}
         </div>
         {auth.kind === "ready" && (
           <div className="account">
@@ -230,7 +230,7 @@ export default function App() {
           ) : <Dashboard key={`${auth.session.destination ?? "legacy"}:${auth.session.organization?.id ?? "personal"}`} session={auth.session} onAccessError={onAccessError} />
         )}
       </main>
-      <footer>{branding.tagline}</footer>
+      {branding && <footer>{branding.tagline}</footer>}
     </div>
   );
 }

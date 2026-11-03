@@ -95,3 +95,23 @@ it("explains when server membership or moderator access is missing", async () =>
     screen.queryByRole("button", { name: "Log out" }),
   ).not.toBeInTheDocument();
 });
+
+it("does not flash default branding while custom branding loads", async () => {
+  const fetchMock = mockApi(401);
+  const original = fetchMock.getMockImplementation()!;
+  let finishBranding!: (response: Response) => void;
+  const pendingBranding = new Promise<Response>((resolve) => { finishBranding = resolve; });
+  fetchMock.mockImplementation(async (path: string) =>
+    path === "/api/branding" ? pendingBranding : original(path),
+  );
+  render(<App />);
+  await screen.findByRole("link", { name: "Log in with Discord" });
+  expect(screen.queryByText("TableSignup")).not.toBeInTheDocument();
+  expect(screen.queryByText("Made for your next game night.")).not.toBeInTheDocument();
+  expect(document.title).toBe("Loading…");
+  finishBranding(new Response(JSON.stringify({
+    name: "Philly BOTC", tagline: "Blood on the Clocktower in Philadelphia.", logo_url: "/branding/liberty-bell.png",
+  })));
+  expect(await screen.findByRole("link", { name: "Philly BOTC" })).toBeVisible();
+  await waitFor(() => expect(document.title).toBe("Philly BOTC"));
+});
