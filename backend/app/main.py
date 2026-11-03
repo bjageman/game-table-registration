@@ -894,6 +894,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/events/{event_id}/signups")
     def event_signups(event_id: str, request: Request) -> list[dict[str, Any]]:
         authenticated(request)
+        custom_result: tuple[list[dict[str, Any]], str] | None = None
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
             if event is None or not matches_destination(event, request):
@@ -908,13 +909,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tables = event.tables
             population = event.test_signups
             if event.signup_mode in ("custom", "reactions"):
-                return list_names(
+                custom_result = (
                     apply_manager_signups(
                         db, event, add_to_rows(table_rows(db, event), population)
                     ),
                     event.guild_id,
-                    event.id,
                 )
+        if custom_result is not None:
+            return list_names(custom_result[0], custom_result[1], event_id)
         rows = (
             scoped_discord(request).table_signups(message_id, tables)
             if message_id
@@ -925,7 +927,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if event is None or not matches_destination(event, request):
                 raise HTTPException(404, "Event not found")
             rows = apply_manager_signups(db, event, add_to_rows(rows, population))
-            return list_names(rows, event.guild_id, event.id)
+            guild_id = event.guild_id
+        return list_names(rows, guild_id, event_id)
 
     @app.put("/api/events/{event_id}/manager-players/{player_id}")
     def add_manager_player(
