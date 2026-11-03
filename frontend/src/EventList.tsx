@@ -112,7 +112,7 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
           <button type="button" className="event-icon-action"
             aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
             title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
-            disabled={refreshing || !event.discord_url}
+            disabled={refreshing}
             onClick={() => setRefreshToken((value) => value + 1)}>
             <RefreshCw size={18} aria-hidden="true" />
           </button>
