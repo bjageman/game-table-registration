@@ -915,6 +915,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                     event.guild_id,
                 )
+                db.rollback()
         if custom_result is not None:
             return list_names(custom_result[0], custom_result[1], event_id)
         rows = (
@@ -928,6 +929,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(404, "Event not found")
             rows = apply_manager_signups(db, event, add_to_rows(rows, population))
             guild_id = event.guild_id
+            db.rollback()
         return list_names(rows, guild_id, event_id)
 
     @app.put("/api/events/{event_id}/manager-players/{player_id}")
