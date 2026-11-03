@@ -19,9 +19,10 @@ export interface TableSignups {
   waitlist?: SignupPlayer[];
 }
 
-export default function EventTables({ event, csrf, onAccessError, refreshToken = 0, onRefreshingChange }: {
+export default function EventTables({ event, csrf, readOnly = false, onAccessError, refreshToken = 0, onRefreshingChange }: {
   event: EventRecord;
   csrf: string;
+  readOnly?: boolean;
   refreshToken?: number;
   onRefreshingChange?: (refreshing: boolean) => void;
   onAccessError: (error: unknown) => boolean;
@@ -40,9 +41,9 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   const [playersLoading, setPlayersLoading] = useState(false);
   const [removing, setRemoving] = useState<SignupPlayer>();
   const addDialog = useRef<HTMLDialogElement>(null);
-  const hasSignups = event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
-  const canEditSignups = event.status === "draft" || event.status === "open";
-  const canRemoveSignups = canEditSignups || event.status === "assigned";
+  const hasSignups = event.status === "open" || event.status === "closing" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
+  const canEditSignups = !readOnly && (event.status === "draft" || event.status === "open");
+  const canRemoveSignups = !readOnly && (canEditSignups || event.status === "assigned");
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
   const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
     `${player.discord_name} ${player.real_name} ${player.discord_id}`.toLocaleLowerCase().includes(normalizedQuery),
@@ -157,9 +158,9 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
     </p>}
     {actionError && <p role="alert" className="error">{actionError}</p>}
-    <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={setSelectedPlayer}
+    <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
       canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingTable(table); }} onRemovePlayer={setRemoving}
-      editingWeight={editingWeight} weight={weight} saving={saving} onWeightChange={setWeight}
+      editingWeight={editingWeight} weight={weight} saving={saving} readOnly={readOnly} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 1)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
       onSaveWeight={(player) => { const value = Number(weight); if (weight.trim() && Number.isFinite(value) && value >= 0.1 && value <= 10) { if (value === (player.weighting ?? 1)) setEditingWeight(undefined); else void saveSetting(player, { weighting: value }); } else setActionError("Choose a weight from 0.1 to 10."); }}
@@ -167,7 +168,7 @@ export default function EventTables({ event, csrf, onAccessError, refreshToken =
   </>;
 }
 
-export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onRemovePlayer }: {
+export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, readOnly = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onRemovePlayer }: {
   event: Pick<EventRecord, "tables" | "status">;
   rows?: TableSignups[];
   error?: string;
@@ -175,6 +176,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
   editingWeight?: string;
   weight?: string;
   saving?: boolean;
+  readOnly?: boolean;
   onWeightChange?: (value: string) => void;
   onEditWeight?: (player: SignupPlayer, table: string) => void;
   onCancelWeight?: () => void;
@@ -222,19 +224,19 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               {count ?? "—"}/{table.capacity}
             </span>
           </div>
-          {event.status === "open" && <div className="table-player-header">
-            {header("guarantee", "⭐", "guarantee")}{header("player", "Player", "player")}{header("weight", "Wt", "weight")}
+          {event.status === "open" && <div className={`table-player-header${readOnly ? " read-only" : ""}`}>
+            {!readOnly && header("guarantee", "⭐", "guarantee")}{readOnly ? <span>Player</span> : header("player", "Player", "player")}{readOnly ? <span>Wt</span> : header("weight", "Wt", "weight")}
           </div>}
           {players?.length ? <ul className="table-players">
-            {sortedPlayers?.map((player) => <li key={player.id} className={event.status === "open" ? "table-player-row" : "table-assigned-player"}>
-              {event.status === "open" && <button type="button" className="player-guarantee" disabled={saving} aria-pressed={player.guaranteed_table === table.name}
+            {sortedPlayers?.map((player) => <li key={player.id} className={event.status === "open" ? `table-player-row${readOnly ? " read-only" : ""}` : "table-assigned-player"}>
+              {event.status === "open" && !readOnly && <button type="button" className="player-guarantee" disabled={saving} aria-pressed={player.guaranteed_table === table.name}
                 aria-label={`${player.guaranteed_table === table.name ? "Remove" : "Guarantee"} ${player.display_name || player.name} at ${table.name}`}
                 title={player.guaranteed_table === table.name ? "Remove table guarantee" : player.guaranteed_seat && !player.guaranteed_table ? "Profile guarantees a seat at one selected table; click to guarantee this table" : "Guarantee this table"}
                 onClick={() => onToggleGuarantee?.(player, table.name)}>{isGuaranteedAtTable(player, table.name) ? "⭐" : "⚪"}</button>}
               {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog"
                 title={player.display_name || player.name} aria-label={player.display_name || player.name}
                 onClick={() => onSelect(player)}>{event.status === "open" ? <>{(player.display_name || player.name).slice(0, 26)}{(player.display_name || player.name).length > 26 ? "…" : ""}</> : player.display_name || player.name}</button> : event.status === "open" ? (player.display_name || player.name).slice(0, 26) : player.display_name || player.name}
-              {event.status === "open" && (editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
+              {event.status === "open" && (readOnly ? <span className="player-weight">{(player.weighting ?? 1).toFixed(1)}</span> : editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
                 <input type="text" inputMode="decimal" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)}
                   onBlur={() => onSaveWeight?.(player)} onKeyDown={(key) => { if (key.key === "Escape") { key.preventDefault(); onCancelWeight?.(); } }} disabled={saving} autoFocus />
               </form> : <button type="button" className={`player-weight ${(player.weighting ?? 1) < 1 ? "low" : (player.weighting ?? 1) > 1 ? "high" : ""}`}

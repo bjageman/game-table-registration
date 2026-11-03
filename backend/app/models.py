@@ -37,6 +37,9 @@ class Event(Base):
     tables: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(32), default="draft")
     created_by: Mapped[str] = mapped_column(String(32))
+    organization_id: Mapped[str | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     signup_deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     closes_at: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -125,6 +128,39 @@ class UserSettings(Base):
     guild_name: Mapped[str] = mapped_column(String(100))
     channel_id: Mapped[str] = mapped_column(String(32))
     channel_name: Mapped[str] = mapped_column(String(100))
+
+
+class UserIdentity(Base):
+    __tablename__ = "user_identities"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    username: Mapped[str] = mapped_column(String(100))
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    normalized_name: Mapped[str] = mapped_column(String(100), unique=True)
+    created_by: Mapped[str] = mapped_column(String(32))
+    guild_id: Mapped[str] = mapped_column(String(32))
+    channel_id: Mapped[str] = mapped_column(String(32))
+
+
+class OrganizationMember(Base):
+    __tablename__ = "organization_members"
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16))
+
+
+class OrganizationSelection(Base):
+    __tablename__ = "organization_selections"
+    user_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE")
+    )
 
 
 class LotteryRun(Base):

@@ -201,6 +201,11 @@ dialog {
 dialog::backdrop {
   background: #10241980;
 }
+.active-organization { font-weight: 600; margin-right: 14px; }
+.organization-settings { display: grid; gap: 14px; max-width: 560px; padding-top: 20px; }
+.organization-settings form { display: grid; gap: 10px; }
+.organization-settings input, .organization-settings select { width: 100%; padding: 9px 11px; border: 1px solid #bdc9c0; border-radius: 6px; background: #fff; }
+.organization-settings button { justify-self: start; }
 dialog h2 {
   overflow-wrap: anywhere;
 }
@@ -410,6 +415,7 @@ dd {
 .table-player-sort:last-child { justify-content: flex-end; }
 .table-player-row { margin: 3px 0; }
 .table-player-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 42px 26px; align-items: center; gap: 5px; min-width: 0; }
+.table-player-header.read-only, .table-player-row.read-only { grid-template-columns: minmax(0, 1fr) 42px; }
 .table-assigned-player { display: grid; grid-template-columns: minmax(0, 1fr) 26px; align-items: center; gap: 5px; min-width: 0; }
 .remove-signup-player { border: 0; border-radius: 4px; background: transparent; color: #a32626; font-size: 1rem; font-weight: 700; padding: 2px 5px; }
 .remove-signup-player:hover { background: #fce8e8; }

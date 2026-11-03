@@ -31,7 +31,6 @@ export default function PlayerLookup({ session, onAccessError }: {
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
     api<Player[]>("/players", { signal: controller.signal })
       .then((value) => { if (!controller.signal.aborted) { setPlayers(value); setError(""); } })
       .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); })
@@ -67,7 +66,7 @@ export default function PlayerLookup({ session, onAccessError }: {
     <FormField type="search" label="Search players" placeholder="Search by name or Discord ID"
       value={query} onChange={(event) => setQuery(event.target.value)} />
     {loading && <p><LoadingIndicator label="Loading players…" /></p>}
-    {error && <p role="alert" className="error">Could not load players. {error} <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button></p>}
+    {error && <p role="alert" className="error">Could not load players. {error} <button type="button" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Retry</button></p>}
     {!loading && !error && <>
       <p>{visible.length} {visible.length === 1 ? "player" : "players"}</p>
       {visible.length ? <div className="player-lookup-table">

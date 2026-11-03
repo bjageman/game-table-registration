@@ -86,6 +86,29 @@ export default function App() {
     return () => controller.abort();
   }, [attempt]);
 
+  useEffect(() => {
+    if (auth.kind !== "ready") return;
+    let checking = false;
+    async function refreshSession() {
+      if (checking || document.visibilityState === "hidden") return;
+      checking = true;
+      try {
+        const session = await api<ModeratorSession>("/me");
+        setAuth({ kind: "ready", session });
+      } catch (error) {
+        onAccessError(error);
+      } finally {
+        checking = false;
+      }
+    }
+    window.addEventListener("focus", refreshSession);
+    document.addEventListener("visibilitychange", refreshSession);
+    return () => {
+      window.removeEventListener("focus", refreshSession);
+      document.removeEventListener("visibilitychange", refreshSession);
+    };
+  }, [auth.kind, onAccessError]);
+
   function retry() {
     setAuth({ kind: "loading" });
     setLogoutError("");
@@ -114,6 +137,7 @@ export default function App() {
         </div>
         {auth.kind === "ready" && (
           <div className="account">
+            {auth.session.organization && <span className="active-organization">{auth.session.organization.name}</span>}
             <button
               className="profile-button"
               aria-haspopup="menu"
@@ -196,14 +220,14 @@ export default function App() {
         )}
         {auth.kind === "ready" && (
           page === "settings" || auth.session.needs_setup ? (
-            <ConnectionSettings csrf={auth.session.csrf} onAccessError={onAccessError}
+            <ConnectionSettings csrf={auth.session.csrf} userId={auth.session.user_id} onAccessError={onAccessError}
               onSaved={async () => {
                 const session = await api<ModeratorSession>("/me");
                 setAuth({ kind: "ready", session });
               }} />
           ) : page === "players" ? (
             <PlayerLookup key={auth.session.destination ?? "legacy"} session={auth.session} onAccessError={onAccessError} />
-          ) : <Dashboard key={auth.session.destination ?? "legacy"} session={auth.session} onAccessError={onAccessError} />
+          ) : <Dashboard key={`${auth.session.destination ?? "legacy"}:${auth.session.organization?.id ?? "personal"}`} session={auth.session} onAccessError={onAccessError} />
         )}
       </main>
       <footer>{branding.tagline}</footer>

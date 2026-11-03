@@ -132,6 +132,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           </Menu>
         </div>
         <div className="form-actions">
+          {session.organization_role !== "user" &&
           <button
             ref={createButton}
             className="primary"
@@ -143,7 +144,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             disabled={creating || loading || Boolean(error)}
           >
             Create event
-          </button>
+          </button>}
           <button
             className="refresh-events-button"
             onClick={refresh}
@@ -188,6 +189,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         !error &&
         (visibleEvents.length ? (
           <EventList
+            readOnly={session.organization_role === "user"}
             canPopulateTestUsers={Boolean(session.can_populate_test_users)}
             events={visibleEvents}
             onEdit={(event) => {

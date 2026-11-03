@@ -23,12 +23,14 @@ export function formatTime(timestamp: number): string {
 export default function EventList({
   events,
   canPopulateTestUsers = false,
+  readOnly = false,
   onEdit,
   onDeleted,
   ...actions
 }: {
   events: EventRecord[];
   canPopulateTestUsers?: boolean;
+  readOnly?: boolean;
   onEdit: (event: EventRecord) => void;
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
@@ -66,6 +68,7 @@ export default function EventList({
       {selected && <EventDetails
         event={selected}
         canPopulateTestUsers={canPopulateTestUsers}
+        readOnly={readOnly}
         onClose={() => setSelectedId(null)}
         onEdit={onEdit}
         onDeleted={onDeleted}
@@ -75,9 +78,10 @@ export default function EventList({
   );
 }
 
-function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted, ...actions }: {
+function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, onDeleted, ...actions }: {
   event: EventRecord;
   canPopulateTestUsers: boolean;
+  readOnly: boolean;
   onClose: () => void;
   onEdit: (event: EventRecord) => void;
   onDeleted: (event: EventRecord) => void;
@@ -103,12 +107,12 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
           {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
         </span>
         <div className="event-header-actions">
-          {(event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+          {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
           {event.status !== "draft" && (
           <button type="button" className="event-icon-action"
             aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
             title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
-            disabled={refreshing || !event.discord_url}
+            disabled={refreshing}
             onClick={() => setRefreshToken((value) => value + 1)}>
             <RefreshCw size={18} aria-hidden="true" />
           </button>
@@ -118,10 +122,10 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
               <Eye size={18} aria-hidden="true" />
             </DiscordLink>
           )}
-          {event.status === "assigned" && !event.archived_at && <ArchiveEvent event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {event.status === "assigned" && event.archived_at && <DeleteDiscordMessages event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {event.status === "draft" && <PublishEvent event={event} {...actions} />}
-          {(event.status === "draft" || event.status === "open") && (
+          {!readOnly && event.status === "assigned" && !event.archived_at && <ArchiveEvent event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+          {!readOnly && event.status === "assigned" && event.archived_at && <DeleteDiscordMessages event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+          {!readOnly && event.status === "draft" && <PublishEvent event={event} {...actions} />}
+          {!readOnly && (event.status === "draft" || event.status === "open") && (
             <>
                 <EventActions
                   event={event}
@@ -166,15 +170,15 @@ function EventDetails({ event, canPopulateTestUsers, onClose, onEdit, onDeleted,
               )}
             </dl>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
-            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
             </p>}
             <div className="form-actions">
-              {event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-              {canPopulateTestUsers && (event.status === "draft" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+              {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+              {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
-            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} refreshToken={refreshToken} onAccessError={actions.onAccessError} />}
+            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onAccessError={actions.onAccessError} />}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (

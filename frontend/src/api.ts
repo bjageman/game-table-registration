@@ -72,6 +72,9 @@ export function errorMessage(error: unknown): string {
 }
 
 export interface ModeratorSession {
+  user_id?: string;
+  organization?: { id: string; name: string } | null;
+  organization_role?: "user" | "editor" | "admin" | null;
   needs_setup?: boolean;
   destination?: string;
   can_populate_test_users?: boolean;
