@@ -951,7 +951,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if body.table not in {table["name"] for table in event.tables}:
                 raise HTTPException(422, "Unknown table")
             profile = db.get(PlayerProfile, (event.guild_id, player_id))
-            if player_id.startswith("test-") and (profile is None or not profile.is_test):
+            if player_id.startswith("test-") and (
+                profile is None or not profile.is_test
+            ):
                 raise HTTPException(404, "Player not found")
             override = db.get(EventManagerSignup, (event_id, player_id))
             if override is None:

@@ -85,9 +85,7 @@ def apply_manager_signups(
 ) -> list[dict[str, Any]]:
     overrides = list(
         db.scalars(
-            select(EventManagerSignup).where(
-                EventManagerSignup.event_id == event.id
-            )
+            select(EventManagerSignup).where(EventManagerSignup.event_id == event.id)
         )
     )
     removed = {override.discord_id for override in overrides if override.removed}
@@ -99,10 +97,14 @@ def apply_manager_signups(
         row["players"] = [p for p in row["players"] if p["id"] not in removed]
     for override in additions.values():
         for table_name in override.choices:
-            row = by_table.get(table_name)
-            if row is None or any(p["id"] == override.discord_id for p in row["players"]):
+            table_row = by_table.get(table_name)
+            if table_row is None or any(
+                p["id"] == override.discord_id for p in table_row["players"]
+            ):
                 continue
-            row["players"].append({"id": override.discord_id, "name": override.discord_name})
+            table_row["players"].append(
+                {"id": override.discord_id, "name": override.discord_name}
+            )
     return rows
 
 
@@ -114,9 +116,7 @@ def apply_manager_players(
 ) -> list[dict[str, Any]]:
     overrides = list(
         db.scalars(
-            select(EventManagerSignup).where(
-                EventManagerSignup.event_id == event.id
-            )
+            select(EventManagerSignup).where(EventManagerSignup.event_id == event.id)
         )
     )
     by_id = {player["id"]: dict(player) for player in participants}
@@ -134,7 +134,9 @@ def apply_manager_players(
                 },
             )
             player["name"] = override.discord_name
-            player["choices"] = sorted(set(player.get("choices", [])) | set(override.choices))
+            player["choices"] = sorted(
+                set(player.get("choices", [])) | set(override.choices)
+            )
     return list(by_id.values())
 
 

@@ -234,7 +234,9 @@ def withdraw(
         return True
 
 
-def manager_remove(engine: Engine, guild_id: str, event_id: str, player_id: str) -> bool:
+def manager_remove(
+    engine: Engine, guild_id: str, event_id: str, player_id: str
+) -> bool:
     """Remove an assigned player and announce any waitlist promotion."""
     with Session(engine) as db:
         claimed = db.execute(
@@ -273,8 +275,7 @@ def manager_remove(engine: Engine, guild_id: str, event_id: str, player_id: str)
             (
                 player["id"]
                 for player in table.get("waitlist", [])
-                if player["id"] not in active_ids
-                and player["id"] not in withdrawn_ids
+                if player["id"] not in active_ids and player["id"] not in withdrawn_ids
             ),
             None,
         )

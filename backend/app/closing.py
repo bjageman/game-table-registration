@@ -20,7 +20,8 @@ from app.models import (
     LotteryRun,
     PlayerProfile,
 )
-from app.signups import apply_manager_players, players as signup_players
+from app.signups import apply_manager_players
+from app.signups import players as signup_players
 
 LEASE_SECONDS = 120
 
@@ -292,10 +293,10 @@ def close_and_assign(
                 discord, message_id, tables, answers, weights
             )
             with Session(engine) as db:
-                event = db.get(Event, event_id)
-                if event is not None:
+                manager_event = db.get(Event, event_id)
+                if manager_event is not None:
                     snapshot["players"] = apply_manager_players(
-                        db, event, snapshot["players"], weights
+                        db, manager_event, snapshot["players"], weights
                     )
         if test_population:
             snapshot["is_test"] = True
