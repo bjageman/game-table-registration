@@ -28,14 +28,7 @@ interface Props {
 }
 
 function initialTime(): Dayjs {
-  const current = dayjs();
-  const minute =
-    current.minute() +
-    Number(current.second() > 0 || current.millisecond() > 0);
-  return current
-    .minute(Math.ceil(minute / 15) * 15)
-    .second(0)
-    .millisecond(0);
+  return dayjs().add(1, "hour").startOf("hour");
 }
 
 export default function EventForm({
