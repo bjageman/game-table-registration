@@ -96,3 +96,53 @@ networks and PostgreSQL volumes; only the web services join nginx-proxy.
 No host application/database ports are published. Redeployments retain data.
 Back up PostgreSQL before promoting database changes; application rollback does
 not undo migrations. A failed migration stops deployment before API replacement.
+
+## Separate branded instances
+
+The shared hosted Compose file defines the services. The dev/prod wrappers set
+project names, while `scripts/deploy.sh` selects the brand's configuration:
+
+```bash
+./scripts/deploy.sh prod generic
+./scripts/deploy.sh prod phillybotc
+./scripts/deploy.sh dev phillybotc
+```
+
+Create `.env.generic.prod`, `.env.phillybotc.prod`, and `.env.phillybotc.dev`
+from the corresponding `.env.prod.example` or `.env.dev.example` first.
+Use separate Discord applications/bot tokens for simultaneously running instances,
+unique hostnames, and separate PostgreSQL passwords. Set each Discord application's
+OAuth callback to its instance's hostname plus `/api/auth/callback`.
+
+Brand identifiers use lowercase letters, digits, and single hyphens. They are
+stable deployment identifiers, independent of the display name in branding JSON.
+For `phillybotc` production, the script uses:
+
+- Compose project `game-table-registration-phillybotc-prod` (containers, private
+  network, and database volume belong to this project).
+- Images tagged `phillybotc-prod`, so building another brand cannot replace them.
+- Private settings in `.env.phillybotc.prod`.
+- Branding JSON in `branding/phillybotc/prod/branding.json`.
+- Logo files in `branding/phillybotc/prod/public/`, served at `/branding/`.
+
+Only the shared external `nginx-proxy` network connects the web containers.
+Each brand runs its own PostgreSQL container and volume, even when the internal
+database name is the same. `DATABASE_NAME` defaults to `tables` and may be set
+before initialization. Changing it on an existing volume does not create or
+migrate databases; provision the database before running migrations.
+
+Existing commands without a brand retain their existing project names, image
+tags, environment files, and database volumes. Existing GitHub workflows continue
+to deploy these legacy instances; branded instances are deployed explicitly with
+the commands above after owner promotion to the appropriate branch.
+
+A new brand project starts with an empty database. Moving an existing installation
+requires a deliberate PostgreSQL backup/restore into the new project's database
+and a hostname cutover after stopping the old instance. Renaming a brand does not
+move its data. Do not run old and new instances with the same bot token or hostname.
+
+`docker-compose.example.yml` is a direct Compose alternative using the same hosted
+services. Set `BRAND_ID`, `DEPLOY_ENV`, absolute `APP_ENV_FILE` and
+`BRANDING_CONFIG_DIR`, plus the required password, hostname, and email in the
+selected environment file. Create `BRANDING_CONFIG_DIR/public` before starting it.
+Use the deployment script for remote-branch builds and ordered migrations.

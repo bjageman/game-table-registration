@@ -1,21 +1,6 @@
-name: botc-companion-prod
-
-services:
-  botc-companion:
-    container_name: botc-companion
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - VITE_NTFY_SERVER_URL=ntfy.${DOMAIN}
-    environment:
-      - VIRTUAL_HOST=grimoire.${DOMAIN},grim.${DOMAIN},botc.${DOMAIN},tinygrim.com,www.tinygrim.com
-      - LETSENCRYPT_HOST=grimoire.${DOMAIN},grim.${DOMAIN},botc.${DOMAIN},tinygrim.com,www.tinygrim.com
-      - LETSENCRYPT_EMAIL=${EMAIL}
-    volumes:
-      - ./local-overrides/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    restart: unless-stopped
-networks:
-  default:
-    name: nginx-proxy
-    external: true
+# Hosted brand example. Use an absolute APP_ENV_FILE and BRANDING_CONFIG_DIR.
+# docker compose --env-file .env.phillybotc.prod -f docker-compose.example.yml config
+# Set a unique BRAND_ID, DEPLOY_ENV, hostname, credentials, and branding per instance.
+name: game-table-registration-${BRAND_ID:?Set BRAND_ID}-${DEPLOY_ENV:?Set DEPLOY_ENV}
+include:
+  - docker-compose.deploy.yml
