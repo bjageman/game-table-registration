@@ -1,6 +1,6 @@
 # Deployment and promotion
 
-Production: https://signups.brodin.rocks (`main`).
+Production: https://signups.phillybotc.com (`main`).
 Development: https://signups-dev.brodin.rocks (`dev`).
 
 ## Server setup
@@ -27,7 +27,7 @@ the file at startup, so redeploy after changing it. For local `./run.sh`, use
 Register these OAuth redirect URLs in the respective Discord applications:
 
 - `https://signups-dev.brodin.rocks/api/auth/callback`
-- `https://signups.brodin.rocks/api/auth/callback`
+- `https://signups.phillybotc.com/api/auth/callback`
 
 For custom table signups, keep `DISCORD_GATEWAY_ENABLED=true` and
 `DISCORD_SIGNUP_MODE=custom` in the environment file. The existing
@@ -96,3 +96,11 @@ networks and PostgreSQL volumes; only the web services join nginx-proxy.
 No host application/database ports are published. Redeployments retain data.
 Back up PostgreSQL before promoting database changes; application rollback does
 not undo migrations. A failed migration stops deployment before API replacement.
+
+## Philly BOTC setup
+
+The Philly BOTC checkout is `~/Apps/sites/phillybotc/apps/game-table-registration`.
+Copy `branding.phillybotc.example.json` to `branding/prod/branding.json` for its name and Liberty Bell logo.
+Set `SIGNUPS_HOST=signups.phillybotc.com` in the private production environment file.
+Before promotion, configure DNS and register `https://signups.phillybotc.com/api/auth/callback` in Discord.
+The existing GitHub deployment workflow still uses the server checkout above; cloning alone does not move the running deployment.
