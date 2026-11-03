@@ -134,7 +134,7 @@ export default function App() {
               transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
               <MenuItem component="a" href="#/players" onClick={() => setAccountAnchor(null)}>
-                User Lookup
+                Player Lookup
               </MenuItem>
               <MenuItem component="a" href="#/settings" onClick={() => setAccountAnchor(null)}>
                 Settings

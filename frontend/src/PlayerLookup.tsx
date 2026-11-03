@@ -62,7 +62,7 @@ export default function PlayerLookup({ session, onAccessError }: {
   }
 
   return <section className="panel" aria-labelledby="player-lookup-heading">
-    <div className="section-heading"><h2 id="player-lookup-heading">User Lookup</h2></div>
+    <div className="section-heading"><h2 id="player-lookup-heading">Player Lookup</h2></div>
     <FormField type="search" label="Search players" placeholder="Search by name or Discord ID"
       value={query} onChange={(event) => setQuery(event.target.value)} />
     {loading && <p><LoadingIndicator label="Loading players…" /></p>}
