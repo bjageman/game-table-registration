@@ -279,12 +279,12 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
           {canEditSignups && <button type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}
           {event.status === "assigned" && row && <div className="table-waitlist">
             <h4>Waitlist</h4>
-            {row.waitlist?.length ? <ol>{row.waitlist.map((player) => <li key={player.id}>
-              {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
+            {row.waitlist?.length ? <ul aria-label={`Waitlist for ${table.name}`}>{row.waitlist.map((player) => <li key={player.id}>
               {onAssignWaitlisted && <button type="button" className="add-waitlisted-player" disabled={saving}
                 aria-label={`Add ${player.display_name || player.name} to ${table.name}`} title="Add to table"
                 onClick={() => onAssignWaitlisted(player, table.name)}><Plus size={16} aria-hidden="true" /></button>}
-            </li>)}</ol> : <p className="help">No players waiting.</p>}
+              {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
+            </li>)}</ul> : <p className="help">No players waiting.</p>}
           </div>}
         </li>;
       })}
