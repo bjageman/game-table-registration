@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import { isBackdropClick } from "./dialogBackdrop";
 import type { EventTemplateRecord } from "./api";
+import { X } from "lucide-react";
 
 export default function TemplatePicker({ templates, onSelect, onClose }: {
   templates: EventTemplateRecord[];
@@ -21,7 +22,10 @@ export default function TemplatePicker({ templates, onSelect, onClose }: {
   return <dialog ref={dialog} aria-labelledby={heading}
     onCancel={(event) => { event.preventDefault(); onClose(); }}
     onClick={(event) => { if (isBackdropClick(event)) onClose(); }}>
-    <h2 id={heading}>Load From Template</h2>
+    <div className="event-modal-header">
+      <h2 id={heading}>Load From Template</h2>
+      <button type="button" aria-label="Close template picker" title="Close" onClick={onClose}><X size={18} aria-hidden="true" /></button>
+    </div>
     <p>Choose a template to fill the title, signup duration, and tables. Your event date stays as it is.</p>
     <ul className="template-list">
       {templates.map((template) => <li key={template.id}>

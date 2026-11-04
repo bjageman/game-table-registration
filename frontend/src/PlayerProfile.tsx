@@ -133,8 +133,14 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
   }
   return <dialog ref={dialog} aria-labelledby={heading} aria-busy={saving}
     onClick={(event) => { if (isBackdropClick(event)) void close(); }}
-    onCancel={(event) => { event.preventDefault(); void close(); }}>
-    <div className="event-modal-header">
+    onCancel={(event) => { event.preventDefault(); void close(); }}
+    onKeyDown={(event) => {
+      if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
+        event.preventDefault();
+        void close();
+      }
+    }}>
+    <div className="event-modal-header player-profile-header">
       <h2 id={heading}>Player Information</h2>
       {profile?.is_test && <span className="badge">Test User</span>}
       <button type="button" aria-label="Close player information" title="Close" onClick={() => void close()} autoFocus><X size={18} aria-hidden="true" /></button>
@@ -147,11 +153,11 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
       <FormFields>
       <FormField id={nameField} label="Display Name" value={realName} fullWidth
         onChange={(event) => { setRealName(event.target.value); setNotice(""); }}
-        onBlur={saveName} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+        onBlur={saveName}
         slotProps={{ htmlInput: { maxLength: 100 } }} />
       <div className="profile-weight-edit"><FormField label="Global Weighting" type="number" value={weighting} fullWidth disabled={savingWeight}
         onChange={(event) => { setWeighting(event.target.value); setNotice(""); }}
-        onBlur={() => { saveWeight(); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+        onBlur={() => { saveWeight(); }}
         slotProps={{ htmlInput: { min: 0.1, max: 10, step: 0.1 } }} />
       </div>
       <FormControlLabel label="Guaranteed Seat" control={<Checkbox checked={guaranteedSeat}
