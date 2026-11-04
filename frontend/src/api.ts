@@ -86,6 +86,7 @@ export interface EventRecord {
   id: string;
   title: string;
   description?: string;
+  location?: string;
   starts_at: number;
   duration_hours: number;
   tables: { name: string; capacity: number }[];
@@ -107,6 +108,7 @@ export interface EventTemplateRecord {
   id: string;
   title: string;
   description?: string;
+  location?: string;
   duration_hours: number;
   tables: { name: string; capacity: number }[];
 }

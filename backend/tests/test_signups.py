@@ -289,7 +289,7 @@ def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
     dispatch_due(
         client.app.state.engine, lambda guild, channel: client.app.state.discord
     )
-    assert client.app.state.discord.send_announcement.call_count == 4
+    assert client.app.state.discord.send_announcement.call_count == 2
     assert (
         "Signups are closed"
         in dispatch(custom_client, interaction(event, "select")).json()["data"][

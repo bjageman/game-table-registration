@@ -39,7 +39,7 @@ from app.connection_settings import (
     register_settings,
 )
 from app.discord_api import DiscordAPI, DiscordRequestError
-from app.event_description import POLL_DESCRIPTION, signup_description
+from app.event_description import POLL_DESCRIPTION, signup_description, signup_location
 from app.gateway import SignupGateway
 from app.models import (
     Announcement,
@@ -94,6 +94,7 @@ class TableInput(BaseModel):
 class EventInput(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=300)
+    location: str = Field(default="", max_length=200)
     starts_at: datetime
     duration_hours: int = Field(ge=1, le=768)
     tables: list[TableInput] = Field(min_length=1, max_length=10)
@@ -114,6 +115,7 @@ class EventInput(BaseModel):
 class EventTemplateInput(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=300)
+    location: str = Field(default="", max_length=200)
     duration_hours: int = Field(ge=1, le=768)
     tables: list[TableInput] = Field(min_length=1, max_length=10)
 
@@ -447,6 +449,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "id": event.id,
             "title": event.title,
             "description": event.description,
+            "location": event.location,
             "starts_at": event.starts_at,
             "duration_hours": event.duration_hours,
             "tables": event.tables,
@@ -1154,6 +1157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "id": template.id,
             "title": template.title,
             "description": template.description,
+            "location": template.location,
             "duration_hours": template.duration_hours,
             "tables": template.tables,
         }
@@ -1180,6 +1184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 user_id=session.user_id,
                 title=body.title.strip(),
                 description=body.description.strip(),
+                location=body.location.strip(),
                 duration_hours=body.duration_hours,
                 tables=[table.model_dump() for table in body.tables],
                 created_at=time.time(),
@@ -1706,6 +1711,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 channel_id=destination(request).discord_channel_id,
                 title=body.title.strip(),
                 description=body.description.strip(),
+                location=body.location.strip(),
                 starts_at=body.starts_at.timestamp(),
                 duration_hours=body.duration_hours,
                 tables=[table.model_dump() for table in body.tables],
@@ -1731,6 +1737,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .values(
                     title=body.title.strip(),
                     description=body.description.strip(),
+                    location=body.location.strip(),
                     starts_at=body.starts_at.timestamp(),
                     duration_hours=body.duration_hours,
                     tables=[table.model_dump() for table in body.tables],
@@ -1989,6 +1996,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             f"**{'[TEST] ' if event.test_signups else ''}"
                             f"{event.title}**\n"
                             f"Event: <t:{int(event.starts_at)}:F>\n"
+                            f"{signup_location(event.location)}"
                             f"Signups open for {event.duration_hours} hours. "
                             f"{signup_description(event.description, POLL_DESCRIPTION)}"
                         ),
