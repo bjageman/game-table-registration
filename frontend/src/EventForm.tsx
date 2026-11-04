@@ -40,6 +40,7 @@ export default function EventForm({
 }: Props) {
   const prefix = useId();
   const [title, setTitle] = useState(draft?.title ?? "");
+  const [description, setDescription] = useState(draft?.description ?? "");
   const [startsAt, setStartsAt] = useState<Dayjs | null>(
     draft ? dayjs.unix(draft.starts_at) : null,
   );
@@ -155,6 +156,7 @@ export default function EventForm({
 
   function loadTemplate(template: EventTemplateRecord) {
     setTitle(template.title);
+    setDescription(template.description ?? "");
     setDuration(String(template.duration_hours));
     setTables(template.tables.map((table, id) => ({ id, name: table.name, capacity: String(table.capacity) })));
     nextId.current = template.tables.length;
@@ -179,6 +181,7 @@ export default function EventForm({
     try {
       const saved = await api<EventTemplateRecord>("/templates", mutationOptions(csrf, {
         title: title.trim(),
+        description: description.trim(),
         duration_hours: Number(duration),
         tables: tables.map((table) => ({ name: table.name.trim(), capacity: Number(table.capacity) })),
       }));
@@ -220,6 +223,7 @@ export default function EventForm({
         {
           ...mutationOptions(csrf, {
             title: title.trim(),
+            description: description.trim(),
             starts_at: start.toISOString(),
             duration_hours: hours,
             tables: tables.map((table) => ({
@@ -401,6 +405,18 @@ export default function EventForm({
               />
             </div>
           </div>
+          <TextField
+            id={`${prefix}-description`}
+            label="Description"
+            placeholder="React with the number for every table you would attend. Remove your reaction to withdraw from that table. This is a lottery entry, not a guaranteed seat. Only reactions received before signups close count."
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            multiline
+            minRows={3}
+            fullWidth
+            sx={{ mt: 3, mb: 3 }}
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { maxLength: 300 } }}
+          />
           <div className="section-heading tables-heading">
             <h4>Tables</h4>
             <span className="help">{tables.length} of 10</span>
