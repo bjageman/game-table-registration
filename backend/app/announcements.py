@@ -41,8 +41,12 @@ def payloads(
             else str(len(table["players"]))
         )
         header = f"{clean(table['name'])} ({count})"
-        lines = [(name(p), p["id"] if not is_test else None) for p in table["players"]]
-        sections.append((header, lines or [("No players assigned.", None)], True))
+        table_entries = [
+            (name(p), p["id"] if not is_test else None) for p in table["players"]
+        ]
+        sections.append(
+            (header, table_entries or [("No players assigned.", None)], True)
+        )
     by_id = {p["id"]: p for p in snapshot["players"]}
     waiting: list[tuple[str, str | None]] = []
     for i, pid in enumerate(result["waitlist"], 1):
