@@ -152,6 +152,7 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
                   </time>
                 </dd>
               </div>
+              {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               <div>
                 <dt>Signup duration</dt>
                 <dd>{event.duration_hours} hours from publication</dd>

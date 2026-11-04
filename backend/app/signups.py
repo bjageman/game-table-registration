@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.announcements import clean
 from app.config import Settings
-from app.event_description import CUSTOM_DESCRIPTION, signup_description
+from app.event_description import (
+    CUSTOM_DESCRIPTION,
+    signup_description,
+    signup_location,
+)
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
@@ -21,6 +25,7 @@ def publication(event: Event, closes_at: float) -> dict[str, Any]:
         "content": (
             f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
             f"Event: <t:{int(event.starts_at)}:F>\n"
+            f"{signup_location(event.location)}"
             f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)\n\n"
             f"{tables}\n\n"
             f"{signup_description(event.description, CUSTOM_DESCRIPTION)}"

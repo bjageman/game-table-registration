@@ -41,6 +41,7 @@ export default function EventForm({
   const prefix = useId();
   const [title, setTitle] = useState(draft?.title ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
+  const [location, setLocation] = useState(draft?.location ?? "");
   const [startsAt, setStartsAt] = useState<Dayjs | null>(
     draft ? dayjs.unix(draft.starts_at) : null,
   );
@@ -157,6 +158,7 @@ export default function EventForm({
   function loadTemplate(template: EventTemplateRecord) {
     setTitle(template.title);
     setDescription(template.description ?? "");
+    setLocation(template.location ?? "");
     setDuration(String(template.duration_hours));
     setTables(template.tables.map((table, id) => ({ id, name: table.name, capacity: String(table.capacity) })));
     nextId.current = template.tables.length;
@@ -182,6 +184,7 @@ export default function EventForm({
       const saved = await api<EventTemplateRecord>("/templates", mutationOptions(csrf, {
         title: title.trim(),
         description: description.trim(),
+        location: location.trim(),
         duration_hours: Number(duration),
         tables: tables.map((table) => ({ name: table.name.trim(), capacity: Number(table.capacity) })),
       }));
@@ -224,6 +227,7 @@ export default function EventForm({
           ...mutationOptions(csrf, {
             title: title.trim(),
             description: description.trim(),
+            location: location.trim(),
             starts_at: start.toISOString(),
             duration_hours: hours,
             tables: tables.map((table) => ({
@@ -416,6 +420,16 @@ export default function EventForm({
             fullWidth
             sx={{ mt: 3, mb: 3 }}
             slotProps={{ inputLabel: { shrink: true }, htmlInput: { maxLength: 300 } }}
+          />
+          <TextField
+            id={`${prefix}-location`}
+            label="Location"
+            placeholder="Venue or address (optional)"
+            value={location}
+            onChange={(event) => setLocation(event.target.value)}
+            fullWidth
+            sx={{ mb: 3 }}
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { maxLength: 200 } }}
           />
           <div className="section-heading tables-heading">
             <h4>Tables</h4>

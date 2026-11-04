@@ -24,3 +24,7 @@ def signup_description(value: str | None, default: str) -> str:
     if not description:
         return default
     return "\n".join(clean(line) for line in description.splitlines())
+
+
+def signup_location(value: str | None) -> str:
+    return f"Location: {clean(value)}\n" if value and value.strip() else ""

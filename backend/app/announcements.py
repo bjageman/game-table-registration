@@ -35,11 +35,13 @@ def payloads(
     capacities = {table["name"]: table["capacity"] for table in event.tables or []}
     for table in result["tables"]:
         capacity = capacities.get(table["name"])
-        count = f"{len(table['players'])}/{capacity}" if capacity is not None else str(len(table["players"]))
+        count = (
+            f"{len(table['players'])}/{capacity}"
+            if capacity is not None
+            else str(len(table["players"]))
+        )
         header = f"**{clean(table['name'])} ({count})**"
-        lines = [
-            (name(p), p["id"] if not is_test else None) for p in table["players"]
-        ]
+        lines = [(name(p), p["id"] if not is_test else None) for p in table["players"]]
         sections.append((header, lines or [("No players assigned.", None)]))
     by_id = {p["id"]: p for p in snapshot["players"]}
     waiting: list[tuple[str, str | None]] = []
@@ -54,6 +56,7 @@ def payloads(
     introduction = (
         f"**{'[TEST] ' if is_test else ''}{clean(event.title)} — Table Assignments**"
         + (f"\nEvent: <t:{int(event.starts_at)}:F>" if event.starts_at else "")
+        + (f"\nLocation: {clean(event.location)}" if event.location else "")
         + f"\n[Signup message]({poll_url})"
     )
     chunks: list[tuple[str, list[str]]] = []
@@ -65,7 +68,11 @@ def payloads(
             lines, mentions = [], []
         lines.append(header)
         for line, mention in entries:
-            if len("\n".join(lines)) + len(line) + 1 > 1900 or mention and len(mentions) >= 100:
+            if (
+                len("\n".join(lines)) + len(line) + 1 > 1900
+                or mention
+                and len(mentions) >= 100
+            ):
                 chunks.append(("\n".join(lines), mentions))
                 lines, mentions = [header + " (continued)"], []
             lines.append(line)
@@ -309,7 +316,7 @@ def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -
                 )
                 .where(
                     or_(
-                        Announcement.kind.not_in(["promotion", "instructions"]),
+                        Announcement.kind != "promotion",
                         Event.archived_at.is_(None),
                     ),
                     Announcement.state.in_(["pending", "sending"]),

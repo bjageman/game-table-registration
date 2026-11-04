@@ -7,7 +7,7 @@ from app.announcements import deliver_event, enqueue, payloads
 from app.models import Announcement, Base, Event
 
 
-def test_each_table_and_waitlist_has_its_own_message_without_repeated_intro():
+def test_small_assignment_fits_tables_and_waitlist_in_one_message():
     event = Event(id="event", guild_id="guild", title="Active Check", message_id="poll")
     one = {"id": "1", "name": "One", "choices": ["First"], "weight": 1.0}
     two = {"id": "2", "name": "Two", "choices": ["Second"], "weight": 1.0}
@@ -22,16 +22,12 @@ def test_each_table_and_waitlist_has_its_own_message_without_repeated_intro():
     messages = payloads(
         event, "channel", result, {"players": [one, two, waiting], "is_test": True}
     )
-    assert len(messages) == 3
+    assert len(messages) == 1
     assert "[TEST] Active Check — Table Assignments" in messages[0]["content"]
     assert "[Signup message]" in messages[0]["content"]
-    assert "First — 1 assigned" in messages[0]["content"]
-    assert "Second — 1 assigned" in messages[1]["content"]
-    assert "First — 1 assigned" not in messages[1]["content"]
-    assert "**Waitlist**" in messages[2]["content"]
-    for message in messages[1:]:
-        assert "Table Assignments" not in message["content"]
-        assert "Signup message" not in message["content"]
+    assert "First (1)" in messages[0]["content"]
+    assert "Second (1)" in messages[0]["content"]
+    assert "Waitlist (1)" in messages[0]["content"]
 
 
 def test_large_announcements_are_complete_bounded_and_private():

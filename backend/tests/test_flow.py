@@ -195,6 +195,7 @@ def test_templates_save_reusable_details_without_an_event_date_and_are_private(c
     body = {
         "title": "Friday games",
         "description": "Bring friends",
+        "location": "Queen & Rook",
         "duration_hours": 24,
         "tables": [{"name": "Clocktower", "capacity": 15}],
     }
@@ -1195,9 +1196,9 @@ def test_close_immediately_announces_assignments_without_duplicate_delivery(clie
     assert client.post(path + "/close", headers=headers).status_code == 200
     dispatch_due(client.app.state.engine, lambda guild, channel: discord)
     assert client.get(path + "/announcement").json()["status"] == "sent"
-    assert discord.send_announcement.call_count == 4
+    assert discord.send_announcement.call_count == 2
     with DBSession(client.app.state.engine) as db:
-        assert db.query(Announcement).filter_by(event_id=event["id"]).count() == 4
+        assert db.query(Announcement).filter_by(event_id=event["id"]).count() == 2
 
 
 def test_announcement_failure_retries_without_redrawing(client):
@@ -1221,7 +1222,7 @@ def test_announcement_failure_retries_without_redrawing(client):
     dispatch_due(client.app.state.engine, lambda guild, channel: discord)
     assert client.get(path + "/announcement").json()["status"] == "sent"
     assert client.get(path + "/assignments").json() == original
-    assert discord.send_announcement.call_count == 5
+    assert discord.send_announcement.call_count == 3
     discord.end_poll.assert_not_called()
 
 
@@ -1244,7 +1245,7 @@ def test_ambiguous_announcement_is_reconciled_without_blind_repost(client):
         db.commit()
     dispatch_due(client.app.state.engine, lambda guild, channel: discord)
     assert client.get(path + "/announcement").json()["status"] == "sent"
-    assert discord.send_announcement.call_count == 4
+    assert discord.send_announcement.call_count == 2
     discord.find_announcement.assert_called_once()
 
 
@@ -1649,7 +1650,7 @@ def test_close_can_delete_signup_message_and_archive_can_delete_announcements(cl
     )
     assert archived.status_code == 200
     assert archived.json()["archived_at"] > 0
-    assert scoped.delete_poll.call_count == 4
+    assert scoped.delete_poll.call_count == 3
     while True:
         cleanup = client.post(path + "/discord-messages/delete", headers=headers)
         assert cleanup.status_code == 200
@@ -1668,7 +1669,7 @@ def test_close_can_delete_signup_message_and_archive_can_delete_announcements(cl
         ).status_code
         == 200
     )
-    assert scoped.delete_poll.call_count == 5
+    assert scoped.delete_poll.call_count == 3
 
 
 def test_failed_archive_discord_cleanup_can_be_retried(client):
@@ -1696,16 +1697,16 @@ def test_failed_archive_discord_cleanup_can_be_retried(client):
     )
     assert failed.status_code == 200
     assert failed.json()["archived_at"] is not None
-    assert failed.json()["discord_cleanup_remaining"] == 4
+    assert failed.json()["discord_cleanup_remaining"] == 2
     assert "403" in failed.json()["discord_cleanup_error"]
     retried = client.post(path + "/discord-messages/delete", headers=headers)
     assert retried.status_code == 200
-    assert retried.json()["discord_cleanup_remaining"] == 1
+    assert retried.json()["discord_cleanup_remaining"] == 0
     retried = client.post(path + "/discord-messages/delete", headers=headers)
     assert retried.status_code == 200
     assert retried.json()["discord_cleanup_remaining"] == 0
     assert retried.json()["discord_cleanup_error"] is None
-    assert scoped.delete_poll.call_count == 6
+    assert scoped.delete_poll.call_count == 4
     assert (
         next(
             row for row in client.get("/api/events").json() if row["id"] == event["id"]
@@ -1746,7 +1747,7 @@ def test_archive_cleanup_respects_rate_limit_and_resumes_after_plain_archive(cli
     first = client.post(path + "/archive?delete_discord_messages=true", headers=headers)
     assert first.status_code == 200
     assert first.json()["archived_at"] is not None
-    assert first.json()["discord_cleanup_remaining"] == 14
+    assert first.json()["discord_cleanup_remaining"] == 12
     assert first.json()["discord_cleanup_retry_after"] == 0.25
     scoped.delete_poll.side_effect = None
     while True:
@@ -1754,7 +1755,7 @@ def test_archive_cleanup_respects_rate_limit_and_resumes_after_plain_archive(cli
         assert result.status_code == 200
         if result.json()["discord_cleanup_remaining"] == 0:
             break
-    assert scoped.delete_poll.call_count == 16
+    assert scoped.delete_poll.call_count == 14
     assert result.json()["discord_url"] is None
     assert (
         client.post(path + "/discord-messages/delete", headers=headers).json()[
@@ -1776,7 +1777,7 @@ def test_discord_cleanup_can_start_after_event_was_archived_without_it(client):
     assert client.post(path + "/archive", headers=headers).status_code == 200
     first = client.post(path + "/discord-messages/delete", headers=headers)
     assert first.status_code == 200
-    assert first.json()["discord_cleanup_remaining"] == 2
+    assert first.json()["discord_cleanup_remaining"] == 0
     last = client.post(path + "/discord-messages/delete", headers=headers)
     assert last.json()["discord_cleanup_remaining"] == 0
     assert last.json()["discord_url"] is None
@@ -1799,7 +1800,7 @@ def test_archive_cleanup_waits_for_queued_announcements(client):
         client.app.state.engine, lambda guild, channel: client.app.state.discord
     )
     first = client.post(path + "/discord-messages/delete", headers=headers)
-    assert first.json()["discord_cleanup_remaining"] == 1
+    assert first.json()["discord_cleanup_remaining"] == 0
 
 
 def test_assigned_signup_message_can_be_deleted_later(client):
