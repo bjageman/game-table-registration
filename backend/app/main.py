@@ -906,6 +906,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
         return Response(status_code=204)
 
+    @app.delete("/api/organizations/{org_id}/members/{user_id}", status_code=204)
+    def remove_organization_member(
+        org_id: str, user_id: str, request: Request
+    ) -> Response:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            org = require_org_admin(db, org_id, session.user_id)
+            if user_id == org.created_by:
+                raise HTTPException(403, "The creator cannot be removed")
+            if user_id == session.user_id:
+                raise HTTPException(409, "Use Leave organization to remove yourself")
+            member = db.get(OrganizationMember, (org_id, user_id))
+            if member is None:
+                raise HTTPException(404, "Organization member not found")
+            db.execute(
+                delete(OrganizationSelection).where(
+                    OrganizationSelection.user_id == user_id,
+                    OrganizationSelection.organization_id == org_id,
+                )
+            )
+            db.delete(member)
+            db.commit()
+        return Response(status_code=204)
+
     @app.delete("/api/organizations/{org_id}", status_code=204)
     def delete_organization(org_id: str, request: Request) -> Response:
         session = authenticated(request, True, require_destination=False)

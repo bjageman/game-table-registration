@@ -567,6 +567,70 @@ def test_player_profiles_are_scoped_to_guild_and_global_weight_can_be_edited(cli
         assert db.get(PlayerProfile, ("other", "123")).weighting == 2.0
 
 
+def test_admin_removes_organization_member_and_selection(client):
+    owner = login(client)
+    org_id = client.post(
+        "/api/organizations", headers=owner, json={"name": "Friday Crew"}
+    ).json()["id"]
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second = login(client)
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner = login(client)
+    assert (
+        client.put(
+            f"/api/organizations/{org_id}/members/second",
+            headers=owner,
+            json={"user_id": "second", "role": "editor"},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second = login(client)
+    client.put(
+        "/api/organizations/selection",
+        headers=second,
+        json={"organization_id": org_id},
+    )
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/owner", headers=second
+        ).status_code
+        == 403
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner = login(client)
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/owner", headers=owner
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/second", headers=owner
+        ).status_code
+        == 204
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    login(client)
+    assert client.get("/api/me").json()["organization"] is None
+
+
 def test_settings_switch_channels_without_retargeting_existing_events(client):
     headers = login(client)
     base = client.app.state.discord
@@ -617,6 +681,88 @@ def test_settings_switch_channels_without_retargeting_existing_events(client):
     scoped["100", "101"].publish.assert_called_once()
     assert ("100", "102") in scoped
     base.publish.assert_not_called()
+
+
+def test_organization_discord_settings_follow_selection_and_admin_role(client):
+    owner = login(client)
+    discord = client.app.state.discord
+    discord.destination_channels.return_value = (
+        "Server A",
+        [{"id": "101", "name": "personal"}, {"id": "102", "name": "shared"}],
+    )
+    discord.organization_channels.return_value = (
+        "Server A",
+        [{"id": "101", "name": "personal"}, {"id": "102", "name": "shared"}],
+    )
+    discord.bot.side_effect = lambda _method, path: {
+        "name": "Server A" if path.startswith("/guilds/") else "personal"
+    }
+    assert (
+        client.put(
+            "/api/settings",
+            headers=owner,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 200
+    )
+    org_id = client.post(
+        "/api/organizations", headers=owner, json={"name": "Shared"}
+    ).json()["id"]
+    client.put(
+        "/api/organizations/selection", headers=owner, json={"organization_id": org_id}
+    )
+    assert client.get("/api/settings").json()["organization_role"] == "admin"
+    discord.destination_channels.side_effect = HTTPException(
+        403, "You need Manage Server permission to configure this server."
+    )
+    assert (
+        client.get("/api/settings/channels?guild_id=100").json()["channels"][1]["id"]
+        == "102"
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=owner,
+            json={"guild_id": "100", "channel_id": "102"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
+    discord.organization_channels.assert_called()
+
+    discord.identity.return_value = {"id": "second", "username": "Second"}
+    second = login(client)
+    discord.identity.return_value = {"id": "owner", "username": "organizer"}
+    owner = login(client)
+    client.put(
+        f"/api/organizations/{org_id}/members/second",
+        headers=owner,
+        json={"user_id": "second", "role": "editor"},
+    )
+    discord.identity.return_value = {"id": "second", "username": "Second"}
+    second = login(client)
+    client.put(
+        "/api/organizations/selection", headers=second, json={"organization_id": org_id}
+    )
+    assert client.get("/api/settings").json()["organization_role"] == "editor"
+    assert client.get("/api/settings/channels?guild_id=100").status_code == 403
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
+    assert (
+        client.put(
+            "/api/settings",
+            headers=second,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 403
+    )
+    assert client.delete("/api/settings", headers=second).status_code == 409
+
+    discord.identity.return_value = {"id": "owner", "username": "organizer"}
+    owner = login(client)
+    client.put(
+        "/api/organizations/selection", headers=owner, json={"organization_id": None}
+    )
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "101"
 
 
 def test_settings_are_per_user_and_recheck_permissions(client):

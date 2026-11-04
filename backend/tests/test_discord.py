@@ -180,6 +180,12 @@ def test_channel_picker_respects_user_and_bot_overwrites(mode):
         ([{"id": "103", "name": "no-polls"}] if mode == "custom" else [])
         + [{"id": "101", "name": "public"}],
     )
+    assert api.organization_channels("100") == (
+        "Games",
+        [{"id": "102", "name": "hidden"}]
+        + ([{"id": "103", "name": "no-polls"}] if mode == "custom" else [])
+        + [{"id": "101", "name": "public"}],
+    )
     roles[1]["permissions"] = "0"
     with pytest.raises(HTTPException) as error:
         api.destination_channels("user", "100")

@@ -220,7 +220,7 @@ export default function App() {
         )}
         {auth.kind === "ready" && (
           page === "settings" || auth.session.needs_setup ? (
-            <ConnectionSettings csrf={auth.session.csrf} userId={auth.session.user_id} onAccessError={onAccessError}
+            <ConnectionSettings csrf={auth.session.csrf} userId={auth.session.user_id} organizationId={auth.session.organization?.id} onAccessError={onAccessError}
               onSaved={async () => {
                 const session = await api<ModeratorSession>("/me");
                 setAuth({ kind: "ready", session });

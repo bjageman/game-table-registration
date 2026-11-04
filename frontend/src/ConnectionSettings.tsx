@@ -12,11 +12,12 @@ import OrganizationSettings from "./OrganizationSettings";
 
 interface Choice { id: string; name: string; }
 interface Selection { guild_id: string; channel_id: string; guild_name: string; channel_name: string; }
-interface Setup { disconnected?: boolean; selection: Selection | null; connect_url: string; }
+interface Setup { disconnected?: boolean; selection: Selection | null; connect_url: string; organization_role?: "user" | "editor" | "admin" | null; }
 
-export default function ConnectionSettings({ csrf, userId = "", onSaved, onAccessError }: {
+export default function ConnectionSettings({ csrf, userId = "", organizationId, onSaved, onAccessError }: {
   csrf: string;
   userId?: string;
+  organizationId?: string;
   onSaved: () => Promise<void>;
   onAccessError: (error: unknown) => boolean;
 }) {
@@ -31,47 +32,46 @@ export default function ConnectionSettings({ csrf, userId = "", onSaved, onAcces
   const [attempt, setAttempt] = useState(0);
   const [channelAttempt, setChannelAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     api<Setup>("/settings", { signal: controller.signal })
       .then((value) => {
         if (!controller.signal.aborted) {
-          setSetup(value); setGuildId(value.selection?.guild_id ?? "");
+          setSetup(value); setChannels(undefined); setGuildId(value.selection?.guild_id ?? "");
           setChannelId(value.selection?.channel_id ?? ""); setError("");
         }
       })
       .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
     return () => controller.abort();
-  }, [attempt, onAccessError]);
+  }, [attempt, organizationId, onAccessError]);
   useEffect(() => {
-    if (!guildId) return;
+    if (!guildId || (setup?.organization_role && setup.organization_role !== "admin")) return;
     const controller = new AbortController();
     api<{ channels: Choice[] }>(`/settings/channels?guild_id=${encodeURIComponent(guildId)}`, { signal: controller.signal })
       .then((value) => {
         if (!controller.signal.aborted) {
           setChannels(value.channels); setChannelError("");
-          setChannelId((current) => value.channels.some((c) => c.id === current) ? current : "");
+          setChannelId((current) => value.channels.some((c) => c.id === current) || setup?.organization_role ? current : "");
         }
       })
       .catch((failure) => {
         if (!controller.signal.aborted && !onAccessError(failure)) setChannelError(errorMessage(failure));
       });
     return () => controller.abort();
-  }, [guildId, channelAttempt, onAccessError]);
+  }, [guildId, channelAttempt, organizationId, setup?.organization_role, onAccessError]);
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (saving || !guildId || !channelId) return;
-    setSaving(true); setSaved(false); setError("");
+    if (saving || (setup?.organization_role && setup.organization_role !== "admin") || !guildId || !channelId) return;
+    setSaving(true); setError("");
     try {
       const selection = await api<Selection>("/settings", { ...mutationOptions(csrf, { guild_id: guildId, channel_id: channelId }), method: "PUT" });
       setSetup((current) => current ? { ...current, selection, disconnected: false } : current);
       await onSaved();
-      setSaved(true);
     } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
     finally { setSaving(false); }
   }
   const connectUrl = setup?.connect_url ?? "/api/auth/connect";
+  const restricted = Boolean(setup?.organization_role && setup.organization_role !== "admin");
   return <section className="panel settings-panel" aria-labelledby="settings-heading">
     <div className="section-heading"><h2 id="settings-heading">Settings</h2></div>
     <Tabs className="settings-tabs" value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
@@ -85,38 +85,39 @@ export default function ConnectionSettings({ csrf, userId = "", onSaved, onAcces
     {setup && <>
       <div className="form-actions settings-connections">
         {!setup.selection && <a className="button" href={connectUrl}>Connect</a>}
-        {setup.selection && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
+        {setup.selection && !setup.organization_role && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
           onDisconnected={async () => {
             await onSaved();
             setSetup((current) => current ? { ...current, selection: null, disconnected: true } : current);
-            setGuildId(""); setChannelId(""); setChannels(undefined); setChannelError(""); setSaved(false); setError("");
+            setGuildId(""); setChannelId(""); setChannels(undefined); setChannelError(""); setError("");
           }} />}
       </div>
       {setup.selection && <form onSubmit={(event) => void save(event)} aria-label="Discord settings">
         <div className="form-grid">
-          <FormField label="Discord Server" value={setup.selection.guild_name} slotProps={{ input: { readOnly: true } }} />
+          <FormField label="Discord Server" value={setup.selection.guild_name} disabled={restricted} slotProps={{ input: { readOnly: true } }} />
           <div className="signup-channel-field">
-          <FormField select label="Signup Channel" value={channels ? channelId : ""} fullWidth disabled={saving || !channels?.length}
+          {restricted ? <FormField label="Signup Channel" value={`#${setup.selection.channel_name}`} disabled /> : <FormField select label="Signup Channel" value={channels ? channelId : ""} fullWidth disabled={saving || !channels?.length}
             slotProps={{ inputLabel: { shrink: true } }}
-            onChange={(event) => { setChannelId(event.target.value); setSaved(false); }}>
+            onChange={(event) => setChannelId(event.target.value)}>
             <MenuItem value="">Choose a channel</MenuItem>
+            {setup.organization_role && channelId && channels && !channels.some((c) => c.id === channelId) &&
+              <MenuItem value={channelId}>#{setup.selection.channel_name}</MenuItem>}
             {(channels ?? []).map((c) => <MenuItem key={c.id} value={c.id}>#{c.name}</MenuItem>)}
-          </FormField>
-          <button type="button" className="settings-refresh" aria-label="Refresh Channels" title="Refresh Channels"
+          </FormField>}
+          {!restricted && <button type="button" className="settings-refresh" aria-label="Refresh Channels" title="Refresh Channels"
             disabled={saving || !guildId || (!channels && !channelError)}
             onClick={() => { setChannelError(""); setChannels(undefined); setChannelAttempt((n) => n + 1); }}>
             <RefreshCw size={18} aria-hidden="true" />
-          </button>
+          </button>}
           </div>
         </div>
-        {guildId && !channels && !channelError && <p><LoadingIndicator label="Loading channels…" /></p>}
+        {!restricted && guildId && !channels && !channelError && <p><LoadingIndicator label="Loading channels…" /></p>}
         {channelError && <p role="alert" className="error">Could not load channels. {channelError}</p>}
-        {guildId && <>
+        {!restricted && guildId && <>
           <p className="help">If channels are missing, disconnect from Discord and reconnect.</p>
         </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
-        {saved && <p role="status">Settings saved.</p>}
-        <div className="form-actions"><button className="primary" type="submit" disabled={saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></div>
+        <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button className="primary" type="submit" disabled={restricted || saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></span></div>
       </form>}
     </>}
     </div>
