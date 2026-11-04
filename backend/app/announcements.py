@@ -31,7 +31,7 @@ def payloads(
             else f"<@{player['id']}>"
         )
 
-    sections: list[tuple[str, list[tuple[str, str | None]]]] = []
+    sections: list[tuple[str, list[tuple[str, str | None]], bool]] = []
     capacities = {table["name"]: table["capacity"] for table in event.tables or []}
     for table in result["tables"]:
         capacity = capacities.get(table["name"])
@@ -40,16 +40,15 @@ def payloads(
             if capacity is not None
             else str(len(table["players"]))
         )
-        header = f"**{clean(table['name'])} ({count})**"
+        header = f"{clean(table['name'])} ({count})"
         lines = [(name(p), p["id"] if not is_test else None) for p in table["players"]]
-        sections.append((header, lines or [("No players assigned.", None)]))
+        sections.append((header, lines or [("No players assigned.", None)], True))
     by_id = {p["id"]: p for p in snapshot["players"]}
     waiting: list[tuple[str, str | None]] = []
     for i, pid in enumerate(result["waitlist"], 1):
-        choices = ", ".join(clean(name) for name in by_id[pid]["choices"])
-        waiting.append((f"{i}. {name(by_id[pid])} — {choices}", None))
+        waiting.append((f"{i}. {name(by_id[pid])}", None))
     if waiting:
-        sections.append((f"**Waitlist ({len(waiting)})**", waiting))
+        sections.append((f"Waitlist ({len(waiting)})", waiting, False))
     poll_url = (
         f"https://discord.com/channels/{event.guild_id}/{channel_id}/{event.message_id}"
     )
@@ -59,37 +58,84 @@ def payloads(
         + (f"\nLocation: {clean(event.location)}" if event.location else "")
         + f"\n[Signup message]({poll_url})"
     )
-    chunks: list[tuple[str, list[str]]] = []
-    lines = [introduction]
-    mentions: list[str] = []
-    for header, entries in sections:
-        if len("\n".join(lines)) + len(header) + 2 > 1900:
-            chunks.append(("\n".join(lines), mentions))
-            lines, mentions = [], []
-        lines.append(header)
+    max_ping_length = min(1500, 1900 - len(introduction) - 1)
+    field_parts: list[tuple[dict[str, Any], list[str]]] = []
+    for header, entries, inline in sections:
+        lines: list[str] = []
+        ids: list[str] = []
+        part = 0
         for line, mention in entries:
-            if (
-                len("\n".join(lines)) + len(line) + 1 > 1900
+            if lines and (
+                len("\n".join(lines)) + len(line) + 1 > 1024
                 or mention
-                and len(mentions) >= 100
+                and len(ids) >= 100
+                or mention
+                and sum(len(user_id) + 4 for user_id in ids) + len(mention) + 4
+                > max_ping_length
             ):
-                chunks.append(("\n".join(lines), mentions))
-                lines, mentions = [header + " (continued)"], []
+                field_parts.append(
+                    (
+                        {
+                            "name": header if part == 0 else f"{header} (continued)",
+                            "value": "\n".join(lines),
+                            "inline": inline,
+                        },
+                        ids,
+                    )
+                )
+                part += 1
+                lines, ids = [], []
             lines.append(line)
             if mention:
-                mentions.append(mention)
-    if lines:
-        chunks.append(("\n".join(lines), mentions))
+                ids.append(mention)
+        field_parts.append(
+            (
+                {
+                    "name": header if part == 0 else f"{header} (continued)",
+                    "value": "\n".join(lines),
+                    "inline": inline,
+                },
+                ids,
+            )
+        )
+
+    chunks: list[tuple[list[dict[str, Any]], list[str]]] = []
+    fields: list[dict[str, Any]] = []
+    mentions: list[str] = []
+    field_length = 0
+    for field, ids in field_parts:
+        next_length = len(field["name"]) + len(field["value"])
+        intro = introduction if not chunks else "Assignments continued (999)"
+        ping_length = sum(len(user_id) + 4 for user_id in mentions + ids)
+        if fields and (
+            len(fields) >= 25
+            or field_length + next_length > 5800
+            or len(mentions) + len(ids) > 100
+            or len(intro) + ping_length > 1900
+        ):
+            chunks.append((fields, mentions))
+            fields, mentions, field_length = [], [], 0
+        fields.append(field)
+        mentions.extend(ids)
+        field_length += next_length
+    if fields:
+        chunks.append((fields, mentions))
     return [
         {
-            "content": body,
+            "content": (introduction if i == 0 else f"Assignments continued ({i + 1})")
+            + (
+                "\n" + " ".join(f"<@{user_id}>" for user_id in mentions)
+                if mentions
+                else ""
+            ),
+            "embeds": [{"color": 0x2F6B4F, "fields": fields}],
             "allowed_mentions": {"parse": [], "users": mentions},
             "nonce": hashlib.sha256(f"{event.id}:assignments:{i}".encode()).hexdigest()[
                 :24
             ],
             "enforce_nonce": True,
         }
-        for i, (body, mentions) in enumerate(chunks)
+        for i, (fields, mentions) in enumerate(chunks)
     ]
 
 
