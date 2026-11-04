@@ -5,7 +5,7 @@ import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 import LoadingIndicator from "./LoadingIndicator";
 import ConfirmationDialog from "./ConfirmationDialog";
 import { isBackdropClick } from "./dialogBackdrop";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 interface SignupPlayer { id: string; name: string; display_name?: string; weighting?: number; guaranteed_table?: string | null; guaranteed_seat?: boolean }
 type SortColumn = "guarantee" | "player" | "weight";
@@ -42,6 +42,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [availablePlayers, setAvailablePlayers] = useState<{ discord_id: string; discord_name: string; real_name: string }[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
   const [removing, setRemoving] = useState<SignupPlayer>();
+  const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
   const addDialog = useRef<HTMLDialogElement>(null);
   const hasSignups = event.status === "open" || event.status === "closing" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
   const canEditSignups = !readOnly && (event.status === "draft" || event.status === "open");
@@ -94,6 +95,18 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
         { ...mutationOptions(csrf), method: "DELETE" });
       setRows((current) => current?.map((row) => ({ ...row, players: row.players.filter((entry) => entry.id !== player.id) })));
       setRemoving(undefined);
+      setAttempt((value) => value + 1);
+    } catch (failure) {
+      if (!onAccessError(failure)) setActionError(errorMessage(failure));
+    } finally { setSaving(false); }
+  }
+  async function assignWaitlistedPlayer() {
+    if (!assigning || saving) return;
+    setSaving(true); setActionError("");
+    try {
+      await api(`/events/${encodeURIComponent(event.id)}/assigned-players/${encodeURIComponent(assigning.player.id)}`,
+        { ...mutationOptions(csrf, { table: assigning.table }), method: "POST" });
+      setAssigning(undefined);
       setAttempt((value) => value + 1);
     } catch (failure) {
       if (!onAccessError(failure)) setActionError(errorMessage(failure));
@@ -162,16 +175,21 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       </div>
       <div className="form-actions"><button type="button" disabled={saving} onClick={closeAddPlayer}>Cancel</button></div>
     </dialog>}
-    {removing && <ConfirmationDialog title="Remove player from signups?" busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing)}>
-      <p>Remove {removing.display_name || removing.name} from this event’s signups? They will not be notified.</p>
+    {removing && <ConfirmationDialog title={event.status === "assigned" ? "Remove player from table?" : "Remove player from signups?"} busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing)}>
+      <p>{event.status === "assigned" ? `Remove ${removing.display_name || removing.name} from their table? No waitlisted player will be added automatically.` : `Remove ${removing.display_name || removing.name} from this event’s signups? They will not be notified.`}</p>
+    </ConfirmationDialog>}
+    {assigning && <ConfirmationDialog title="Add waitlisted player?" busy={saving} error={actionError}
+      onCancel={() => { setAssigning(undefined); setActionError(""); }} onConfirm={() => void assignWaitlistedPlayer()}>
+      <p>Are you sure you want to add this player? It will go beyond the table limit.</p>
     </ConfirmationDialog>}
     {error && <p role="alert" className="error">
       Could not refresh signups. {rows ? "Showing the last loaded list. " : ""}{error}{" "}
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
     </p>}
-    {actionError && <p role="alert" className="error">{actionError}</p>}
+    {actionError && !assigning && <p role="alert" className="error">{actionError}</p>}
     <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
       canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingTable(table); }} onRemovePlayer={setRemoving}
+      onAssignWaitlisted={!readOnly && event.status === "assigned" ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}
       editingWeight={editingWeight} weight={weight} saving={saving} readOnly={readOnly} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 1)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
@@ -180,7 +198,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   </>;
 }
 
-export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, readOnly = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onRemovePlayer }: {
+export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, readOnly = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onRemovePlayer, onAssignWaitlisted }: {
   event: Pick<EventRecord, "tables" | "status">;
   rows?: TableSignups[];
   error?: string;
@@ -198,6 +216,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
   canRemoveSignups?: boolean;
   onAddPlayer?: (table: string) => void;
   onRemovePlayer?: (player: SignupPlayer) => void;
+  onAssignWaitlisted?: (player: SignupPlayer, table: string) => void;
 }) {
   const [sorts, setSorts] = useState<Record<string, SortState>>({});
   function sortTable(table: string, column: SortColumn) {
@@ -254,7 +273,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               </form> : <button type="button" className={`player-weight ${(player.weighting ?? 1) < 1 ? "low" : (player.weighting ?? 1) > 1 ? "high" : ""}`}
                 title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 1).toFixed(1)}`} disabled={saving}
                 onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 1).toFixed(1)}</button>)}
-              {canRemoveSignups && <button type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from signups`} title="Remove from signups" onClick={() => onRemovePlayer?.(player)}>✕</button>}
+              {canRemoveSignups && <button type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from ${event.status === "assigned" ? "table" : "signups"}`} title={event.status === "assigned" ? "Remove from table" : "Remove from signups"} onClick={() => onRemovePlayer?.(player)}>✕</button>}
             </li>)}
           </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}
           {canEditSignups && <button type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}
@@ -262,6 +281,9 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
             <h4>Waitlist</h4>
             {row.waitlist?.length ? <ol>{row.waitlist.map((player) => <li key={player.id}>
               {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
+              {onAssignWaitlisted && <button type="button" className="add-waitlisted-player" disabled={saving}
+                aria-label={`Add ${player.display_name || player.name} to ${table.name}`} title="Add to table"
+                onClick={() => onAssignWaitlisted(player, table.name)}><Plus size={16} aria-hidden="true" /></button>}
             </li>)}</ol> : <p className="help">No players waiting.</p>}
           </div>}
         </li>;

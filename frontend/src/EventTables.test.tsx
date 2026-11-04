@@ -13,13 +13,14 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 it("suggests known players as the manager types and adds the selected player", async () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  let added = false;
   const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
     if (url === "/api/players") return new Response(JSON.stringify([
       { discord_id: "123", discord_name: "mary", real_name: "Mary Jones" },
       { discord_id: "456", discord_name: "dan", real_name: "Daniel" },
     ]));
-    if (url.includes("/manager-players/123") && options?.method === "PUT") return new Response("{}", { status: 200 });
-    return new Response(JSON.stringify([{ name: "Table A", players: [] }, { name: "Table B", players: [] }]));
+    if (url.includes("/manager-players/123") && options?.method === "PUT") { added = true; return new Response("{}", { status: 200 }); }
+    return new Response(JSON.stringify([{ name: "Table A", players: added ? [{ id: "123", name: "mary" }] : [] }, { name: "Table B", players: [] }]));
   });
   vi.stubGlobal("fetch", fetchMock);
   render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
@@ -154,6 +155,30 @@ it("shows saved placements after the Discord signup message is deleted", async (
   await waitFor(() => expect(screen.getByRole("button", { name: "Mary" })).toBeVisible());
   expect(screen.getByText("1/8")).toBeVisible();
   expect(fetchMock).toHaveBeenCalledWith("/api/events/event/signups", expect.anything());
+});
+
+it("confirms a waitlist addition and shows the count above capacity", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  let added = false;
+  const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.endsWith("/assigned-players/2") && options?.method === "POST") {
+      added = true;
+      return new Response("{}");
+    }
+    return new Response(JSON.stringify([
+      { name: "Table A", players: [{ id: "1", name: "Mary" }, ...(added ? [{ id: "2", name: "Dan" }] : [])], waitlist: added ? [] : [{ id: "2", name: "Dan" }] },
+      { name: "Table B", players: [], waitlist: [] },
+    ]));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={{ ...event, status: "assigned", tables: [{ name: "Table A", capacity: 1 }, event.tables[1]] }} onAccessError={() => false} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Add Dan to Table A" }));
+  expect(screen.getByRole("dialog", { name: "Add waitlisted player?" })).toHaveTextContent("Are you sure you want to add this player? It will go beyond the table limit.");
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/events/event/assigned-players/2", expect.objectContaining({ method: "POST" })));
+  expect(await screen.findByText("2/1")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Add Dan to Table A" })).not.toBeInTheDocument();
 });
 
 it("edits a weight for the event and selects one guaranteed table", async () => {
