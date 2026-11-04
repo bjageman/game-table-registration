@@ -1032,6 +1032,57 @@ def test_close_signups_assigns_once_and_replays_saved_results(client):
     assert client.delete(path, headers=headers).status_code == 409
 
 
+def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(client):
+    headers, _, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    rows = client.get(path + "/signups").json()
+    table = next(row for row in rows if row["waitlist"])
+    seated = table["players"][0]["id"]
+    waiting = table["waitlist"][0]["id"]
+    target = f"{path}/assigned-players/{waiting}"
+    assert client.post(target, json={"table": table["name"]}).status_code == 403
+    assert (
+        client.post(target, headers=headers, json={"table": "missing"}).status_code
+        == 409
+    )
+    assert (
+        client.post(target, headers=headers, json={"table": table["name"]}).status_code
+        == 200
+    )
+    assert (
+        client.post(target, headers=headers, json={"table": table["name"]}).status_code
+        == 409
+    )
+    updated = next(
+        row
+        for row in client.get(path + "/signups").json()
+        if row["name"] == table["name"]
+    )
+    assert len(updated["players"]) == 2
+    assert len({player["id"] for player in updated["players"]}) == 2
+    assert waiting not in {player["id"] for player in updated["waitlist"]}
+    assert (
+        client.get(path + "/assignments").json()["current_result"]["assignments"][
+            waiting
+        ]
+        == table["name"]
+    )
+    assert (
+        client.delete(f"{path}/manager-players/{seated}", headers=headers).status_code
+        == 200
+    )
+    after = next(
+        row
+        for row in client.get(path + "/signups").json()
+        if row["name"] == table["name"]
+    )
+    assert [player["id"] for player in after["players"]] == [waiting]
+    assert [player["id"] for player in after["waitlist"]] == [
+        player["id"] for player in updated["waitlist"]
+    ]
+
+
 def test_close_waits_for_finalization_and_freezes_weights_before_retries(client):
     from app.models import Event, LotteryRun, PlayerProfile
 

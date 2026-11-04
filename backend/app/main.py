@@ -72,7 +72,7 @@ from app.test_signups import (
 from app.test_signups import (
     generate as generate_test_users,
 )
-from app.withdrawals import current_result, manager_remove
+from app.withdrawals import current_result, manager_add, manager_remove
 
 
 def digest(token: str) -> str:
@@ -155,6 +155,11 @@ class ManagerSignupInput(BaseModel):
     model_config = {"extra": "forbid"}
     table: str = Field(min_length=1, max_length=35)
     name: str = Field(min_length=1, max_length=100)
+
+
+class AssignedAddInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    table: str = Field(min_length=1, max_length=35)
 
 
 class OrganizationInput(BaseModel):
@@ -1336,6 +1341,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 override.removed = False
             db.commit()
             return {"ok": True}
+
+    @app.post("/api/events/{event_id}/assigned-players/{player_id}")
+    def add_assigned_player(
+        event_id: str, player_id: str, body: AssignedAddInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            guild_id = event.guild_id
+        if not manager_add(engine, guild_id, event_id, player_id, body.table):
+            raise HTTPException(409, "Player is not available on this table's waitlist")
+        return {"ok": True}
 
     @app.delete("/api/events/{event_id}/manager-players/{player_id}")
     def remove_manager_player(

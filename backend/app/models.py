@@ -189,6 +189,16 @@ class EventWithdrawal(Base):
     promoted_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
+class EventManualAssignment(Base):
+    __tablename__ = "event_manual_assignments"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    table_name: Mapped[str] = mapped_column(String(35))
+    assigned_at: Mapped[float] = mapped_column(Float)
+
+
 class Announcement(Base):
     __tablename__ = "announcements"
     __table_args__ = (
