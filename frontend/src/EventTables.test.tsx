@@ -173,7 +173,10 @@ it("confirms a waitlist addition and shows the count above capacity", async () =
   });
   vi.stubGlobal("fetch", fetchMock);
   render(<EventTables csrf="csrf" event={{ ...event, status: "assigned", tables: [{ name: "Table A", capacity: 1 }, event.tables[1]] }} onAccessError={() => false} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Add Dan to Table A" }));
+  const add = await screen.findByRole("button", { name: "Add Dan to Table A" });
+  expect(screen.getByRole("list", { name: "Waitlist for Table A" }).tagName).toBe("UL");
+  expect(add.closest("li")?.firstElementChild).toBe(add);
+  fireEvent.click(add);
   expect(screen.getByRole("dialog", { name: "Add waitlisted player?" })).toHaveTextContent("Are you sure you want to add this player? It will go beyond the table limit.");
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/events/event/assigned-players/2", expect.objectContaining({ method: "POST" })));
