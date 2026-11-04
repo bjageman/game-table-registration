@@ -96,7 +96,7 @@ Issues remain short; this document carries the detailed specification. Native po
 ## References
 
 - Local comparison: ../tiny-grimoire/package.json and ../tiny-grimoire/.github/workflows/.
-- Hosting reference: docker-compose.example.yml in this repository.
+- Hosting configuration: docker-compose.deploy.yml with dev/prod wrappers; see docs/deployment.md.
 - Discord polls: https://docs.discord.com/developers/resources/poll
 - Discord OAuth2: https://docs.discord.com/developers/topics/oauth2
 - Discord components: https://docs.discord.com/developers/components/reference
