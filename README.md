@@ -15,9 +15,9 @@ including after switching branches while the script stays running.
 Press Ctrl+C to stop both. If either server exits, the other is stopped too.
 
 When switching branches, an existing SQLite database may reference migrations
-absent from that branch. `run.sh` saves a timestamped backup of that database
-and starts a fresh `local.db` automatically. To keep branch data separate,
-choose another SQLite file:
+absent from that branch. In that case, `run.sh` reports the migration error and
+leaves the database untouched. To keep branch data separate, choose another
+SQLite file:
 
 ```bash
 DATABASE_URL=sqlite:///./launcher-local.db ./run.sh
