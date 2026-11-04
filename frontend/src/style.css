@@ -206,6 +206,8 @@ dialog::backdrop {
 .organization-settings form { display: grid; gap: 10px; }
 .organization-settings input, .organization-settings select { width: 100%; padding: 9px 11px; border: 1px solid #bdc9c0; border-radius: 6px; background: #fff; }
 .organization-settings button { justify-self: start; }
+.create-organization-form { display: grid; gap: 10px; }
+.create-organization-form input { width: 100%; padding: 9px 11px; border: 1px solid #bdc9c0; border-radius: 6px; background: #fff; }
 dialog h2 {
   overflow-wrap: anywhere;
 }

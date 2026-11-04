@@ -1,6 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { X } from "lucide-react";
 import { api, errorMessage, mutationOptions } from "./api";
 import LoadingIndicator from "./LoadingIndicator";
+import { isBackdropClick } from "./dialogBackdrop";
 
 interface Organization { id: string; name: string; created_by: string; role: "user" | "editor" | "admin" }
 interface Member { user_id: string; username: string; role: Organization["role"] }
@@ -13,6 +15,9 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [selectedId, setSelectedId] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
   const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const createDialog = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
   const [newUser, setNewUser] = useState<User>();
@@ -22,6 +27,22 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const selected = organizations.find((org) => org.id === selectedId);
+
+  useEffect(() => {
+    if (!creating) return;
+    const dialog = createDialog.current;
+    const trigger = document.activeElement;
+    dialog?.showModal();
+    return () => {
+      dialog?.close();
+      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
+    };
+  }, [creating]);
+
+  function closeCreate() {
+    if (busy) return;
+    setCreating(false); setName(""); setCreateError("");
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -58,11 +79,11 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
     finally { setBusy(false); }
   }
   async function create(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault(); setBusy(true); setCreateError("");
     try {
       const created = await api<Organization>("/organizations", mutationOptions(csrf, { name: name.trim() }));
-      setName(""); await changeSelection(created.id); setRevision((value) => value + 1);
-    } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
+      setName(""); setCreating(false); await changeSelection(created.id); setRevision((value) => value + 1);
+    } catch (failure) { if (!onAccessError(failure)) setCreateError(errorMessage(failure)); }
     finally { setBusy(false); }
   }
   async function addUser(event: FormEvent) {
@@ -104,11 +125,22 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       <option value="">Personal events</option>
       {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
     </select>
-    <form onSubmit={(event) => void create(event)}>
-      <label htmlFor="organization-name">Create an organization</label>
-      <input id="organization-name" required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
-      <button type="submit" disabled={busy || !name.trim()}>Create</button>
-    </form>
+    <button type="button" disabled={busy} onClick={() => { setCreateError(""); setCreating(true); }}>Create</button>
+    {creating && <dialog ref={createDialog} aria-labelledby="organization-create-heading"
+      onCancel={(event) => { event.preventDefault(); closeCreate(); }}
+      onClick={(event) => { if (isBackdropClick(event)) closeCreate(); }}>
+      <div className="event-modal-header">
+        <h2 id="organization-create-heading">Create an organization</h2>
+        <button type="button" aria-label="Close create organization" title="Close" disabled={busy} onClick={closeCreate}><X size={18} aria-hidden="true" /></button>
+      </div>
+      <form className="create-organization-form" onSubmit={(event) => void create(event)}>
+        <label htmlFor="organization-name">Organization name</label>
+        <input id="organization-name" autoFocus required maxLength={100} placeholder="Enter a unique name for your org"
+          value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
+        {createError && <p role="alert" className="error">{createError}</p>}
+        <div className="form-actions"><button type="submit" className="primary" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create"}</button></div>
+      </form>
+    </dialog>}
     {selected && <>
       <h3>{selected.name}</h3>
       <ul>{members.map((member) => <li key={member.user_id}>{member.username} — {selected.role === "admin" && member.user_id !== selected.created_by ?
