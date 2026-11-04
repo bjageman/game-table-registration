@@ -619,6 +619,75 @@ def test_settings_switch_channels_without_retargeting_existing_events(client):
     base.publish.assert_not_called()
 
 
+def test_organization_discord_settings_follow_selection_and_admin_role(client):
+    owner = login(client)
+    discord = client.app.state.discord
+    discord.destination_channels.return_value = (
+        "Server A",
+        [{"id": "101", "name": "personal"}, {"id": "102", "name": "shared"}],
+    )
+    discord.bot.side_effect = lambda _method, path: {
+        "name": "Server A" if path.startswith("/guilds/") else "personal"
+    }
+    assert (
+        client.put(
+            "/api/settings",
+            headers=owner,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 200
+    )
+    org_id = client.post(
+        "/api/organizations", headers=owner, json={"name": "Shared"}
+    ).json()["id"]
+    client.put(
+        "/api/organizations/selection", headers=owner, json={"organization_id": org_id}
+    )
+    assert client.get("/api/settings").json()["organization_role"] == "admin"
+    assert (
+        client.put(
+            "/api/settings",
+            headers=owner,
+            json={"guild_id": "100", "channel_id": "102"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
+
+    discord.identity.return_value = {"id": "second", "username": "Second"}
+    second = login(client)
+    discord.identity.return_value = {"id": "owner", "username": "organizer"}
+    owner = login(client)
+    client.put(
+        f"/api/organizations/{org_id}/members/second",
+        headers=owner,
+        json={"user_id": "second", "role": "editor"},
+    )
+    discord.identity.return_value = {"id": "second", "username": "Second"}
+    second = login(client)
+    client.put(
+        "/api/organizations/selection", headers=second, json={"organization_id": org_id}
+    )
+    assert client.get("/api/settings").json()["organization_role"] == "editor"
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
+    assert (
+        client.put(
+            "/api/settings",
+            headers=second,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 403
+    )
+    assert client.delete("/api/settings", headers=second).status_code == 409
+
+    discord.identity.return_value = {"id": "owner", "username": "organizer"}
+    owner = login(client)
+    client.put(
+        "/api/organizations/selection", headers=owner, json={"organization_id": None}
+    )
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "101"
+
+
 def test_settings_are_per_user_and_recheck_permissions(client):
     first_headers = login(client)
     base = client.app.state.discord
