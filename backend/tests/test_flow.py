@@ -567,6 +567,70 @@ def test_player_profiles_are_scoped_to_guild_and_global_weight_can_be_edited(cli
         assert db.get(PlayerProfile, ("other", "123")).weighting == 2.0
 
 
+def test_admin_removes_organization_member_and_selection(client):
+    owner = login(client)
+    org_id = client.post(
+        "/api/organizations", headers=owner, json={"name": "Friday Crew"}
+    ).json()["id"]
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second = login(client)
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner = login(client)
+    assert (
+        client.put(
+            f"/api/organizations/{org_id}/members/second",
+            headers=owner,
+            json={"user_id": "second", "role": "editor"},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second = login(client)
+    client.put(
+        "/api/organizations/selection",
+        headers=second,
+        json={"organization_id": org_id},
+    )
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/owner", headers=second
+        ).status_code
+        == 403
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner = login(client)
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/owner", headers=owner
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/second", headers=owner
+        ).status_code
+        == 204
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    login(client)
+    assert client.get("/api/me").json()["organization"] is None
+
+
 def test_settings_switch_channels_without_retargeting_existing_events(client):
     headers = login(client)
     base = client.app.state.discord

@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { api, errorMessage, mutationOptions } from "./api";
 import LoadingIndicator from "./LoadingIndicator";
 import { isBackdropClick } from "./dialogBackdrop";
+import ConfirmationDialog from "./ConfirmationDialog";
 
 interface Organization { id: string; name: string; created_by: string; role: "user" | "editor" | "admin" }
 interface Member { user_id: string; username: string; role: Organization["role"] }
@@ -23,6 +24,8 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [newUser, setNewUser] = useState<User>();
   const [addingUser, setAddingUser] = useState(false);
   const [addUserError, setAddUserError] = useState("");
+  const [removingMember, setRemovingMember] = useState<Member>();
+  const [removeError, setRemoveError] = useState("");
   const addUserDialog = useRef<HTMLDialogElement>(null);
   const [role, setRole] = useState<Organization["role"]>("user");
   const [loading, setLoading] = useState(true);
@@ -125,6 +128,18 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
     } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
     finally { setBusy(false); }
   }
+  async function removeMember() {
+    if (!selected || !removingMember) return;
+    setBusy(true); setRemoveError("");
+    try {
+      await api(`/organizations/${selected.id}/members/${removingMember.user_id}`, {
+        ...mutationOptions(csrf), method: "DELETE",
+      });
+      setMembers((current) => current.filter((member) => member.user_id !== removingMember.user_id));
+      setRemovingMember(undefined);
+    } catch (failure) { if (!onAccessError(failure)) setRemoveError(errorMessage(failure)); }
+    finally { setBusy(false); }
+  }
   async function remove() {
     if (!selected) return;
     const creator = selected.created_by === userId;
@@ -162,11 +177,23 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
     </dialog>}
     {selected && <>
       <h3>{selected.name}</h3>
-      <ul>{members.map((member) => <li key={member.user_id}>{member.username} — {selected.role === "admin" && member.user_id !== selected.created_by ?
-        <select aria-label={`Permission for ${member.username}`} value={member.role} disabled={busy}
-          onChange={(event) => void changeRole(member, event.target.value as Organization["role"])}>
-          <option value="user">User</option><option value="editor">Editor</option><option value="admin">Admin</option>
-        </select> : member.role}</li>)}</ul>
+      <div className="organization-member-table-wrap"><table className="organization-member-table">
+        <thead><tr><th scope="col">Username</th><th scope="col">Permission</th><th scope="col">Delete</th></tr></thead>
+        <tbody>{members.map((member) => <tr key={member.user_id}>
+          <td>{member.username}</td>
+          <td><select aria-label={`Permission for ${member.username}`} value={member.role}
+            disabled={busy || selected.role !== "admin" || member.user_id === selected.created_by}
+            onChange={(event) => void changeRole(member, event.target.value as Organization["role"])}>
+            <option value="user">User</option><option value="editor">Editor</option><option value="admin">Admin</option>
+          </select></td>
+          <td><button type="button" aria-label={`Delete ${member.username}`} disabled={busy || selected.role !== "admin" || member.user_id === selected.created_by || member.user_id === userId}
+            onClick={() => { setRemoveError(""); setRemovingMember(member); }}>Delete</button></td>
+        </tr>)}</tbody>
+      </table></div>
+      {removingMember && <ConfirmationDialog title={`Remove ${removingMember.username}?`} busy={busy} error={removeError}
+        onCancel={() => { setRemovingMember(undefined); setRemoveError(""); }} onConfirm={() => void removeMember()}>
+        <p>Are you sure you want to remove {removingMember.username} from {selected.name}?</p>
+      </ConfirmationDialog>}
       {selected.role === "admin" && <button type="button" disabled={busy} onClick={() => { setAddUserError(""); setAddingUser(true); }}>Add User</button>}
       {selected.role === "admin" && addingUser && <dialog ref={addUserDialog} aria-labelledby="organization-add-user-heading"
         onCancel={(event) => { event.preventDefault(); closeAddUser(); }}
