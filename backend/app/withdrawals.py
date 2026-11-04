@@ -229,7 +229,6 @@ def withdraw(
             )
             part = (announce_id if announce_id is not None else -1) + 1
             content = (
-                f"**{clean(event.title)} — Table Update**\n"
                 f"{promoted_name} has been promoted to **{clean(table_name)}** "
                 f"after {left_name} left their seat.\n"
             )
@@ -264,7 +263,7 @@ def withdraw(
 def manager_remove(
     engine: Engine, guild_id: str, event_id: str, player_id: str
 ) -> bool:
-    """Remove an assigned player without promoting anyone automatically."""
+    """Remove a player, promoting from the waitlist unless the table is overfull."""
     with Session(engine) as db:
         claimed = db.execute(
             update(Event)
@@ -282,10 +281,22 @@ def manager_remove(
         run = db.get(LotteryRun, event_id)
         if run is None:
             return False
+        event = db.get(Event, event_id)
+        if event is None:
+            return False
         current = current_result(db, run)
         table_name = current["assignments"].get(player_id)
         if table_name is None:
             return False
+        table = next(row for row in current["tables"] if row["name"] == table_name)
+        capacity = next(
+            row["capacity"] for row in event.tables if row["name"] == table_name
+        )
+        promoted_id = (
+            table["waitlist"][0]["id"]
+            if len(table["players"]) <= capacity and table["waitlist"]
+            else None
+        )
         removed_at = time.time()
         db.add(
             EventWithdrawal(
@@ -293,9 +304,66 @@ def manager_remove(
                 discord_id=player_id,
                 table_name=table_name,
                 withdrawn_at=removed_at,
-                promoted_id=None,
+                promoted_id=promoted_id,
             )
         )
+        left = next(
+            player for player in run.snapshot["players"] if player["id"] == player_id
+        )
+        left_name = (
+            clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
+        )
+        if promoted_id:
+            promoted_name = (
+                clean(
+                    next(
+                        player["name"]
+                        for player in run.snapshot["players"]
+                        if player["id"] == promoted_id
+                    )
+                )
+                if promoted_id.startswith("test-")
+                else f"<@{promoted_id}>"
+            )
+            content = (
+                f"{promoted_name} has been promoted from the waitlist "
+                f"to **{clean(table_name)}**."
+            )
+            mentions = [] if promoted_id.startswith("test-") else [promoted_id]
+        else:
+            content = f"{left_name} has left their seat at **{clean(table_name)}**."
+            mentions = [] if player_id.startswith("test-") else [player_id]
+        channel_id = event.channel_id or db.scalar(
+            select(Announcement.channel_id)
+            .where(Announcement.event_id == event_id)
+            .order_by(Announcement.part)
+            .limit(1)
+        )
+        if channel_id:
+            part = db.scalar(
+                select(func.max(Announcement.part)).where(
+                    Announcement.event_id == event_id
+                )
+            )
+            db.add(
+                Announcement(
+                    id=str(uuid.uuid4()),
+                    event_id=event_id,
+                    part=(part if part is not None else -1) + 1,
+                    kind="promotion",
+                    channel_id=channel_id,
+                    payload={
+                        "content": content,
+                        "allowed_mentions": {"parse": [], "users": mentions},
+                        "nonce": hashlib.sha256(
+                            f"{event_id}:manager-removal:{player_id}".encode()
+                        ).hexdigest()[:24],
+                        "enforce_nonce": True,
+                    },
+                    created_at=removed_at,
+                    next_attempt=removed_at,
+                )
+            )
         db.commit()
         return True
 

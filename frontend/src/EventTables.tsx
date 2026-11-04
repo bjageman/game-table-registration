@@ -41,7 +41,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [playerQuery, setPlayerQuery] = useState("");
   const [availablePlayers, setAvailablePlayers] = useState<{ discord_id: string; discord_name: string; real_name: string }[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
-  const [removing, setRemoving] = useState<SignupPlayer>();
+  const [removing, setRemoving] = useState<{ player: SignupPlayer; willPromote: boolean }>();
   const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
   const addDialog = useRef<HTMLDialogElement>(null);
   const hasSignups = event.status === "open" || event.status === "closing" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
@@ -175,8 +175,8 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       </div>
       <div className="form-actions"><button type="button" disabled={saving} onClick={closeAddPlayer}>Cancel</button></div>
     </dialog>}
-    {removing && <ConfirmationDialog title={event.status === "assigned" ? "Remove player from table?" : "Remove player from signups?"} busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing)}>
-      <p>{event.status === "assigned" ? `Remove ${removing.display_name || removing.name} from their table? No waitlisted player will be added automatically.` : `Remove ${removing.display_name || removing.name} from this event’s signups? They will not be notified.`}</p>
+    {removing && <ConfirmationDialog title={event.status === "assigned" ? "Remove player from table?" : "Remove player from signups?"} busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing.player)}>
+      <p>{event.status === "assigned" ? `Remove ${removing.player.display_name || removing.player.name} from their table? ${removing.willPromote ? "The next waitlisted player will be added automatically." : "No waitlisted player will be added automatically."}` : `Remove ${removing.player.display_name || removing.player.name} from this event’s signups? They will not be notified.`}</p>
     </ConfirmationDialog>}
     {assigning && <ConfirmationDialog title="Add waitlisted player?" busy={saving} error={actionError}
       onCancel={() => { setAssigning(undefined); setActionError(""); }} onConfirm={() => void assignWaitlistedPlayer()}>
@@ -188,7 +188,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     </p>}
     {actionError && !assigning && <p role="alert" className="error">{actionError}</p>}
     <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
-      canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingTable(table); }} onRemovePlayer={setRemoving}
+      canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingTable(table); }} onRemovePlayer={(player, willPromote) => setRemoving({ player, willPromote })}
       onAssignWaitlisted={!readOnly && event.status === "assigned" ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}
       editingWeight={editingWeight} weight={weight} saving={saving} readOnly={readOnly} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 1)); }}
@@ -215,7 +215,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
   canEditSignups?: boolean;
   canRemoveSignups?: boolean;
   onAddPlayer?: (table: string) => void;
-  onRemovePlayer?: (player: SignupPlayer) => void;
+  onRemovePlayer?: (player: SignupPlayer, willPromote: boolean) => void;
   onAssignWaitlisted?: (player: SignupPlayer, table: string) => void;
 }) {
   const [sorts, setSorts] = useState<Record<string, SortState>>({});
@@ -273,7 +273,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               </form> : <button type="button" className={`player-weight ${(player.weighting ?? 1) < 1 ? "low" : (player.weighting ?? 1) > 1 ? "high" : ""}`}
                 title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 1).toFixed(1)}`} disabled={saving}
                 onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 1).toFixed(1)}</button>)}
-              {canRemoveSignups && <button type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from ${event.status === "assigned" ? "table" : "signups"}`} title={event.status === "assigned" ? "Remove from table" : "Remove from signups"} onClick={() => onRemovePlayer?.(player)}>✕</button>}
+              {canRemoveSignups && <button type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from ${event.status === "assigned" ? "table" : "signups"}`} title={event.status === "assigned" ? "Remove from table" : "Remove from signups"} onClick={() => onRemovePlayer?.(player, event.status === "assigned" && Boolean(row?.waitlist?.length) && (players?.length ?? 0) <= table.capacity)}>✕</button>}
             </li>)}
           </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}
           {canEditSignups && <button type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}

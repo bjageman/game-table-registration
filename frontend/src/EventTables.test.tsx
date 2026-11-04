@@ -102,6 +102,21 @@ it("prefers display names for assigned and waiting players, with Discord name fa
   expect(screen.queryByText("Wt")).not.toBeInTheDocument();
 });
 
+it.each([
+  [1, "The next waitlisted player will be added automatically."],
+  [2, "No waitlisted player will be added automatically."],
+])("explains removal from a table with %i players and one seat", async (count, message) => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
+    { name: "Table A", players: [{ id: "1", name: "Mary" }, ...(count === 2 ? [{ id: "2", name: "Dan" }] : [])], waitlist: [{ id: "3", name: "Carl" }] },
+    { name: "Table B", players: [], waitlist: [] },
+  ]))));
+  render(<EventTables csrf="csrf" event={{ ...event, status: "assigned", tables: [{ name: "Table A", capacity: 1 }, event.tables[1]] }} onAccessError={() => false} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Remove Mary from table" }));
+  expect(screen.getByRole("dialog", { name: "Remove player from table?" })).toHaveTextContent(message);
+});
+
 it("labels the guarantee, player, and weight columns for every open table", () => {
   render(<TableColumns event={event} rows={[
     { name: "Table A", players: [{ id: "1", name: "Mary" }] },
