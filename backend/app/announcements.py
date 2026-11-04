@@ -32,10 +32,13 @@ def payloads(
         )
 
     sections: list[tuple[str, list[tuple[str, str | None]]]] = []
+    capacities = {table["name"]: table["capacity"] for table in event.tables or []}
     for table in result["tables"]:
-        header = f"**{clean(table['name'])} — {len(table['players'])} assigned**"
+        capacity = capacities.get(table["name"])
+        count = f"{len(table['players'])}/{capacity}" if capacity is not None else str(len(table["players"]))
+        header = f"**{clean(table['name'])} ({count})**"
         lines = [
-            (f"- {name(p)}", p["id"] if not is_test else None) for p in table["players"]
+            (name(p), p["id"] if not is_test else None) for p in table["players"]
         ]
         sections.append((header, lines or [("No players assigned.", None)]))
     by_id = {p["id"]: p for p in snapshot["players"]}
@@ -44,34 +47,35 @@ def payloads(
         choices = ", ".join(clean(name) for name in by_id[pid]["choices"])
         waiting.append((f"{i}. {name(by_id[pid])} — {choices}", None))
     if waiting:
-        sections.append(("**Waitlist**", waiting))
-    chunks: list[tuple[str, list[str]]] = []
-    for header, entries in sections:
-        content = [header]
-        mentions: list[str] = []
-        for line, mention in entries:
-            if (
-                sum(len(s) + 1 for s in content) + len(line) + 1 > 1400
-                or mention
-                and len(mentions) >= 100
-            ):
-                chunks.append(("\n".join(content), mentions))
-                content = [header + " (continued)"]
-                mentions = []
-            content.append(line)
-            if mention:
-                mentions.append(mention)
-        chunks.append(("\n".join(content), mentions))
+        sections.append((f"**Waitlist ({len(waiting)})**", waiting))
     poll_url = (
         f"https://discord.com/channels/{event.guild_id}/{channel_id}/{event.message_id}"
     )
     introduction = (
         f"**{'[TEST] ' if is_test else ''}{clean(event.title)} — Table Assignments**"
-        f"\n[Signup message]({poll_url})\n\n"
+        + (f"\nEvent: <t:{int(event.starts_at)}:F>" if event.starts_at else "")
+        + f"\n[Signup message]({poll_url})"
     )
+    chunks: list[tuple[str, list[str]]] = []
+    lines = [introduction]
+    mentions: list[str] = []
+    for header, entries in sections:
+        if len("\n".join(lines)) + len(header) + 2 > 1900:
+            chunks.append(("\n".join(lines), mentions))
+            lines, mentions = [], []
+        lines.append(header)
+        for line, mention in entries:
+            if len("\n".join(lines)) + len(line) + 1 > 1900 or mention and len(mentions) >= 100:
+                chunks.append(("\n".join(lines), mentions))
+                lines, mentions = [header + " (continued)"], []
+            lines.append(line)
+            if mention:
+                mentions.append(mention)
+    if lines:
+        chunks.append(("\n".join(lines), mentions))
     return [
         {
-            "content": (introduction if i == 0 else "") + body,
+            "content": body,
             "allowed_mentions": {"parse": [], "users": mentions},
             "nonce": hashlib.sha256(f"{event.id}:assignments:{i}".encode()).hexdigest()[
                 :24
