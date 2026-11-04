@@ -337,6 +337,29 @@ class DiscordAPI:
             result, key=lambda row: row["name"].casefold()
         )
 
+    def organization_channels(self, guild_id: str) -> tuple[str, list[dict[str, str]]]:
+        """List channels the bot can use for an organization admin."""
+        guild = self.bot("GET", f"/guilds/{guild_id}")
+        roles = self.bot_items(f"/guilds/{guild_id}/roles")
+        bot = self.bot("GET", "/users/@me")
+        bot_member = self.bot("GET", f"/guilds/{guild_id}/members/{bot['id']}")
+        required = (1 << 10) | (1 << 11) | (1 << 16)
+        if self.settings.discord_signup_mode == "custom":
+            required |= 1 << 6
+        if self.settings.discord_signup_mode == "poll":
+            required |= 1 << 49
+        channels = [
+            {"id": str(channel["id"]), "name": str(channel["name"])}
+            for channel in self.bot_items(f"/guilds/{guild_id}/channels")
+            if channel.get("type") == 0
+            and channel_permissions(guild, bot_member, roles, channel, str(bot["id"]))
+            & required
+            == required
+        ]
+        return str(guild["name"]), sorted(
+            channels, key=lambda row: row["name"].casefold()
+        )
+
     def authorize_destination(self, user_id: str) -> None:
         guild, member, roles = self.manager_context(
             user_id, self.settings.discord_guild_id

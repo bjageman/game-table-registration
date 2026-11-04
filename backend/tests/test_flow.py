@@ -690,6 +690,10 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
         "Server A",
         [{"id": "101", "name": "personal"}, {"id": "102", "name": "shared"}],
     )
+    discord.organization_channels.return_value = (
+        "Server A",
+        [{"id": "101", "name": "personal"}, {"id": "102", "name": "shared"}],
+    )
     discord.bot.side_effect = lambda _method, path: {
         "name": "Server A" if path.startswith("/guilds/") else "personal"
     }
@@ -708,6 +712,13 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
         "/api/organizations/selection", headers=owner, json={"organization_id": org_id}
     )
     assert client.get("/api/settings").json()["organization_role"] == "admin"
+    discord.destination_channels.side_effect = HTTPException(
+        403, "You need Manage Server permission to configure this server."
+    )
+    assert (
+        client.get("/api/settings/channels?guild_id=100").json()["channels"][1]["id"]
+        == "102"
+    )
     assert (
         client.put(
             "/api/settings",
@@ -717,6 +728,7 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
         == 200
     )
     assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
+    discord.organization_channels.assert_called()
 
     discord.identity.return_value = {"id": "second", "username": "Second"}
     second = login(client)
@@ -733,6 +745,7 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
         "/api/organizations/selection", headers=second, json={"organization_id": org_id}
     )
     assert client.get("/api/settings").json()["organization_role"] == "editor"
+    assert client.get("/api/settings/channels?guild_id=100").status_code == 403
     assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
     assert (
         client.put(

@@ -108,7 +108,22 @@ def register_settings(
         if not guild_id.isascii() or not guild_id.isdecimal() or len(guild_id) > 32:
             raise HTTPException(422, "Choose a valid server")
         discord: DiscordAPI = app.state.discord
-        guild_name, rows = discord.destination_channels(session.user_id, guild_id)
+        with DBSession(engine) as db:
+            selected = db.get(OrganizationSelection, session.user_id)
+            organization = (
+                db.get(Organization, selected.organization_id) if selected else None
+            )
+            membership = (
+                db.get(OrganizationMember, (organization.id, session.user_id))
+                if organization
+                else None
+            )
+        if organization and membership:
+            if membership.role != "admin" or organization.guild_id != guild_id:
+                raise HTTPException(403, "Organization admin access required")
+            guild_name, rows = discord.organization_channels(guild_id)
+        else:
+            guild_name, rows = discord.destination_channels(session.user_id, guild_id)
         return {"guild_name": guild_name, "channels": rows}
 
     @app.put("/api/settings")
@@ -134,8 +149,10 @@ def register_settings(
                         409, "The organization server cannot be changed here"
                     )
         discord: DiscordAPI = app.state.discord
-        guild_name, channels = discord.destination_channels(
-            session.user_id, body.guild_id
+        guild_name, channels = (
+            discord.organization_channels(body.guild_id)
+            if organization and membership
+            else discord.destination_channels(session.user_id, body.guild_id)
         )
         channel = next((c for c in channels if c["id"] == body.channel_id), None)
         if channel is None:
