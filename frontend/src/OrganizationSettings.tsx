@@ -154,8 +154,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   return <div className="organization-settings">
     {loading && <LoadingIndicator label="Loading organizations…" />}
     {error && <p role="alert" className="error">{error}</p>}
-    <label htmlFor="organization-select">Organization</label>
-    <select id="organization-select" value={selectedId} disabled={busy} onChange={(event) => void changeSelection(event.target.value)}>
+    <select id="organization-select" aria-label="Organization" value={selectedId} disabled={busy} onChange={(event) => void changeSelection(event.target.value)}>
       <option value="">Personal events</option>
       {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
     </select>
