@@ -1033,7 +1033,9 @@ def test_close_signups_assigns_once_and_replays_saved_results(client):
 
 
 def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(client):
-    headers, _, path, _ = closing_event(client)
+    from app.models import Announcement, EventWithdrawal
+
+    headers, event, path, _ = closing_event(client)
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     rows = client.get(path + "/signups").json()
@@ -1081,6 +1083,73 @@ def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(cli
     assert [player["id"] for player in after["waitlist"]] == [
         player["id"] for player in updated["waitlist"]
     ]
+    with DBSession(client.app.state.engine) as db:
+        notice = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .one()
+        )
+        assert (
+            notice.payload["content"]
+            == f"<@{seated}> has left their seat at **{table['name']}**."
+        )
+        assert notice.payload["allowed_mentions"] == {"parse": [], "users": [seated]}
+        withdrawal = db.get(EventWithdrawal, (event["id"], seated))
+        assert withdrawal is not None and withdrawal.promoted_id is None
+
+
+def test_manager_remove_from_full_table_promotes_next_waitlisted_player(client):
+    from app.models import Announcement, EventWithdrawal
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    seated = table["players"][0]["id"]
+    promoted = table["waitlist"][0]["id"]
+    assert (
+        client.delete(f"{path}/manager-players/{seated}", headers=headers).status_code
+        == 200
+    )
+    after = next(
+        row
+        for row in client.get(path + "/signups").json()
+        if row["name"] == table["name"]
+    )
+    assert [player["id"] for player in after["players"]] == [promoted]
+    with DBSession(client.app.state.engine) as db:
+        withdrawal = db.get(EventWithdrawal, (event["id"], seated))
+        assert withdrawal is not None and withdrawal.promoted_id == promoted
+        notice = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .one()
+        )
+        expected = (
+            f"<@{promoted}> has been promoted from the waitlist to **{table['name']}**."
+        )
+        assert notice.payload["content"] == expected
+
+
+def test_reaction_promotion_notice_has_no_table_update_heading(client):
+    from app.models import Announcement
+    from app.withdrawals import withdraw
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    seated = table["players"][0]["id"]
+    assert withdraw(client.app.state.engine, "guild", "channel", "announcement", seated)
+    with DBSession(client.app.state.engine) as db:
+        notice = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .one()
+        )
+        assert "Table Update" not in notice.payload["content"]
+        assert notice.payload["content"].startswith("<@")
+        assert "has been promoted to" in notice.payload["content"]
 
 
 def test_close_waits_for_finalization_and_freezes_weights_before_retries(client):
