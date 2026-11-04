@@ -140,7 +140,7 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
         void close();
       }
     }}>
-    <div className="event-modal-header">
+    <div className="event-modal-header player-profile-header">
       <h2 id={heading}>Player Information</h2>
       {profile?.is_test && <span className="badge">Test User</span>}
       <button type="button" aria-label="Close player information" title="Close" onClick={() => void close()} autoFocus><X size={18} aria-hidden="true" /></button>
