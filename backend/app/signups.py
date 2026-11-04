@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.announcements import clean
 from app.config import Settings
+from app.event_description import CUSTOM_DESCRIPTION, signup_description
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
@@ -22,9 +23,7 @@ def publication(event: Event, closes_at: float) -> dict[str, Any]:
             f"Event: <t:{int(event.starts_at)}:F>\n"
             f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)\n\n"
             f"{tables}\n\n"
-            "Choose every specific table you would attend. "
-            "This is a lottery entry, not a guaranteed seat. "
-            "View, change, or withdraw your choices below, directly in Discord."
+            f"{signup_description(event.description, CUSTOM_DESCRIPTION)}"
         ),
         "allowed_mentions": {"parse": []},
         "components": [
