@@ -39,6 +39,7 @@ from app.connection_settings import (
     register_settings,
 )
 from app.discord_api import DiscordAPI, DiscordRequestError
+from app.event_description import POLL_DESCRIPTION, signup_description
 from app.gateway import SignupGateway
 from app.models import (
     Announcement,
@@ -92,6 +93,7 @@ class TableInput(BaseModel):
 
 class EventInput(BaseModel):
     title: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=300)
     starts_at: datetime
     duration_hours: int = Field(ge=1, le=768)
     tables: list[TableInput] = Field(min_length=1, max_length=10)
@@ -111,6 +113,7 @@ class EventInput(BaseModel):
 
 class EventTemplateInput(BaseModel):
     title: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=300)
     duration_hours: int = Field(ge=1, le=768)
     tables: list[TableInput] = Field(min_length=1, max_length=10)
 
@@ -448,6 +451,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "id": event.id,
             "title": event.title,
+            "description": event.description,
             "starts_at": event.starts_at,
             "duration_hours": event.duration_hours,
             "tables": event.tables,
@@ -1154,6 +1158,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "id": template.id,
             "title": template.title,
+            "description": template.description,
             "duration_hours": template.duration_hours,
             "tables": template.tables,
         }
@@ -1179,6 +1184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 id=str(uuid.uuid4()),
                 user_id=session.user_id,
                 title=body.title.strip(),
+                description=body.description.strip(),
                 duration_hours=body.duration_hours,
                 tables=[table.model_dump() for table in body.tables],
                 created_at=time.time(),
@@ -1719,6 +1725,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 guild_id=destination(request).discord_guild_id,
                 channel_id=destination(request).discord_channel_id,
                 title=body.title.strip(),
+                description=body.description.strip(),
                 starts_at=body.starts_at.timestamp(),
                 duration_hours=body.duration_hours,
                 tables=[table.model_dump() for table in body.tables],
@@ -1743,6 +1750,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 .values(
                     title=body.title.strip(),
+                    description=body.description.strip(),
                     starts_at=body.starts_at.timestamp(),
                     duration_hours=body.duration_hours,
                     tables=[table.model_dump() for table in body.tables],
@@ -2002,8 +2010,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             f"{event.title}**\n"
                             f"Event: <t:{int(event.starts_at)}:F>\n"
                             f"Signups open for {event.duration_hours} hours. "
-                            "Select every table you would attend. "
-                            "This is a lottery entry, not a guaranteed seat."
+                            f"{signup_description(event.description, POLL_DESCRIPTION)}"
                         ),
                         "allowed_mentions": {"parse": []},
                         "poll": {

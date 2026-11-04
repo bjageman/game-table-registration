@@ -31,6 +31,7 @@ class Event(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     guild_id: Mapped[str] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(String(300), default="")
     channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     starts_at: Mapped[float] = mapped_column(Float)
     duration_hours: Mapped[int]
@@ -64,6 +65,7 @@ class EventTemplate(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(String(300), default="")
     duration_hours: Mapped[int]
     tables: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     created_at: Mapped[float] = mapped_column(Float)
