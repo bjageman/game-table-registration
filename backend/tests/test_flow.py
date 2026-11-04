@@ -1321,6 +1321,72 @@ def test_close_immediately_announces_assignments_without_duplicate_delivery(clie
         assert db.query(Announcement).filter_by(event_id=event["id"]).count() == 2
 
 
+def test_update_discord_edits_saved_assignment_message_without_reposting(client):
+    from app.discord_api import DiscordRequestError
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    waiting = table["waitlist"][0]["id"]
+    assert (
+        client.post(
+            f"{path}/assigned-players/{waiting}",
+            headers=headers,
+            json={"table": table["name"]},
+        ).status_code
+        == 200
+    )
+    endpoint = path + "/announcement/update"
+    assert client.post(endpoint).status_code == 403
+    sent_before = discord.send_announcement.call_count
+    assert client.post(endpoint, headers=headers).json() == {"updated": 1}
+    discord.send_announcement.assert_called()
+    assert discord.send_announcement.call_count == sent_before
+    channel, message_id, edit = discord.at.return_value.edit_announcement.call_args.args
+    assert (channel, message_id) == ("channel", "announcement")
+    assert edit["allowed_mentions"] == {"parse": [], "users": []}
+    assert "<@" not in edit["content"]
+    table_field = next(
+        field
+        for field in edit["embeds"][0]["fields"]
+        if field["name"].startswith(table["name"])
+    )
+    assert table_field["name"].endswith("(2/1)")
+    assert f"<@{waiting}>" in table_field["value"]
+    with DBSession(client.app.state.engine) as db:
+        row = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="assignment")
+            .one()
+        )
+        assert row.payload["embeds"] == edit["embeds"]
+        db.add(
+            Announcement(
+                id="extra-assignment-part",
+                event_id=event["id"],
+                part=2,
+                kind="assignment",
+                channel_id="channel",
+                payload={"content": "Old extra roster", "nonce": "extra"},
+                state="sent",
+                message_id="old-extra",
+                created_at=time.time(),
+                next_attempt=time.time(),
+            )
+        )
+        db.commit()
+    assert client.post(endpoint, headers=headers).json() == {"updated": 2}
+    _, extra_id, extra_edit = discord.at.return_value.edit_announcement.call_args.args
+    assert extra_id == "old-extra"
+    assert extra_edit["embeds"] == []
+    assert extra_edit["content"].startswith("Assignments updated above")
+    discord.at.return_value.edit_announcement.side_effect = DiscordRequestError(404)
+    assert client.post(endpoint, headers=headers).status_code == 409
+
+
 def test_announcement_failure_retries_without_redrawing(client):
     from app.announcements import dispatch_due
     from app.discord_api import DiscordRequestError

@@ -20,7 +20,11 @@ def clean(text: str) -> str:
 
 
 def payloads(
-    event: Event, channel_id: str, result: dict[str, Any], snapshot: dict[str, Any]
+    event: Event,
+    channel_id: str,
+    result: dict[str, Any],
+    snapshot: dict[str, Any],
+    notify: bool = True,
 ) -> list[dict[str, Any]]:
     is_test = bool(snapshot.get("is_test"))
 
@@ -69,14 +73,17 @@ def payloads(
         ids: list[str] = []
         part = 0
         for line, mention in entries:
-            if lines and (
-                len("\n".join(lines)) + len(line) + 1 > 1024
-                or mention
-                and len(ids) >= 100
-                or mention
-                and sum(len(user_id) + 4 for user_id in ids) + len(mention) + 4
-                > max_ping_length
-            ):
+            field_full = len("\n".join(lines)) + len(line) + 1 > 1024
+            mentions_full = bool(
+                notify
+                and mention
+                and (
+                    len(ids) >= 100
+                    or sum(len(user_id) + 4 for user_id in ids) + len(mention) + 4
+                    > max_ping_length
+                )
+            )
+            if lines and (field_full or mentions_full):
                 field_parts.append(
                     (
                         {
@@ -111,11 +118,11 @@ def payloads(
         next_length = len(field["name"]) + len(field["value"])
         intro = introduction if not chunks else "Assignments continued (999)"
         ping_length = sum(len(user_id) + 4 for user_id in mentions + ids)
+        mentions_full = notify and (
+            len(mentions) + len(ids) > 100 or len(intro) + ping_length > 1900
+        )
         if fields and (
-            len(fields) >= 25
-            or field_length + next_length > 5800
-            or len(mentions) + len(ids) > 100
-            or len(intro) + ping_length > 1900
+            len(fields) >= 25 or field_length + next_length > 5800 or mentions_full
         ):
             chunks.append((fields, mentions))
             fields, mentions, field_length = [], [], 0
@@ -129,11 +136,11 @@ def payloads(
             "content": (introduction if i == 0 else f"Assignments continued ({i + 1})")
             + (
                 "\n" + " ".join(f"<@{user_id}>" for user_id in mentions)
-                if mentions
+                if notify and mentions
                 else ""
             ),
             "embeds": [{"color": 0x2F6B4F, "fields": fields}],
-            "allowed_mentions": {"parse": [], "users": mentions},
+            "allowed_mentions": {"parse": [], "users": mentions if notify else []},
             "nonce": hashlib.sha256(f"{event.id}:assignments:{i}".encode()).hexdigest()[
                 :24
             ],

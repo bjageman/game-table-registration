@@ -14,6 +14,7 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken, read
   const [attempt, setAttempt] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [updated, setUpdated] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -38,10 +39,21 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken, read
     } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
     finally { setBusy(false); }
   }
+  async function updateDiscord() {
+    if (busy) return;
+    setBusy(true); setError(""); setUpdated(false);
+    try {
+      await api(`/events/${encodeURIComponent(event.id)}/announcement/update`, { ...mutationOptions(csrf), method: "POST" });
+      setUpdated(true);
+    } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
+    finally { setBusy(false); }
+  }
   return <div className="announcement-status">
     {!delivery && !error && <p><LoadingIndicator label="Loading announcement status…" /></p>}
     {error && <p role="alert" className="error">{error}</p>}
     {delivery?.status === "sent" && delivery.url && <p><DiscordLink url={delivery.url} label="View Assignment Announcement">View Assignment Announcement</DiscordLink></p>}
+    {!readOnly && !event.archived_at && delivery?.status === "sent" && <button type="button" disabled={busy} onClick={() => void updateDiscord()}>Update Discord</button>}
+    {updated && <p role="status">Discord assignments updated.</p>}
     {delivery?.status === "pending" && <p role="status">Assignment announcement queued for Discord.</p>}
     {delivery?.status === "deleted" && <p>Assignment announcement removed from Discord.</p>}
     {delivery?.error && <p className="error">{delivery.error}</p>}
