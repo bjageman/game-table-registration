@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 import LoadingIndicator from "./LoadingIndicator";
 import ConfirmationDialog from "./ConfirmationDialog";
+import { isBackdropClick } from "./dialogBackdrop";
+import { X } from "lucide-react";
 
 interface SignupPlayer { id: string; name: string; display_name?: string; weighting?: number; guaranteed_table?: string | null; guaranteed_seat?: boolean }
 type SortColumn = "guarantee" | "player" | "weight";
@@ -48,6 +50,11 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
     `${player.discord_name} ${player.real_name} ${player.discord_id}`.toLocaleLowerCase().includes(normalizedQuery),
   ).slice(0, 30) : [];
+  function closeAddPlayer() {
+    if (saving) return;
+    setAddingTable(undefined);
+    setPlayerQuery("");
+  }
   useEffect(() => {
     const dialog = addDialog.current;
     if (addingTable) dialog?.showModal();
@@ -130,8 +137,13 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   return <>
     {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf}
       onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
-    {addingTable && <dialog ref={addDialog} className="event-modal" aria-labelledby="add-player-heading" onCancel={(event) => { event.preventDefault(); if (!saving) { setAddingTable(undefined); setPlayerQuery(""); } }}>
-      <h2 id="add-player-heading">Add a player to {addingTable}</h2>
+    {addingTable && <dialog ref={addDialog} className="event-modal" aria-labelledby="add-player-heading"
+      onCancel={(event) => { event.preventDefault(); closeAddPlayer(); }}
+      onClick={(event) => { if (isBackdropClick(event)) closeAddPlayer(); }}>
+      <div className="event-modal-header">
+        <h2 id="add-player-heading">Add a player to {addingTable}</h2>
+        <button type="button" disabled={saving} aria-label="Close add player" title="Close" onClick={closeAddPlayer}><X size={18} aria-hidden="true" /></button>
+      </div>
       <div className="add-player-search">
         <label htmlFor="add-player-query">Search players</label>
         <input id="add-player-query" type="search" autoFocus autoComplete="off" placeholder="Name or Discord ID"
@@ -148,7 +160,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
           </ul> : <p className="help">No known players match “{playerQuery}”.</p>
           : <p className="help">Type a name or Discord ID to see known players.</p>}
       </div>
-      <div className="form-actions"><button type="button" disabled={saving} onClick={() => { setAddingTable(undefined); setPlayerQuery(""); }}>Cancel</button></div>
+      <div className="form-actions"><button type="button" disabled={saving} onClick={closeAddPlayer}>Cancel</button></div>
     </dialog>}
     {removing && <ConfirmationDialog title="Remove player from signups?" busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing)}>
       <p>Remove {removing.display_name || removing.name} from this event’s signups? They will not be notified.</p>

@@ -20,10 +20,11 @@ it("focuses Cancel, blocks dismissal while busy, and restores trigger focus", ()
   view.rerender(<ConfirmationDialog {...props} busy={true}>Details</ConfirmationDialog>);
   expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Close dialog" })).toBeDisabled();
   fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
   expect(onCancel).not.toHaveBeenCalled();
   view.rerender(<ConfirmationDialog {...props} busy={false}>Details</ConfirmationDialog>);
-  fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
   expect(onCancel).toHaveBeenCalledOnce();
   view.unmount();
   expect(trigger).toHaveFocus();

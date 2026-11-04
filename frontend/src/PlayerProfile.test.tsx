@@ -39,6 +39,31 @@ it("saves display name on blur and when closing without a Save button", async ()
   expect(profile.real_name).toBe("Mary Smith-Jones");
 });
 
+it("saves name and weighting before Enter closes the player dialog", async () => {
+  const { profile, fetchMock } = mockProfile();
+  const onClose = vi.fn();
+  render(<PlayerProfile player={player} csrf="csrf" onClose={onClose} onAccessError={() => false} />);
+  const name = await screen.findByLabelText("Display Name");
+  fireEvent.change(name, { target: { value: "Mary Jones" } });
+  fireEvent.change(screen.getByLabelText("Global Weighting"), { target: { value: "2.5" } });
+  fireEvent.keyDown(name, { key: "Enter" });
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  expect(profile.real_name).toBe("Mary Jones");
+  expect(profile.weighting).toBe(2.5);
+  expect(fetchMock.mock.calls.filter(([, options]) => options.method === "PUT")).toHaveLength(2);
+});
+
+it("keeps the player dialog open when Enter finds an invalid weighting", async () => {
+  mockProfile();
+  const onClose = vi.fn();
+  render(<PlayerProfile player={player} csrf="csrf" onClose={onClose} onAccessError={() => false} />);
+  const weight = await screen.findByLabelText("Global Weighting");
+  fireEvent.change(weight, { target: { value: "20" } });
+  fireEvent.keyDown(weight, { key: "Enter" });
+  expect(screen.getByRole("alert")).toHaveTextContent("Choose a weighting from 0.1 to 10.");
+  expect(onClose).not.toHaveBeenCalled();
+});
+
 it("saves global weighting on blur in 0.1 steps", async () => {
   const { profile, fetchMock } = mockProfile();
   const onSaved = vi.fn();

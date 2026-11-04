@@ -36,6 +36,21 @@ it("suggests known players as the manager types and adds the selected player", a
   expect(await screen.findByRole("button", { name: "mary" })).toBeVisible();
 });
 
+it("closes the add player dialog with its X and a backdrop click", () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("[]")));
+  render(<EventTables csrf="csrf" event={{ ...event, status: "draft", discord_url: null }} onAccessError={() => false} />);
+  const add = screen.getAllByRole("button", { name: "Add Player" })[0];
+  fireEvent.click(add);
+  fireEvent.click(screen.getByRole("button", { name: "Close add player" }));
+  expect(screen.queryByRole("dialog", { name: /Add a player/ })).not.toBeInTheDocument();
+  fireEvent.click(add);
+  const dialog = screen.getByRole("dialog", { name: /Add a player/ });
+  fireEvent.click(dialog, { clientX: -1, clientY: -1 });
+  expect(dialog).not.toBeInTheDocument();
+});
+
 it("refreshes names and counts when votes are added and removed, and stops on close", async () => {
   vi.useFakeTimers();
   const fetchMock = vi.fn()
