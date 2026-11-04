@@ -66,9 +66,9 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
             )
         )
     )
-    for row in manual:
-        if row.discord_id not in withdrawn:
-            assignments[row.discord_id] = row.table_name
+    for manual_row in manual:
+        if manual_row.discord_id not in withdrawn:
+            assignments[manual_row.discord_id] = manual_row.table_name
 
     by_id = {player["id"]: player for player in run.snapshot["players"]}
     tables = []
@@ -91,15 +91,15 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
                 player = by_id[promoted]
                 players.append({"id": promoted, "name": player["name"]})
                 included.add(promoted)
-        for row in manual:
+        for manual_row in manual:
             if (
-                row.table_name == name
-                and assignments.get(row.discord_id) == name
-                and row.discord_id not in included
+                manual_row.table_name == name
+                and assignments.get(manual_row.discord_id) == name
+                and manual_row.discord_id not in included
             ):
-                player = by_id[row.discord_id]
-                players.append({"id": row.discord_id, "name": player["name"]})
-                included.add(row.discord_id)
+                player = by_id[manual_row.discord_id]
+                players.append({"id": manual_row.discord_id, "name": player["name"]})
+                included.add(manual_row.discord_id)
         tables.append(
             {
                 **table,
