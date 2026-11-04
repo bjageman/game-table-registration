@@ -39,12 +39,16 @@ it("shows organization members and allows an admin to add a known user", async (
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   render(<OrganizationSettings csrf="csrf" userId="owner" onSaved={async () => {}} onAccessError={() => false} />);
   expect(await screen.findByText("Organizer — admin")).toBeVisible();
-  fireEvent.change(screen.getByRole("searchbox", { name: "Add User" }), { target: { value: "Ma" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add User" }));
+  const dialog = screen.getByRole("dialog", { name: "Add User" });
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search users" }), { target: { value: "Ma" } });
   fireEvent.click(await screen.findByRole("button", { name: "Mary (123)" }));
   fireEvent.change(screen.getByRole("combobox", { name: "Permission" }), { target: { value: "editor" } });
-  fireEvent.click(screen.getByRole("button", { name: "Add User" }));
+  fireEvent.click(dialog.querySelector('button[type="submit"]')!);
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
     "/api/organizations/org/members/123", expect.objectContaining({ method: "PUT", body: JSON.stringify({ user_id: "123", role: "editor" }) }),
   ));

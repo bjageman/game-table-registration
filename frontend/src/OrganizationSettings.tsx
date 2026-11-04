@@ -21,6 +21,9 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
   const [newUser, setNewUser] = useState<User>();
+  const [addingUser, setAddingUser] = useState(false);
+  const [addUserError, setAddUserError] = useState("");
+  const addUserDialog = useRef<HTMLDialogElement>(null);
   const [role, setRole] = useState<Organization["role"]>("user");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -42,6 +45,22 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   function closeCreate() {
     if (busy) return;
     setCreating(false); setName(""); setCreateError("");
+  }
+
+  useEffect(() => {
+    if (!addingUser) return;
+    const dialog = addUserDialog.current;
+    const trigger = document.activeElement;
+    dialog?.showModal();
+    return () => {
+      dialog?.close();
+      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
+    };
+  }, [addingUser]);
+
+  function closeAddUser() {
+    if (busy) return;
+    setAddingUser(false); setQuery(""); setResults([]); setNewUser(undefined); setAddUserError("");
   }
 
   useEffect(() => {
@@ -88,11 +107,11 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   }
   async function addUser(event: FormEvent) {
     event.preventDefault(); if (!newUser || !selected) return;
-    setBusy(true); setError("");
+    setBusy(true); setAddUserError("");
     try {
       await api(`/organizations/${selected.id}/members/${newUser.id}`, { ...mutationOptions(csrf, { user_id: newUser.id, role }), method: "PUT" });
-      setNewUser(undefined); setQuery(""); setResults([]); setRevision((value) => value + 1);
-    } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
+      setAddingUser(false); setNewUser(undefined); setQuery(""); setResults([]); setRole("user"); setRevision((value) => value + 1);
+    } catch (failure) { if (!onAccessError(failure)) setAddUserError(errorMessage(failure)); }
     finally { setBusy(false); }
   }
   async function changeRole(member: Member, nextRole: Organization["role"]) {
@@ -148,8 +167,16 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
           onChange={(event) => void changeRole(member, event.target.value as Organization["role"])}>
           <option value="user">User</option><option value="editor">Editor</option><option value="admin">Admin</option>
         </select> : member.role}</li>)}</ul>
-      {selected.role === "admin" && <form onSubmit={(event) => void addUser(event)}>
-        <label htmlFor="organization-user-search">Add User</label>
+      {selected.role === "admin" && <button type="button" disabled={busy} onClick={() => { setAddUserError(""); setAddingUser(true); }}>Add User</button>}
+      {selected.role === "admin" && addingUser && <dialog ref={addUserDialog} aria-labelledby="organization-add-user-heading"
+        onCancel={(event) => { event.preventDefault(); closeAddUser(); }}
+        onClick={(event) => { if (isBackdropClick(event)) closeAddUser(); }}>
+        <div className="event-modal-header">
+          <h2 id="organization-add-user-heading">Add User</h2>
+          <button type="button" aria-label="Close add user" title="Close" disabled={busy} onClick={closeAddUser}><X size={18} aria-hidden="true" /></button>
+        </div>
+        <form className="create-organization-form" onSubmit={(event) => void addUser(event)}>
+        <label htmlFor="organization-user-search">Search users</label>
         <input id="organization-user-search" type="search" value={query} placeholder="Search known users" onChange={(event) => { setQuery(event.target.value); setNewUser(undefined); }} />
         {query.trim().length >= 2 && !newUser && <ul className="add-player-results" role="listbox" aria-label="Suggested users">
           {results.map((user) => <li key={user.id} role="option" aria-selected="false"><button type="button" onClick={() => { setNewUser(user); setQuery(user.username); }}>{user.username} ({user.id})</button></li>)}
@@ -159,8 +186,10 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
         <select id="organization-role" value={role} onChange={(event) => setRole(event.target.value as Organization["role"])}>
           <option value="user">User (read only)</option><option value="editor">Editor (full edit)</option><option value="admin">Admin (edit and add users)</option>
         </select>
-        <button type="submit" disabled={busy || !newUser}>Add User</button>
-      </form>}
+        {addUserError && <p role="alert" className="error">{addUserError}</p>}
+        <div className="form-actions"><button type="submit" className="primary" disabled={busy || !newUser}>{busy ? "Adding…" : "Add User"}</button></div>
+        </form>
+      </dialog>}
       <button type="button" disabled={busy} onClick={() => void remove()}>{selected.created_by === userId ? "Delete organization" : "Leave organization"}</button>
     </>}
   </div>;
