@@ -123,7 +123,7 @@ it("searches titles and sorts by title/date while respecting archived events", a
   }
   fireEvent.change(screen.getByRole("searchbox", { name: "Search events" }), { target: { value: " ALPHA " } });
   expect(titles()).toEqual(["Alpha Night"]);
-  fireEvent.click(screen.getByLabelText("Show Archived"));
+  fireEvent.click(screen.getByLabelText("Archived"));
   expect(titles()).toEqual(["Alpha Archived", "Alpha Night"]);
   fireEvent.change(screen.getByRole("searchbox", { name: "Search events" }), { target: { value: "Clocktower" } });
   expect(screen.getByText("No Matching Events")).toBeVisible();
