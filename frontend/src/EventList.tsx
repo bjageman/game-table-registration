@@ -51,7 +51,7 @@ export default function EventList({
               <span className="event-list-top">
                 <span className="event-list-title">{event.title}</span>
                 <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-                  {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
+                  {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}{event.is_test ? " · test" : ""}
                 </span>
                 <span className="event-table-count">{event.tables.length} {event.tables.length === 1 ? "table" : "tables"}</span>
               </span>
@@ -79,7 +79,7 @@ export default function EventList({
   );
 }
 
-function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, onDeleted, ...actions }: {
+export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, onDeleted, ...actions }: {
   event: EventRecord;
   canPopulateTestUsers: boolean;
   readOnly: boolean;
@@ -88,8 +88,33 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const signupOpensAt = event.published_at ?? event.scheduled_publish_at;
+  const signupClosesAt = event.closes_at ?? (
+    event.series_id && event.scheduled_publish_at != null
+      ? event.scheduled_publish_at + event.duration_hours * 3600
+      : null
+  );
+  useEffect(() => {
+    const heading = title.current;
+    if (!heading) return;
+    function fitTitle() {
+      if (!heading) return;
+      heading.style.removeProperty("font-size");
+      if (!window.matchMedia?.("(max-width: 600px)").matches) return;
+      const size = parseFloat(getComputedStyle(heading).fontSize);
+      if (heading.scrollWidth > heading.clientWidth && heading.clientWidth > 0) {
+        heading.style.fontSize = `${Math.max(1, size * heading.clientWidth / heading.scrollWidth - 0.2)}px`;
+      }
+    }
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fitTitle) : null;
+    observer?.observe(heading);
+    window.addEventListener("resize", fitTitle);
+    fitTitle();
+    return () => { observer?.disconnect(); window.removeEventListener("resize", fitTitle); };
+  }, [event.title]);
   useEffect(() => {
     const modal = dialog.current;
     const trigger = document.activeElement;
@@ -103,14 +128,14 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
     <dialog onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <div className="event-modal-header">
-        <h2 id={`event-${event.id}`}>{event.title}</h2>
+        <h2 ref={title} id={`event-${event.id}`}>{event.title}</h2>
         <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-          {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
+          {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}{event.is_test ? " · test" : ""}
         </span>
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {event.status !== "draft" && event.status !== "assigned" && (
+          {event.status !== "draft" && event.status !== "scheduled" && event.status !== "assigned" && (
           <button type="button" className="event-icon-action"
             aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
             title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
@@ -126,8 +151,8 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
           )}
           {!readOnly && event.status === "assigned" && !event.archived_at && <ArchiveEvent event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
           {!readOnly && event.status === "assigned" && event.archived_at && <DeleteDiscordMessages event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {!readOnly && event.status === "draft" && <PublishEvent event={event} {...actions} />}
-          {!readOnly && (event.status === "draft" || event.status === "open") && (
+          {!readOnly && (event.status === "draft" || event.status === "scheduled") && <PublishEvent event={event} {...actions} />}
+          {!readOnly && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && (
             <>
                 <EventActions
                   event={event}
@@ -155,22 +180,26 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
                 </dd>
               </div>
               {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
-              <div>
-                <dt>Signup duration</dt>
-                <dd>{event.duration_hours} hours from publication</dd>
-              </div>
-              {event.closes_at !== null && (
+              {signupOpensAt != null && (
                 <div>
-                  <dt>Signups close</dt>
+                  <dt>Signup Open</dt>
                   <dd>
-                    <time
-                      dateTime={new Date(event.closes_at * 1000).toISOString()}
-                    >
-                      {formatTime(event.closes_at)}
+                    <time dateTime={new Date(signupOpensAt * 1000).toISOString()}>
+                      {formatTime(signupOpensAt)}
                     </time>
                   </dd>
                 </div>
               )}
+                <div>
+                  <dt>Signup Close</dt>
+                  <dd>
+                    {signupClosesAt != null ? <time
+                      dateTime={new Date(signupClosesAt * 1000).toISOString()}
+                    >
+                      {formatTime(signupClosesAt)}
+                    </time> : "-"}
+                  </dd>
+                </div>
             </dl>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
             <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
@@ -179,7 +208,7 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
             </p>}
             <div className="form-actions">
               {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-              {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+              {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
             {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onAccessError={actions.onAccessError} />}
             {(event.status === "publishing" ||

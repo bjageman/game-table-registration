@@ -321,9 +321,27 @@ dd {
   gap: 20px;
 }
 .event-schedule-fields {
-  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 12px;
   align-items: start;
 }
+.event-title-start-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.scheduled-event-checkbox { display: flex; align-items: center; gap: 8px; margin: 20px 0; }
+@media (max-width: 600px) { .event-title-start-row { grid-template-columns: 1fr; } }
+.scheduled-events-panel { margin-bottom: 24px; padding-bottom: 20px; }
+.archive-filter-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.archive-filter-controls .archive-filter { margin-bottom: 16px; }
+.scheduled-events-content > h3 { margin-top: 0; }
+.scheduled-event-group { border: 1px solid #bdc9c0; border-radius: 8px; margin: 12px 0; padding: 12px; }
+.scheduled-event-group summary { display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 650; }
+.scheduled-event-group summary::before { content: "▸"; }
+.scheduled-event-group[open] > summary::before { content: "▾"; }
+.scheduled-event-group summary > button { margin-left: auto; flex-shrink: 0; }
+.delete-schedule-button { color: #b42318; border-color: #b42318; }
+.delete-schedule-button:hover { background: #fef3f2; }
+.scheduled-event-occurrences { display: grid; gap: 10px; margin-top: 14px; }
+.scheduled-event-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+.scheduled-event-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .date-time-fields {
   min-width: 0;
 }
@@ -470,6 +488,9 @@ dd {
   .event-list-dates { flex-direction: column; }
 }
 .event-modal { max-width: 1000px; max-height: calc(100dvh - 32px); overflow-y: auto; }
+.event-modal .event-tables {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
 .event-modal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .event-modal-header h2 { margin: 0; min-width: 0; }
 .event-modal-header > .badge { flex-shrink: 0; }
@@ -479,6 +500,11 @@ dd {
 .event-icon-action { padding: 8px; }
 @media (max-width: 600px) {
   .event-modal-header { gap: 8px; flex-wrap: wrap; }
+  .event-modal > .event-modal-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .event-modal > .event-modal-header h2 { grid-column: 1; grid-row: 1; white-space: nowrap; }
+  .event-modal > .event-modal-header > .badge { grid-column: 1; grid-row: 2; justify-self: start; }
+  .event-modal > .event-modal-header > button { grid-column: 2; grid-row: 1; }
+  .event-modal > .event-modal-header > .event-header-actions { grid-column: 1 / -1; grid-row: 3; }
   .event-header-actions { gap: 4px; order: 1; flex-basis: 100%; }
   .player-profile-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
   .player-profile-header > .badge { grid-column: 1; grid-row: 2; justify-self: start; }

@@ -65,6 +65,7 @@ def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
                 id=str(uuid.uuid4()),
                 series_id=series.id,
                 scheduled_publish_at=publish_at,
+                closes_at=start - series.closes_before_hours * 3600,
                 guild_id=series.guild_id,
                 channel_id=series.channel_id,
                 title=series.title,

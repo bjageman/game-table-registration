@@ -45,7 +45,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
   const addDialog = useRef<HTMLDialogElement>(null);
   const hasSignups = event.status === "open" || event.status === "closing" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
-  const canEditSignups = !readOnly && (event.status === "draft" || event.status === "open");
+  const canEditSignups = !readOnly && (event.status === "draft" || event.status === "scheduled" || event.status === "open");
   const canRemoveSignups = !readOnly && (canEditSignups || event.status === "assigned");
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
   const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
