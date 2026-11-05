@@ -26,7 +26,7 @@ def publication(event: Event, closes_at: float | None) -> dict[str, Any]:
         for i, t in enumerate(event.tables)
     )
     deadline = (
-        f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
+        f"Signups close: <t:{int(closes_at)}:F>"
         if closes_at is not None
         else "Signups stay open until closed manually."
     )
