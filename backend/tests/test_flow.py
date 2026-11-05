@@ -1612,6 +1612,56 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
         assert payload["allowed_mentions"].get("users", []) == []
 
 
+def test_reaction_close_merges_test_players_with_manager_overrides(client):
+    from app.models import Event, LotteryRun
+
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    assert (
+        client.post(
+            path + "/test-users", headers=headers, json={"players": 3}
+        ).status_code
+        == 200
+    )
+    users = client.get(path + "/signups").json()[0]["players"]
+    assert (
+        client.put(
+            f"{path}/manager-players/{users[0]['id']}",
+            headers=headers,
+            json={"table": "Clocktower", "name": "Updated Test Player"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.delete(
+            f"{path}/manager-players/{users[1]['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        saved = db.get(Event, event["id"])
+        saved.status = "open"
+        saved.signup_mode = "reactions"
+        saved.message_id = "message"
+        saved.reaction_checkpoint = time.time()
+        saved.closes_at = time.time() + 60
+        db.commit()
+    response = client.post(path + "/close", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "assigned"
+    with DBSession(client.app.state.engine) as db:
+        run = db.get(LotteryRun, event["id"])
+        assert run is not None
+        players = run.snapshot["players"]
+        assert len(players) == 2
+        assert len({player["id"] for player in players}) == 2
+        assert (
+            next(player for player in players if player["id"] == users[0]["id"])["name"]
+            == "Updated Test Player"
+        )
+
+
 def test_test_population_requires_server_allowlist_and_can_be_cleared(client):
     headers = login(client)
     event = client.post("/api/events", headers=headers, json=event_body()).json()

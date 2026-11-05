@@ -1,5 +1,6 @@
 """Close a Discord poll and commit exactly one immutable lottery result."""
 
+import logging
 import secrets
 import time
 from datetime import datetime
@@ -223,12 +224,7 @@ def close_and_assign(
         if custom:
             custom_snapshot = {
                 "tables": tables,
-                "players": apply_manager_players(
-                    db,
-                    event,
-                    signup_players(db, event, weights),
-                    weights,
-                ),
+                "players": signup_players(db, event, weights),
             }
         custom_ended_at = min(now, event.closes_at or now)
         assert message_id is not None
@@ -295,12 +291,6 @@ def close_and_assign(
             snapshot, ended_at = reconcile(
                 discord, message_id, tables, answers, weights
             )
-            with Session(engine) as db:
-                manager_event = db.get(Event, event_id)
-                if manager_event is not None:
-                    snapshot["players"] = apply_manager_players(
-                        db, manager_event, snapshot["players"], weights
-                    )
         if test_population:
             snapshot["is_test"] = True
             snapshot["players"].extend(
@@ -313,6 +303,12 @@ def close_and_assign(
                 }
                 for player in test_population["players"]
             )
+        with Session(engine) as db:
+            manager_event = db.get(Event, event_id)
+            if manager_event is not None:
+                snapshot["players"] = apply_manager_players(
+                    db, manager_event, snapshot["players"], weights
+                )
         snapshot["automatic_weight_adjustment"] = adjust_weights
         result = assign(with_guarantees(snapshot), seed)
         with Session(engine) as db:
@@ -416,6 +412,9 @@ def close_and_assign(
             return False
         if isinstance(failure, HTTPException):
             raise
+        logging.getLogger(__name__).exception(
+            "Unexpected signup closing failure for event %s", event_id
+        )
         raise HTTPException(
             502,
             "Could not confirm placement completion. "
