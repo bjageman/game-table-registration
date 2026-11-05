@@ -30,6 +30,9 @@ class Event(Base):
     __tablename__ = "events"
     __table_args__ = (UniqueConstraint("series_id", "starts_at"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    public_share_token: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True
+    )
     guild_id: Mapped[str] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(300), default="")

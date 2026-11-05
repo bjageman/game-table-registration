@@ -1886,6 +1886,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         deliver_event(engine, scoped_discord(request), event_id)
         return announcement_status(engine, event_id, guild_id)
 
+    @app.post("/api/events/{event_id}/share")
+    def share_event(event_id: str, request: Request) -> dict[str, str]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned":
+                raise HTTPException(409, "Only assigned events can be shared")
+            token = secrets.token_urlsafe(32)
+            db.execute(
+                update(Event)
+                .where(Event.id == event_id, Event.public_share_token.is_(None))
+                .values(public_share_token=token)
+            )
+            db.commit()
+            db.refresh(event)
+            return {"path": f"/#/shared/{event.public_share_token}"}
+
+    @app.get("/api/public/events/{token}")
+    def public_event(token: str, response: Response) -> dict[str, Any]:
+        response.headers["Cache-Control"] = "no-store"
+        with DBSession(engine) as db:
+            event = db.scalar(select(Event).where(Event.public_share_token == token))
+            if event is None or event.status != "assigned":
+                raise HTTPException(404, "Shared event not found")
+            run = db.get(LotteryRun, event.id)
+            if run is None:
+                raise HTTPException(404, "Shared event not found")
+            rows = list_names(current_result(db, run)["tables"], event.guild_id)
+            return {
+                "title": event.title,
+                "description": event.description,
+                "location": event.location,
+                "starts_at": event.starts_at,
+                "archived": event.archived_at is not None,
+                "tables": [
+                    {
+                        "name": row["name"],
+                        "capacity": next(
+                            t["capacity"]
+                            for t in event.tables
+                            if t["name"] == row["name"]
+                        ),
+                        **{
+                            key: [
+                                {"name": player.get("display_name") or player["name"]}
+                                for player in row.get(key, [])
+                            ]
+                            for key in ("players", "waitlist")
+                        },
+                    }
+                    for row in rows
+                ],
+            }
+
     @app.get("/api/events/{event_id}/assignments")
     def assignments(event_id: str, request: Request) -> dict[str, Any]:
         authenticated(request)
