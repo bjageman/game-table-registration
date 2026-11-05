@@ -94,7 +94,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     <div className="section-heading"><h2 id="settings-heading">Settings</h2></div>
     <Tabs className="settings-tabs" value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
       <Tab label="Discord" value="discord" id={`${tabId}-discord-tab`} aria-controls={`${tabId}-discord-panel`} />
-      <Tab label="Assignments" value="assignments" id={`${tabId}-assignments-tab`} aria-controls={`${tabId}-assignments-panel`} />
+      <Tab label="General" value="assignments" id={`${tabId}-assignments-tab`} aria-controls={`${tabId}-assignments-panel`} />
       <Tab label="Organization" value="organization" id={`${tabId}-organization-tab`} aria-controls={`${tabId}-organization-panel`} />
     </Tabs>
     <div role="tabpanel" id={`${tabId}-discord-panel`} aria-labelledby={`${tabId}-discord-tab`} hidden={tab !== "discord"}>

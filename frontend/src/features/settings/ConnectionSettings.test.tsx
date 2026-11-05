@@ -12,7 +12,7 @@ it("shows Connect and allows saving assignment settings without Discord", async 
   vi.stubGlobal("fetch", fetchMock);
   render(<ConnectionSettings {...props} />);
   expect(await screen.findByRole("link", { name: "Connect" })).toHaveAttribute("href", "/api/auth/connect");
-  fireEvent.click(screen.getByRole("tab", { name: "Assignments" }));
+  fireEvent.click(screen.getByRole("tab", { name: "General" }));
   fireEvent.click(await screen.findByRole("button", { name: "Save" }));
   await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === "/api/settings/assignment")).toHaveLength(2));
 });
