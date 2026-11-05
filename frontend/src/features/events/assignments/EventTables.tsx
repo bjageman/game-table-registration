@@ -210,7 +210,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
 }
 
 export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, readOnly = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onRemovePlayer, onAssignWaitlisted }: {
-  event: Pick<EventRecord, "tables" | "status">;
+  event: Pick<EventRecord, "tables" | "status" | "scheduled_publish_at">;
   rows?: TableSignups[];
   error?: string;
   onSelect?: (player: { id: string; name: string }) => void;
