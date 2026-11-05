@@ -12,6 +12,7 @@ from app.event_description import (
     signup_description,
     signup_location,
 )
+from app.event_threads import queue_member
 from app.models import Event, TableSignup
 
 EMOJIS = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟")
@@ -112,6 +113,8 @@ def change(
             row.choices = [t["name"] for t in event.tables if t["name"] in choices]
             if not row.choices:
                 db.delete(row)
+        if added and user_id and table:
+            queue_member(db, event, user_id)
         db.commit()
 
 
@@ -173,7 +176,10 @@ def replace(
         if not changed:
             return False
         db.execute(delete(TableSignup).where(TableSignup.event_id == event_id))
+        event = db.get(Event, event_id)
+        assert event is not None
         for player in participants:
+            queue_member(db, event, player["id"])
             db.add(
                 TableSignup(
                     event_id=event_id,

@@ -17,7 +17,9 @@ from app.models import (
 )
 
 # Custom signups need View Channel, Send Messages, and Read Message History.
-SIGNUP_PERMISSIONS = (1 << 10) | (1 << 11) | (1 << 16) | (1 << 6)
+SIGNUP_PERMISSIONS = (
+    (1 << 10) | (1 << 11) | (1 << 16) | (1 << 6) | (1 << 35) | (1 << 38)
+)
 POLL_PERMISSIONS = SIGNUP_PERMISSIONS | (1 << 49)
 
 
