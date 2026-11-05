@@ -28,9 +28,6 @@ from app.announcements import (
     enqueue_instructions,
 )
 from app.announcements import (
-    payloads as assignment_payloads,
-)
-from app.announcements import (
     status as announcement_status,
 )
 from app.branding import load_branding
@@ -1623,77 +1620,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             guild_id = event.guild_id
         return announcement_status(engine, event_id, guild_id)
 
-    @app.post("/api/events/{event_id}/announcement/update")
-    def update_announcement(event_id: str, request: Request) -> dict[str, Any]:
-        authenticated(request, True)
-        with DBSession(engine) as db:
-            event = db.get(Event, event_id)
-            if event is None or not matches_destination(event, request):
-                raise HTTPException(404, "Event not found")
-            run = db.get(LotteryRun, event_id)
-            if event.status != "assigned" or run is None or event.archived_at:
-                raise HTTPException(409, "Only active assigned events can be updated")
-            rows = list(
-                db.scalars(
-                    select(Announcement)
-                    .where(
-                        Announcement.event_id == event_id,
-                        Announcement.kind == "assignment",
-                    )
-                    .order_by(Announcement.part)
-                )
-            )
-            if not rows or any(
-                row.state != "sent" or not row.message_id or row.deleted_at
-                for row in rows
-            ):
-                raise HTTPException(
-                    409, "The assignment announcement is not available to edit"
-                )
-            refreshed = assignment_payloads(
-                event,
-                rows[0].channel_id,
-                current_result(db, run),
-                run.snapshot,
-                notify=False,
-            )
-            if len(refreshed) > len(rows):
-                raise HTTPException(
-                    409,
-                    "Updated assignments need more messages than the original post",
-                )
-            discord = scoped_discord(request)
-            for i, row in enumerate(rows):
-                edit = (
-                    {
-                        "content": refreshed[i]["content"],
-                        "embeds": refreshed[i]["embeds"],
-                        "allowed_mentions": {"parse": [], "users": []},
-                    }
-                    if i < len(refreshed)
-                    else {
-                        "content": f"Assignments updated above (part {i + 1}).",
-                        "embeds": [],
-                        "allowed_mentions": {"parse": [], "users": []},
-                    }
-                )
-                try:
-                    discord.at(event.guild_id, row.channel_id).edit_announcement(
-                        row.channel_id, str(row.message_id), edit
-                    )
-                except DiscordRequestError as failure:
-                    if failure.discord_status == 404:
-                        raise HTTPException(
-                            409, "An assignment message is missing from Discord"
-                        ) from None
-                    raise HTTPException(
-                        502,
-                        "Discord could not update every assignment message. Try again.",
-                    ) from None
-                row.payload = {**row.payload, **edit}
-            db.commit()
-        return {"updated": len(rows)}
-
     @app.post("/api/events/{event_id}/announcement/retry")
     def retry_announcement(
         event_id: str, body: RetryAnnouncementInput, request: Request
@@ -1876,7 +1802,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     409, "Archive the event before deleting its messages"
                 )
-            query = select(Announcement).where(Announcement.event_id == event_id)
+            query = select(Announcement).where(
+                Announcement.event_id == event_id,
+                Announcement.kind != "refresh",
+            )
             if promotions_only:
                 query = query.where(Announcement.kind == "promotion")
             rows = list(db.scalars(query.order_by(Announcement.part)))

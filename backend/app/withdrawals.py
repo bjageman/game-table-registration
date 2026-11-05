@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import clean
+from app.announcements import clean, enqueue_refresh
 from app.models import (
     Announcement,
     Event,
@@ -256,6 +256,7 @@ def withdraw(
                     next_attempt=withdrawn_at,
                 )
             )
+        enqueue_refresh(db, event)
         db.commit()
         return True
 
@@ -364,6 +365,7 @@ def manager_remove(
                     next_attempt=removed_at,
                 )
             )
+        enqueue_refresh(db, event)
         db.commit()
         return True
 
@@ -405,5 +407,8 @@ def manager_add(
                 assigned_at=time.time(),
             )
         )
+        event = db.get(Event, event_id)
+        assert event is not None
+        enqueue_refresh(db, event)
         db.commit()
         return True

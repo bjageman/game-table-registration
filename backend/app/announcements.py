@@ -8,11 +8,12 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import Engine, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.discord_api import DiscordAPI, DiscordRequestError
-from app.models import Announcement, Event
+from app.models import Announcement, Event, LotteryRun
 
 
 def clean(text: str) -> str:
@@ -173,6 +174,108 @@ def enqueue(
     enqueue_instructions(db, event, channel_id, now)
 
 
+def enqueue_refresh(db: Session, event: Event) -> None:
+    """Queue one edit of the existing assignment posts after a placement change."""
+    assignment = db.scalar(
+        select(Announcement)
+        .where(Announcement.event_id == event.id, Announcement.kind == "assignment")
+        .order_by(Announcement.part)
+        .limit(1)
+    )
+    if assignment is None or db.scalar(
+        select(Announcement.id)
+        .where(
+            Announcement.event_id == event.id,
+            Announcement.kind == "refresh",
+            Announcement.state == "pending",
+        )
+        .limit(1)
+    ):
+        return
+    part = db.scalar(
+        select(func.max(Announcement.part)).where(Announcement.event_id == event.id)
+    )
+    now = time.time()
+    db.add(
+        Announcement(
+            id=str(uuid.uuid4()),
+            event_id=event.id,
+            part=(part if part is not None else -1) + 1,
+            kind="refresh",
+            channel_id=assignment.channel_id,
+            payload={"content": "Refresh assignment posts"},
+            created_at=now,
+            next_attempt=now,
+        )
+    )
+
+
+def refresh_assignment_posts(
+    engine: Engine, discord: DiscordAPI, event_id: str
+) -> str | None:
+    """Replace tracked assignment rosters with current saved placements."""
+    from app.withdrawals import current_result
+
+    with Session(engine) as db:
+        event = db.get(Event, event_id)
+        run = db.get(LotteryRun, event_id)
+        if event is None or run is None or event.archived_at:
+            return None
+        rows = list(
+            db.scalars(
+                select(Announcement)
+                .where(
+                    Announcement.event_id == event_id, Announcement.kind == "assignment"
+                )
+                .order_by(Announcement.part)
+            )
+        )
+        if not rows:
+            return None
+        if any(
+            row.state != "sent" or not row.message_id or row.deleted_at for row in rows
+        ):
+            raise HTTPException(503, "Assignment posts are not ready for editing")
+        refreshed = payloads(
+            event,
+            rows[0].channel_id,
+            current_result(db, run),
+            run.snapshot,
+            notify=False,
+        )
+        if len(refreshed) > len(rows):
+            raise HTTPException(
+                409, "Updated assignments need more messages than the original post"
+            )
+        for i, row in enumerate(rows):
+            edit = (
+                {
+                    "content": refreshed[i]["content"],
+                    "embeds": refreshed[i]["embeds"],
+                    "allowed_mentions": {"parse": [], "users": []},
+                }
+                if i < len(refreshed)
+                else {
+                    "content": f"Assignments updated above (part {i + 1}).",
+                    "embeds": [],
+                    "allowed_mentions": {"parse": [], "users": []},
+                }
+            )
+            try:
+                discord.at(event.guild_id, row.channel_id).edit_announcement(
+                    row.channel_id, str(row.message_id), edit
+                )
+            except DiscordRequestError as failure:
+                if failure.discord_status == 404:
+                    raise HTTPException(
+                        409, "An assignment message is missing from Discord"
+                    ) from None
+                raise
+            row.payload = {**row.payload, **edit}
+        db.commit()
+        return rows[0].message_id
+
+
 def enqueue_instructions(
     db: Session, event: Event, channel_id: str, now: float | None = None
 ) -> None:
@@ -228,7 +331,7 @@ def deliver_event(
             event = db.get(Event, event_id)
             if (
                 row is not None
-                and row.kind in ("promotion", "instructions")
+                and row.kind in ("promotion", "instructions", "refresh")
                 and event
                 and event.archived_at
             ):
@@ -273,7 +376,9 @@ def deliver_event(
             )
             row_kind = row.kind
         try:
-            if unknown:
+            if row_kind == "refresh":
+                message_id = refresh_assignment_posts(engine, discord, event_id)
+            elif unknown:
                 message_id = discord.find_announcement(
                     channel_id, payload, attempted_at
                 )
@@ -285,9 +390,11 @@ def deliver_event(
             else:
                 message_id = str(discord.send_announcement(channel_id, payload)["id"])
             if row_kind == "instructions":
+                assert message_id is not None
                 discord.seed_reactions(message_id, ["❌"])
-            deleted_at = None
+            deleted_at = time.time() if row_kind == "refresh" else None
             if row_kind == "promotion":
+                assert message_id is not None
                 with Session(engine) as db:
                     event = db.get(Event, event_id)
                     archived = bool(event and event.archived_at)
@@ -314,6 +421,34 @@ def deliver_event(
                 )
                 db.commit()
         except Exception as failure:
+            if row_kind == "refresh":
+                needs_review = (
+                    isinstance(failure, HTTPException) and failure.status_code == 409
+                ) or (
+                    isinstance(failure, DiscordRequestError)
+                    and failure.discord_status in (400, 404)
+                )
+                retry_after = (
+                    failure.retry_after
+                    if isinstance(failure, DiscordRequestError)
+                    else 0
+                )
+                with Session(engine) as db:
+                    db.execute(
+                        update(Announcement)
+                        .where(Announcement.id == row_id, Announcement.token == token)
+                        .values(
+                            state="needs_review" if needs_review else "pending",
+                            error=str(getattr(failure, "detail", failure)),
+                            unknown=False,
+                            token=None,
+                            lease_until=None,
+                            next_attempt=time.time()
+                            + max(retry_after, min(3600, 5 * 2 ** min(attempts, 10))),
+                        )
+                    )
+                    db.commit()
+                return
             uncertain = (
                 unknown
                 or not isinstance(failure, DiscordRequestError)
@@ -393,6 +528,12 @@ def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -
 
 def status(engine: Engine, event_id: str, guild_id: str) -> dict[str, Any]:
     with Session(engine) as db:
+        refresh = db.scalar(
+            select(Announcement)
+            .where(Announcement.event_id == event_id, Announcement.kind == "refresh")
+            .order_by(Announcement.part.desc())
+            .limit(1)
+        )
         rows = list(
             db.scalars(
                 select(Announcement)
@@ -404,7 +545,13 @@ def status(engine: Engine, event_id: str, guild_id: str) -> dict[str, Any]:
             )
         )
         if not rows:
-            return {"status": "unavailable", "error": None, "url": None}
+            return {
+                "status": "unavailable",
+                "error": None,
+                "url": None,
+                "update_pending": False,
+                "update_error": None,
+            }
         state = (
             "deleted"
             if all(row.deleted_at for row in rows)
@@ -420,6 +567,10 @@ def status(engine: Engine, event_id: str, guild_id: str) -> dict[str, Any]:
         return {
             "status": state,
             "error": next((row.error for row in rows if row.error), None),
+            "update_pending": bool(refresh and refresh.state in ("pending", "sending")),
+            "update_error": refresh.error
+            if refresh and refresh.state == "needs_review"
+            else None,
             "url": f"https://discord.com/channels/{guild_id}/{first.channel_id}/{first.message_id}"
             if first
             else None,

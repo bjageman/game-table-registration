@@ -1096,6 +1096,12 @@ def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(cli
         assert notice.payload["allowed_mentions"] == {"parse": [], "users": [seated]}
         withdrawal = db.get(EventWithdrawal, (event["id"], seated))
         assert withdrawal is not None and withdrawal.promoted_id is None
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="refresh")
+            .count()
+            == 1
+        )
 
 
 def test_manager_remove_from_full_table_promotes_next_waitlisted_player(client):
@@ -1150,6 +1156,12 @@ def test_reaction_promotion_notice_has_no_table_update_heading(client):
         assert "Table Update" not in notice.payload["content"]
         assert notice.payload["content"].startswith("<@")
         assert "has been promoted to" in notice.payload["content"]
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="refresh")
+            .count()
+            == 1
+        )
 
 
 def test_close_waits_for_finalization_and_freezes_weights_before_retries(client):
@@ -1321,7 +1333,8 @@ def test_close_immediately_announces_assignments_without_duplicate_delivery(clie
         assert db.query(Announcement).filter_by(event_id=event["id"]).count() == 2
 
 
-def test_update_discord_edits_saved_assignment_message_without_reposting(client):
+def test_assignment_changes_refresh_existing_discord_message_with_retry(client):
+    from app.announcements import dispatch_due
     from app.discord_api import DiscordRequestError
     from app.models import Announcement
 
@@ -1339,11 +1352,24 @@ def test_update_discord_edits_saved_assignment_message_without_reposting(client)
         ).status_code
         == 200
     )
-    endpoint = path + "/announcement/update"
-    assert client.post(endpoint).status_code == 403
+    with DBSession(client.app.state.engine) as db:
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "pending"
+    assert client.get(path + "/announcement").json()["update_pending"] is True
+    discord.at.return_value.edit_announcement.side_effect = DiscordRequestError(429)
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    with DBSession(client.app.state.engine) as db:
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "pending"
+        refresh.next_attempt = 0
+        db.commit()
+    discord.at.return_value.edit_announcement.side_effect = None
     sent_before = discord.send_announcement.call_count
-    assert client.post(endpoint, headers=headers).json() == {"updated": 1}
-    discord.send_announcement.assert_called()
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
     assert discord.send_announcement.call_count == sent_before
     channel, message_id, edit = discord.at.return_value.edit_announcement.call_args.args
     assert (channel, message_id) == ("channel", "announcement")
@@ -1363,11 +1389,15 @@ def test_update_discord_edits_saved_assignment_message_without_reposting(client)
             .one()
         )
         assert row.payload["embeds"] == edit["embeds"]
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "sent" and refresh.deleted_at is not None
         db.add(
             Announcement(
                 id="extra-assignment-part",
                 event_id=event["id"],
-                part=2,
+                part=3,
                 kind="assignment",
                 channel_id="channel",
                 payload={"content": "Old extra roster", "nonce": "extra"},
@@ -1378,13 +1408,16 @@ def test_update_discord_edits_saved_assignment_message_without_reposting(client)
             )
         )
         db.commit()
-    assert client.post(endpoint, headers=headers).json() == {"updated": 2}
+    assert (
+        client.delete(f"{path}/manager-players/{waiting}", headers=headers).status_code
+        == 200
+    )
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
     _, extra_id, extra_edit = discord.at.return_value.edit_announcement.call_args.args
     assert extra_id == "old-extra"
     assert extra_edit["embeds"] == []
     assert extra_edit["content"].startswith("Assignments updated above")
-    discord.at.return_value.edit_announcement.side_effect = DiscordRequestError(404)
-    assert client.post(endpoint, headers=headers).status_code == 409
+    assert client.get(path + "/announcement").json()["update_pending"] is False
 
 
 def test_announcement_failure_retries_without_redrawing(client):
