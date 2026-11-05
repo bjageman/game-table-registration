@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, func, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.assignment_preferences import announce_changes
 from app.discord_api import DiscordAPI, DiscordRequestError
 from app.models import Announcement, Event, LotteryRun
 
@@ -333,7 +334,10 @@ def deliver_event(
                 row is not None
                 and row.kind in ("promotion", "instructions", "refresh")
                 and event
-                and event.archived_at
+                and (
+                    event.archived_at
+                    or (row.kind == "promotion" and not announce_changes(db, event))
+                )
             ):
                 if row.unknown or row.state == "sending" or row.message_id:
                     return

@@ -12,12 +12,12 @@ from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.announcements import enqueue
+from app.assignment_preferences import for_event as assignment_preferences_for_event
 from app.discord_api import DiscordAPI
 from app.lottery import VERSION, GuaranteeConflict, assign
 from app.models import (
     Event,
     EventPlayerSetting,
-    GuildSettings,
     LotteryRun,
     PlayerProfile,
 )
@@ -183,7 +183,7 @@ def close_and_assign(
                     ] = setting.guaranteed_table
         adjust_weights = event.close_adjust_weights
         if adjust_weights is None:
-            settings = db.get(GuildSettings, event.guild_id)
+            settings = assignment_preferences_for_event(db, event)
             adjust_weights = settings.automatic_weight_adjustment if settings else True
         seed = event.close_seed or secrets.token_hex(32)
         claimed = db.execute(

@@ -9,6 +9,7 @@ from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session
 
 from app.announcements import clean, enqueue_refresh
+from app.assignment_preferences import announce_changes
 from app.models import (
     Announcement,
     Event,
@@ -201,7 +202,7 @@ def withdraw(
                 promoted_id=promoted_id,
             )
         )
-        if promoted_id:
+        if promoted_id and announce_changes(db, event):
             left = next(
                 player
                 for player in run.snapshot["players"]
@@ -340,7 +341,7 @@ def manager_remove(
             .order_by(Announcement.part)
             .limit(1)
         )
-        if channel_id:
+        if channel_id and announce_changes(db, event):
             part = db.scalar(
                 select(func.max(Announcement.part)).where(
                     Announcement.event_id == event_id
@@ -409,6 +410,56 @@ def manager_add(
         )
         event = db.get(Event, event_id)
         assert event is not None
+        if announce_changes(db, event):
+            promoted = next(
+                player
+                for player in run.snapshot["players"]
+                if player["id"] == player_id
+            )
+            name = (
+                clean(promoted["name"])
+                if player_id.startswith("test-")
+                else f"<@{player_id}>"
+            )
+            channel_id = event.channel_id or db.scalar(
+                select(Announcement.channel_id)
+                .where(Announcement.event_id == event_id)
+                .order_by(Announcement.part)
+                .limit(1)
+            )
+            if channel_id:
+                part = db.scalar(
+                    select(func.max(Announcement.part)).where(
+                        Announcement.event_id == event_id
+                    )
+                )
+                db.add(
+                    Announcement(
+                        id=str(uuid.uuid4()),
+                        event_id=event_id,
+                        part=(part if part is not None else -1) + 1,
+                        kind="promotion",
+                        channel_id=channel_id,
+                        payload={
+                            "content": (
+                                f"{name} has been promoted from the waitlist "
+                                f"to **{clean(table_name)}**."
+                            ),
+                            "allowed_mentions": {
+                                "parse": [],
+                                "users": (
+                                    [] if player_id.startswith("test-") else [player_id]
+                                ),
+                            },
+                            "nonce": hashlib.sha256(
+                                f"{event_id}:manager-add:{player_id}".encode()
+                            ).hexdigest()[:24],
+                            "enforce_nonce": True,
+                        },
+                        created_at=time.time(),
+                        next_attempt=time.time(),
+                    )
+                )
         enqueue_refresh(db, event)
         db.commit()
         return True
