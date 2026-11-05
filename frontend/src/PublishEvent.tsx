@@ -30,7 +30,7 @@ export default function PublishEvent({
   const inFlight = useRef(false);
   const [now, setNow] = useState(Date.now);
   const expired =
-    event.starts_at * 1000 <= now + event.duration_hours * 3600000;
+    event.closes_at !== null ? event.closes_at * 1000 <= now : event.starts_at * 1000 <= now + event.duration_hours * 3600000;
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
