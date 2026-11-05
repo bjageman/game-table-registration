@@ -510,7 +510,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     403, "This organization is read-only for your account."
                 )
             saved = db.get(UserSettings, session.user_id)
-            if saved and saved.disconnected and not organization:
+            if (organization and not organization.channel_id) or (
+                saved and saved.disconnected and not organization
+            ):
                 raise HTTPException(
                     409, "Choose a server and channel in Settings first."
                 )
@@ -789,7 +791,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else "legacy"
             )
         needs_setup = (
-            False
+            not bool(organization.channel_id)
             if organization
             else (
                 (saved.disconnected or not saved.channel_id)
