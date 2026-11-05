@@ -42,5 +42,6 @@
     "vite": "^8.3.5",
     "vitest": "^5.0.5",
     "@tailwindcss/postcss": "^4.3.3"
-  }
+  },
+  "license": "Apache-2.0"
 }
