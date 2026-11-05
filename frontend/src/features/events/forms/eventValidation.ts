@@ -20,7 +20,7 @@ export function validateEvent(
   draft: EventDraft,
   now = Date.now(),
 ): Record<string, string> {
-  const errors = validateTemplate(draft);
+  const errors = validateTemplate({ ...draft, duration: draft.explicitClosing ? "1" : draft.duration });
   const hours = Number(draft.duration);
   const start = new Date(draft.startsAt);
   if (Number.isNaN(start.getTime()) || localMinute(start) !== draft.startsAt) {
