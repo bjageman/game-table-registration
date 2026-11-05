@@ -62,6 +62,18 @@ def login(client):
     }
 
 
+def connect_test_organization(
+    client, organization_id, guild_id="guild", channel_id="channel"
+):
+    from app.models import Organization
+
+    with DBSession(client.app.state.engine) as db:
+        organization = db.get(Organization, organization_id)
+        organization.guild_id = guild_id
+        organization.channel_id = channel_id
+        db.commit()
+
+
 def test_organizations_share_selected_events_and_enforce_member_roles(client):
     owner_headers = login(client)
     personal = client.post(
@@ -72,6 +84,7 @@ def test_organizations_share_selected_events_and_enforce_member_roles(client):
     )
     assert organization.status_code == 201
     org_id = organization.json()["id"]
+    connect_test_organization(client, org_id)
     assert (
         client.put(
             "/api/organizations/selection",
@@ -857,6 +870,7 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
     org_id = client.post(
         "/api/organizations", headers=owner, json={"name": "Shared"}
     ).json()["id"]
+    connect_test_organization(client, org_id, "100", "101")
     client.put(
         "/api/organizations/selection", headers=owner, json={"organization_id": org_id}
     )
@@ -879,6 +893,7 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
     assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
     assert client.delete("/api/settings", headers=owner).status_code == 204
     assert client.get("/api/settings").json()["disconnected"] is True
+    discord.destination_channels.side_effect = None
     assert (
         client.put(
             "/api/settings",
@@ -1387,6 +1402,7 @@ def test_summary_export_respects_selected_organization(client):
     organization = client.post(
         "/api/organizations", headers=headers, json={"name": "Export Scope"}
     ).json()
+    connect_test_organization(client, organization["id"])
     assert (
         client.put(
             "/api/organizations/selection",
@@ -2843,7 +2859,7 @@ def test_organization_admin_disconnect_preserves_personal_connection(client):
     assert client.delete("/api/settings", headers=headers).status_code == 204
     settings = client.get("/api/settings").json()
     assert settings["disconnected"] is True
-    assert settings["selection"]["channel_id"] == ""
+    assert settings["selection"] is None
     assert client.get("/api/me").json()["needs_setup"] is True
     assert client.get("/api/events").status_code == 409
     with DBSession(client.app.state.engine) as db:
@@ -2900,7 +2916,7 @@ def test_disconnect_blocks_legacy_fallback_preserves_data_and_allows_reconnect(
     assert client.get("/api/settings").json()["selection"] is None
     assert client.get("/api/me").json()["needs_setup"] is True
     assert client.get("/api/events").status_code == 409
-    assert client.get("/api/settings/assignment").status_code == 409
+    assert client.get("/api/settings/assignment").status_code == 200
     with DBSession(client.app.state.engine) as db:
         assert db.get(Event, event["id"]) is not None
         assert db.get(PlayerProfile, ("guild", "123")).weighting == 1.2
@@ -3055,3 +3071,88 @@ def test_connect_verifies_guild_hint_when_token_omits_guild(client):
     assert callback.status_code == 307
     assert client.get("/api/settings").json()["selection"]["guild_id"] == "200"
     discord.manager_context.assert_called_once_with("owner", "200")
+
+
+def test_organization_connection_is_independent_of_personal_and_other_orgs(client):
+    from app.models import Organization, UserSettings
+
+    headers = login(client)
+    with DBSession(client.app.state.engine) as db:
+        db.add(
+            UserSettings(
+                user_id="owner",
+                guild_id="200",
+                guild_name="Personal",
+                channel_id="201",
+                channel_name="personal",
+                disconnected=False,
+            )
+        )
+        db.commit()
+    first = client.post(
+        "/api/organizations", headers=headers, json={"name": "First"}
+    ).json()["id"]
+    second = client.post(
+        "/api/organizations", headers=headers, json={"name": "Second"}
+    ).json()["id"]
+    client.put(
+        "/api/organizations/selection", headers=headers, json={"organization_id": first}
+    )
+    assert client.get("/api/settings").json()["selection"] is None
+    preferences = {"automatic_weight_adjustment": False, "announce_table_changes": True}
+    assert (
+        client.put("/api/settings/assignment", headers=headers, json=preferences).json()
+        == preferences
+    )
+    response = client.get("/api/auth/connect", follow_redirects=False)
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    discord = client.app.state.discord
+    discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+        "authorized_guild": {"id": "100"},
+    }
+    discord.manager_context.return_value = (
+        {"id": "100", "name": "Organization Server"},
+        {},
+        [],
+    )
+    assert (
+        client.get(
+            f"/api/auth/callback?state={state}&code=connected&guild_id=100",
+            follow_redirects=False,
+        ).status_code
+        == 307
+    )
+    headers["X-CSRF-Token"] = client.get("/api/me").json()["csrf"]
+    assert client.get("/api/settings").json()["selection"]["guild_id"] == "100"
+    assert client.get("/api/settings").json()["disconnected"] is False
+    discord.bot_items.return_value = [
+        {"id": "100", "name": "Organization Server"},
+        {"id": "300", "name": "Inaccessible"},
+    ]
+    discord.manager_context.side_effect = HTTPException(403, "Manage Server required")
+    assert client.get("/api/settings/guilds").json()["guilds"] == [
+        {"id": "100", "name": "Organization Server"}
+    ]
+    discord.manager_context.side_effect = None
+    discord.organization_channels.return_value = (
+        "Organization Server",
+        [{"id": "101", "name": "games"}],
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 200
+    )
+    assert client.delete("/api/settings", headers=headers).status_code == 204
+    assert client.get("/api/settings").json()["selection"] is None
+    assert client.get("/api/settings/assignment").json() == preferences
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Organization, first).guild_id == ""
+        assert db.get(Organization, second).guild_id == ""
+        assert db.get(UserSettings, "owner").guild_id == "200"
+        assert db.get(UserSettings, "owner").channel_id == "201"

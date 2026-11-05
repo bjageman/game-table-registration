@@ -60,6 +60,8 @@ def register_settings(
             )
         guilds = [dict(g) for g in session.guilds]
         if organization and membership:
+            selection = None
+        if organization and membership and organization.guild_id:
             discord: DiscordAPI = app.state.discord
             guild_name = next(
                 (g["name"] for g in guilds if g["id"] == organization.guild_id),
@@ -97,12 +99,35 @@ def register_settings(
             "organization_role": membership.role
             if organization and membership
             else None,
-            "disconnected": not bool(organization.channel_id)
+            "disconnected": not bool(organization.guild_id)
             if organization and membership
             else bool(saved and saved.disconnected),
             "guilds": guilds,
             "connect_url": "/api/auth/connect",
         }
+
+    @app.get("/api/settings/guilds")
+    def guilds(request: Request) -> dict[str, Any]:
+        session = authenticated(request, require_destination=False)
+        discord: DiscordAPI = app.state.discord
+        organization_guild = ""
+        with DBSession(engine) as db:
+            if request.state.organization_id:
+                organization = db.get(Organization, request.state.organization_id)
+                if organization:
+                    organization_guild = organization.guild_id
+        result = []
+        for guild in discord.bot_items("/users/@me/guilds"):
+            guild_id = str(guild["id"])
+            if guild_id != organization_guild:
+                try:
+                    discord.manager_context(session.user_id, guild_id)
+                except HTTPException as error:
+                    if error.status_code in (403, 404):
+                        continue
+                    raise
+            result.append({"id": guild_id, "name": str(guild["name"])})
+        return {"guilds": result}
 
     @app.get("/api/settings/channels")
     def channels(request: Request, guild_id: str) -> dict[str, Any]:
@@ -121,9 +146,13 @@ def register_settings(
                 else None
             )
         if organization and membership:
-            if membership.role != "admin" or organization.guild_id != guild_id:
+            if membership.role != "admin":
                 raise HTTPException(403, "Organization admin access required")
-            guild_name, rows = discord.organization_channels(guild_id)
+            guild_name, rows = (
+                discord.organization_channels(guild_id)
+                if organization.guild_id == guild_id
+                else discord.destination_channels(session.user_id, guild_id)
+            )
         else:
             guild_name, rows = discord.destination_channels(session.user_id, guild_id)
         return {"guild_name": guild_name, "channels": rows}
@@ -146,14 +175,10 @@ def register_settings(
                     raise HTTPException(
                         403, "Only organization admins can save Discord settings"
                     )
-                if body.guild_id != organization.guild_id:
-                    raise HTTPException(
-                        409, "The organization server cannot be changed here"
-                    )
         discord: DiscordAPI = app.state.discord
         guild_name, channels = (
             discord.organization_channels(body.guild_id)
-            if organization and membership
+            if organization and membership and organization.guild_id == body.guild_id
             else discord.destination_channels(session.user_id, body.guild_id)
         )
         channel = next((c for c in channels if c["id"] == body.channel_id), None)
@@ -168,6 +193,7 @@ def register_settings(
                 current = db.get(Organization, organization.id)
                 if current is None:
                     raise HTTPException(404, "Organization not found")
+                current.guild_id = body.guild_id
                 current.channel_id = body.channel_id
             else:
                 db.merge(
@@ -206,6 +232,7 @@ def register_settings(
                 organization = db.get(Organization, selected.organization_id)
                 if organization is None:
                     raise HTTPException(404, "Organization not found")
+                organization.guild_id = ""
                 organization.channel_id = ""
                 db.commit()
                 return Response(status_code=204)

@@ -1,6 +1,11 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { FormField } from "../../components/FormFields";
 import { RefreshCw } from "lucide-react";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import MenuItem from "@mui/material/MenuItem";
@@ -24,6 +29,9 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
   const tabId = useId();
   const [tab, setTab] = useState("discord");
   const [setup, setSetup] = useState<Setup>();
+  const [guilds, setGuilds] = useState<Choice[]>([]);
+  const [choosingServer, setChoosingServer] = useState(false);
+  const [refreshingServers, setRefreshingServers] = useState(false);
   const [guildId, setGuildId] = useState("");
   const [channelId, setChannelId] = useState("");
   const [channels, setChannels] = useState<Choice[]>();
@@ -59,6 +67,22 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
       });
     return () => controller.abort();
   }, [guildId, channelAttempt, organizationId, setup?.organization_role, onAccessError]);
+  async function refreshServers() {
+    setRefreshingServers(true); setError("");
+    try {
+      const result = await api<{ guilds: Choice[] }>("/settings/guilds");
+      setGuilds(result.guilds);
+    } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
+    finally { setRefreshingServers(false); }
+  }
+  useEffect(() => {
+    if (!setup?.selection) { setGuilds([]); return; }
+    const controller = new AbortController();
+    api<{ guilds: Choice[] }>("/settings/guilds", { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setGuilds(result.guilds); })
+      .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    return () => controller.abort();
+  }, [setup?.selection, organizationId, onAccessError]);
   async function save(event: FormEvent) {
     event.preventDefault();
     if (saving || (setup?.organization_role && setup.organization_role !== "admin") || !guildId || !channelId) return;
@@ -88,7 +112,14 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
       </div>
       {setup.selection && <form onSubmit={(event) => void save(event)} aria-label="Discord settings">
         <div className="form-grid">
-          <FormField label="Discord Server" value={setup.selection.guild_name} disabled={restricted} slotProps={{ input: { readOnly: true } }} />
+          <div className="signup-channel-field">
+          <FormField label="Discord Server" value={guilds.find((g) => g.id === guildId)?.name ?? setup.selection.guild_name}
+            disabled={restricted || saving || guilds.length <= 1} slotProps={{ input: { readOnly: true } }}
+            onKeyDown={(event) => { if (!restricted && !saving && guilds.length > 1 && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setChoosingServer(true); } }}
+            onClick={() => { if (!restricted && !saving && guilds.length > 1) setChoosingServer(true); }} />
+          <button type="button" className="settings-refresh" aria-label="Refresh Servers" title="Refresh Servers"
+            disabled={restricted || saving || refreshingServers} onClick={() => void refreshServers()}><RefreshCw size={18} aria-hidden="true" /></button>
+          </div>
           <div className="signup-channel-field">
           {restricted ? <FormField label="Signup Channel" value={`#${setup.selection.channel_name}`} disabled /> : <FormField select label="Signup Channel" value={channels ? channelId : ""} fullWidth disabled={saving || !channels?.length}
             slotProps={{ inputLabel: { shrink: true } }}
@@ -112,7 +143,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
         </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
         <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button className="primary" type="submit" disabled={restricted || saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></span>
-        {setup.selection && !setup.disconnected && !restricted && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
+        {setup.selection && !setup.disconnected && <DisconnectDiscord csrf={csrf} disabled={saving || restricted} onAccessError={onAccessError} onBusyChange={setSaving}
           onDisconnected={async () => {
             await onSaved();
             if (setup.organization_role) { setAttempt((n) => n + 1); return; }
@@ -121,11 +152,17 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
           }} />}
         </div>
       </form>}
+      <Dialog open={choosingServer} onClose={() => setChoosingServer(false)} aria-labelledby={`${tabId}-servers-title`} fullWidth maxWidth="xs">
+        <DialogTitle id={`${tabId}-servers-title`}>Discord Server</DialogTitle>
+        <DialogContent><List>{guilds.map((guild) => <ListItemButton key={guild.id} selected={guild.id === guildId}
+          onClick={() => { if (guild.id !== guildId) { setGuildId(guild.id); setChannelId(""); setChannels(undefined); setChannelError(""); } setChoosingServer(false); }}>{guild.name}</ListItemButton>)}</List>
+          <button type="button" onClick={() => setChoosingServer(false)}>Close</button>
+        </DialogContent>
+      </Dialog>
     </>}
     </div>
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
-      {setup?.selection && !setup.disconnected ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} />
-        : setup ? <a className="button" href={connectUrl}>Connect Discord</a>
+      {setup ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} />
         : <p><LoadingIndicator label="Loading settings…" /></p>}
     </div>
     <div role="tabpanel" id={`${tabId}-organization-panel`} aria-labelledby={`${tabId}-organization-tab`} hidden={tab !== "organization"}>
