@@ -1168,6 +1168,59 @@ def test_signup_exports_use_saved_placements_and_scope(client):
     assert client.get("/api/events/missing/signups.pdf").status_code == 404
 
 
+def test_public_assignment_link_is_opt_in_scoped_and_live(client):
+    headers, event, path, _ = closing_event(client)
+    assert client.post(path + "/share", headers=headers).status_code == 409
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    assert client.post(path + "/share").status_code == 403
+    shared = client.post(path + "/share", headers=headers)
+    assert shared.status_code == 200
+    assert client.post(path + "/share", headers=headers).json() == shared.json()
+    token = shared.json()["path"].rsplit("/", 1)[1]
+    with TestClient(client.app) as public:
+        assert public.get(path + "/signups").status_code == 401
+        assert public.get("/api/public/events/unknown").status_code == 404
+        response = public.get(f"/api/public/events/{token}")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        data = response.json()
+        assert data["title"] == event["title"]
+        assert set(data) == {
+            "title",
+            "description",
+            "location",
+            "starts_at",
+            "archived",
+            "tables",
+        }
+        assert all(
+            set(player) == {"name"}
+            for table in data["tables"]
+            for key in ("players", "waitlist")
+            for player in table[key]
+        )
+        rows = client.get(path + "/signups").json()
+        removed = rows[0]["players"][0]["id"]
+        assert (
+            client.delete(
+                path + f"/manager-players/{removed}", headers=headers
+            ).status_code
+            == 200
+        )
+        current = client.get(path + "/signups").json()
+        updated = public.get(f"/api/public/events/{token}").json()
+        assert [[p["name"] for p in t["players"]] for t in updated["tables"]] == [
+            [p.get("display_name") or p["name"] for p in t["players"]] for t in current
+        ]
+    client.app.state.discord.identity.return_value = {
+        "id": "other",
+        "username": "Other",
+    }
+    other_headers = login(client)
+    assert client.post(path + "/share", headers=other_headers).status_code == 404
+
+
 def test_assigned_exports_reflect_current_roster_and_display_names(client):
     import csv
     import io

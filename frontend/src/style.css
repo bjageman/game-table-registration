@@ -491,6 +491,15 @@ dd {
 .event-modal .event-tables {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
+.share-link-label { display: grid; gap: 8px; }
+.share-link-label input { width: 100%; padding: 10px; }
+.public-event-page { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.public-event-page .event-tables { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.public-event-page .table-heading h2 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.public-event-page ol { padding-left: 24px; }
+.public-event-page li { overflow-wrap: anywhere; }
+.public-event-page .event-table ol li { margin-bottom: 6px; }
+.public-event-description { white-space: pre-wrap; }
 .event-modal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .event-modal-header h2 { margin: 0; min-width: 0; }
 .event-modal-header > .badge { flex-shrink: 0; }
