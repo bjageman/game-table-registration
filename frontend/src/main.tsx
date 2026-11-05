@@ -2,9 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import App from "./App";
-import PublicEvent from "./PublicEvent";
-import "./style.css";
+import App from "./app/App";
+import PublicEvent from "./features/events/sharing/PublicEvent";
+import "./styles/style.css";
 function Root() {
   const [hash, setHash] = React.useState(window.location.hash);
   React.useEffect(() => {
