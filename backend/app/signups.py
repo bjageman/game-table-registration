@@ -26,7 +26,7 @@ def publication(event: Event, closes_at: float) -> dict[str, Any]:
             f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
             f"Event: <t:{int(event.starts_at)}:F>\n"
             f"{signup_location(event.location)}"
-            f"Signups close: <t:{int(closes_at)}:F>\n\n"
+            f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)\n\n"
             f"{tables}\n\n"
             f"{signup_description(event.description, CUSTOM_DESCRIPTION)}"
         ),
