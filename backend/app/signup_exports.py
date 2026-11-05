@@ -158,75 +158,73 @@ def event_pdf(
         players = [("Seated", player) for player in seated] + [
             ("Waitlisted", player) for player in waiting
         ]
-        chunks = [players[i : i + 20] for i in range(0, len(players), 20)] or [[]]
-        for part, chunk in enumerate(chunks):
-            heading = Paragraph(
-                f"{escape(table['name'])} ({count})" + (" continued" if part else ""),
-                title_style,
-            )
-            values: list[list[Any]] = [
+        heading = Paragraph(
+            f"{escape(table['name'])} ({count})",
+            title_style,
+        )
+        values: list[list[Any]] = [
+            [
+                check_icon(),
+                Paragraph("Display Name", header_style),
+                Paragraph("Username", header_style),
+            ]
+        ]
+        sections: list[int] = []
+        last_status = ""
+        for status, player in players:
+            if status == "Waitlisted" and status != last_status:
+                sections.append(len(values))
+                values.append(
+                    [
+                        Paragraph(status, header_style),
+                        Spacer(0, 0),
+                        Spacer(0, 0),
+                    ]
+                )
+                last_status = status
+            values.append(
                 [
-                    check_icon(),
-                    Paragraph("Display Name", header_style),
-                    Paragraph("Username", header_style),
+                    Spacer(0, 0),
+                    Paragraph(escape(player.get("display_name") or ""), name_style),
+                    Paragraph(escape(player["name"]), name_style),
                 ]
-            ]
-            sections: list[int] = []
-            last_status = ""
-            for status, player in chunk:
-                if status == "Waitlisted" and status != last_status:
-                    sections.append(len(values))
-                    values.append(
-                        [
-                            Paragraph(status, header_style),
-                            Spacer(0, 0),
-                            Spacer(0, 0),
-                        ]
-                    )
-                    last_status = status
-                values.append(
-                    [
-                        Spacer(0, 0),
-                        Paragraph(escape(player.get("display_name") or ""), name_style),
-                        Paragraph(escape(player["name"]), name_style),
-                    ]
-                )
-            if not chunk:
-                values.append(
-                    [
-                        Spacer(0, 0),
-                        Paragraph("No signups", name_style),
-                        Spacer(0, 0),
-                    ]
-                )
-            listing = Table(
-                values,
-                colWidths=[17, card_width - 121, 104],
-                hAlign="LEFT",
             )
-            styling: list[tuple[Any, ...]] = [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf2")),
-                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#b8c2cb")),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), row_padding),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), row_padding),
-                ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
-            ]
-            for section in sections:
-                styling.extend(
-                    [
-                        ("SPAN", (0, section), (-1, section)),
-                        (
-                            "BACKGROUND",
-                            (0, section),
-                            (-1, section),
-                            colors.HexColor("#f3f5f7"),
-                        ),
-                    ]
-                )
-            listing.setStyle(TableStyle(styling))
-            cards.append([heading, listing])
+        if not players:
+            values.append(
+                [
+                    Spacer(0, 0),
+                    Paragraph("No signups", name_style),
+                    Spacer(0, 0),
+                ]
+            )
+        listing = Table(
+            values,
+            colWidths=[17, card_width - 121, 104],
+            hAlign="LEFT",
+        )
+        styling: list[tuple[Any, ...]] = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf2")),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#b8c2cb")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), row_padding),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), row_padding),
+            ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
+        ]
+        for section in sections:
+            styling.extend(
+                [
+                    ("SPAN", (0, section), (-1, section)),
+                    (
+                        "BACKGROUND",
+                        (0, section),
+                        (-1, section),
+                        colors.HexColor("#f3f5f7"),
+                    ),
+                ]
+            )
+        listing.setStyle(TableStyle(styling))
+        cards.append([heading, listing])
 
     def page_header(canvas: Any, doc: Any) -> None:
         canvas.saveState()
