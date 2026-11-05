@@ -341,7 +341,14 @@ dd {
 .delete-schedule-button:hover { background: #fef3f2; }
 .scheduled-event-occurrences { display: grid; gap: 10px; margin-top: 14px; }
 .scheduled-event-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+.scheduled-event-row + .scheduled-event-row { border-top: 1px solid #dce3d9; padding-top: 10px; }
 .scheduled-event-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+@media (max-width: 600px) {
+  .scheduled-event-row { flex-wrap: nowrap; align-items: center; }
+  .scheduled-event-times { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+  .scheduled-event-time-separator { display: none; }
+  .scheduled-event-actions { flex-shrink: 0; }
+}
 .date-time-fields {
   min-width: 0;
 }

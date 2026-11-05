@@ -29,6 +29,9 @@ const sortOptions = [
 ] as const;
 type SortOrder = typeof sortOptions[number]["value"];
 const titleOrder = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+const scheduleTime = new Intl.DateTimeFormat(undefined, {
+  month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
+});
 interface RecurringSeriesRecord { id: string; title: string; frequency: string; time_zone: string; opens_before_hours: number; closes_before_hours: number }
 
 export default function Dashboard({ session, onAccessError }: DashboardProps) {
@@ -237,7 +240,11 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             </summary>
             <div className="scheduled-event-occurrences">
               {events.filter((event) => event.status === "scheduled" && event.series_id === row.id).sort((a, b) => a.starts_at - b.starts_at).slice(0, 4).map((event) => <div key={event.id} className="scheduled-event-row">
-                <span>{new Date(event.starts_at * 1000).toLocaleString()} · Posts {new Date((event.scheduled_publish_at ?? 0) * 1000).toLocaleString()}</span>
+                <span className="scheduled-event-times">
+                  <span>EVENT: {scheduleTime.format(new Date(event.starts_at * 1000))}</span>
+                  <span className="scheduled-event-time-separator" aria-hidden="true"> - </span>
+                  <span>SIGNUPS: {scheduleTime.format(new Date((event.scheduled_publish_at ?? 0) * 1000))}</span>
+                </span>
                 <div className="scheduled-event-actions">
                   <button type="button" className="event-icon-action" aria-label="View scheduled event" title="View scheduled event" onClick={() => setScheduledDetails(event)}><Eye size={18} aria-hidden="true" /></button>
                   {session.organization_role !== "user" && <button type="button" className="event-icon-action" aria-label="Cancel scheduled event" title="Cancel scheduled event" onClick={() => void cancelScheduled(event)}><Trash2 size={18} aria-hidden="true" /></button>}
