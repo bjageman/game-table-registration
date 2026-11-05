@@ -59,8 +59,11 @@ it("offers PDF and CSV downloads for assigned events", async () => {
 it("offers retry after a failed request instead of showing an empty list", async () => {
   const fetchMock = vi
     .fn()
-    .mockRejectedValueOnce(new Error("offline"))
-    .mockResolvedValueOnce(new Response("[]"));
+    .mockImplementation((path: string) => path.includes("recurring-series")
+      ? Promise.resolve(new Response("[]"))
+      : fetchMock.mock.calls.filter(([url]) => String(url).includes("/events")).length === 1
+        ? Promise.reject(new Error("offline"))
+        : Promise.resolve(new Response("[]")));
   vi.stubGlobal("fetch", fetchMock);
   render(<Dashboard {...props} />);
   expect(await screen.findByRole("alert")).toHaveTextContent(/Could not reach/);

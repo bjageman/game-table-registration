@@ -78,6 +78,24 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
     tables: [{ name: "Clocktower", capacity: 15 }],
   });
 });
+
+it("creates a weekly schedule with signup offsets", async () => {
+  const scheduled = vi.fn();
+  const fetchMock = vi.fn(async (path: string) => path === "/api/templates"
+    ? new Response("[]")
+    : new Response(JSON.stringify({ id: "series", title: "Friday games" }), { status: 201 }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<LocalizationProvider dateAdapter={AdapterDayjs}><EventForm {...props} onScheduled={scheduled} /></LocalizationProvider>);
+  fill();
+  fireEvent.change(screen.getByLabelText("Repeat"), { target: { value: "weekly" } });
+  fireEvent.change(screen.getByLabelText(/^Signups open \(hours before event\)/), { target: { value: "78" } });
+  fireEvent.change(screen.getByLabelText(/^Signups close \(hours before event\)/), { target: { value: "24" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
+  await waitFor(() => expect(scheduled).toHaveBeenCalledWith("Friday games"));
+  const request = fetchMock.mock.calls.find(([path]) => path === "/api/recurring-series") as unknown as [string, RequestInit];
+  expect(JSON.parse(request[1].body as string)).toMatchObject({ frequency: "weekly", opens_before_hours: 78, closes_before_hours: 24 });
+  expect(props.onCreated).not.toHaveBeenCalled();
+});
 it("rejects duplicate table names before making a request", async () => {
   const fetchMock = vi.fn(async (path: string) => { void path; return new Response("[]"); });
   vi.stubGlobal("fetch", fetchMock);

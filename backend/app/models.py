@@ -28,6 +28,7 @@ class Session(Base):
 
 class Event(Base):
     __tablename__ = "events"
+    __table_args__ = (UniqueConstraint("series_id", "starts_at"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     guild_id: Mapped[str] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(100))
@@ -59,6 +60,41 @@ class Event(Base):
     signup_mode: Mapped[str] = mapped_column(String(16), default="poll")
     reaction_checkpoint: Mapped[float | None] = mapped_column(Float, nullable=True)
     reaction_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    series_id: Mapped[str | None] = mapped_column(
+        ForeignKey("recurring_series.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    scheduled_publish_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class RecurringSeries(Base):
+    __tablename__ = "recurring_series"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    created_by: Mapped[str] = mapped_column(String(32))
+    organization_id: Mapped[str | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    guild_id: Mapped[str] = mapped_column(String(32))
+    channel_id: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(String(300), default="")
+    location: Mapped[str] = mapped_column(String(200), default="")
+    tables: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    first_local: Mapped[str] = mapped_column(String(16))
+    time_zone: Mapped[str] = mapped_column(String(100))
+    frequency: Mapped[str] = mapped_column(String(16))
+    opens_before_hours: Mapped[int]
+    closes_before_hours: Mapped[int]
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class CanceledOccurrence(Base):
+    __tablename__ = "canceled_occurrences"
+    series_id: Mapped[str] = mapped_column(
+        ForeignKey("recurring_series.id", ondelete="CASCADE"), primary_key=True
+    )
+    starts_at: Mapped[float] = mapped_column(Float, primary_key=True)
 
 
 class EventTemplate(Base):

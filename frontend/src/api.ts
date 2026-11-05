@@ -93,6 +93,8 @@ export interface EventRecord {
   status: string;
   closes_at: number | null;
   published_at?: number | null;
+  series_id?: string | null;
+  scheduled_publish_at?: number | null;
   archived_at?: number | null;
   signup_deleted_at?: number | null;
   close_error?: string | null;

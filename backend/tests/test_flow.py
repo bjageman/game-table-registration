@@ -190,6 +190,110 @@ def event_body():
     }
 
 
+def test_recurring_events_schedule_cancel_and_stop(client):
+    headers = login(client)
+    body = {
+        **event_body(),
+        "frequency": "weekly",
+        "time_zone": "America/New_York",
+        "opens_before_hours": 72,
+        "closes_before_hours": 24,
+    }
+    created = client.post("/api/recurring-series", headers=headers, json=body)
+    assert created.status_code == 201, created.text
+    series_id = created.json()["id"]
+    scheduled = [
+        row for row in client.get("/api/events").json() if row["series_id"] == series_id
+    ]
+    assert len(scheduled) == 4
+    assert all(row["status"] == "scheduled" for row in scheduled)
+    assert all(row["duration_hours"] == 48 for row in scheduled)
+    assert scheduled[0]["scheduled_publish_at"] == scheduled[0]["starts_at"] - 72 * 3600
+    assert (
+        client.post(
+            f"/api/events/{scheduled[0]['id']}/cancel-scheduled", headers=headers
+        ).status_code
+        == 204
+    )
+    replacement = [
+        row for row in client.get("/api/events").json() if row["series_id"] == series_id
+    ]
+    assert len(replacement) == 4
+    assert scheduled[0]["id"] not in {row["id"] for row in replacement}
+    assert (
+        client.post(
+            f"/api/recurring-series/{series_id}/stop", headers=headers
+        ).status_code
+        == 204
+    )
+    assert not [
+        row for row in client.get("/api/events").json() if row["series_id"] == series_id
+    ]
+
+
+def test_due_recurring_event_is_published_once_by_worker(tmp_path):
+    from sqlalchemy import update
+
+    from app.models import Event
+
+    settings = Settings(
+        _env_file=None,
+        announcement_worker_enabled=True,
+        database_url=f"sqlite:///{tmp_path}/scheduled.db",
+        discord_client_id="client",
+        discord_signup_mode="poll",
+        discord_gateway_enabled=False,
+        discord_client_secret="secret",
+        discord_bot_token="token",
+        discord_guild_id="guild",
+        discord_channel_id="channel",
+        owner_discord_id="owner",
+    )
+    app = create_app(settings)
+    Base.metadata.create_all(app.state.engine)
+    app.state.discord = Mock()
+    app.state.discord.identity.return_value = {"id": "owner", "username": "organizer"}
+    app.state.discord.publish.return_value = {
+        "id": "message",
+        "poll": {
+            "answers": [{"answer_id": 9}],
+            "expiry": (datetime.now(UTC) + timedelta(hours=48)).isoformat(),
+        },
+    }
+    with TestClient(app) as test_client:
+        headers = login(test_client)
+        body = {
+            **event_body(),
+            "frequency": "weekly",
+            "time_zone": "America/New_York",
+            "opens_before_hours": 72,
+            "closes_before_hours": 24,
+        }
+        assert (
+            test_client.post(
+                "/api/recurring-series", headers=headers, json=body
+            ).status_code
+            == 201
+        )
+        first = test_client.get("/api/events").json()[0]
+        with DBSession(app.state.engine) as db:
+            db.execute(
+                update(Event)
+                .where(Event.id == first["id"])
+                .values(scheduled_publish_at=time.time() - 1)
+            )
+            db.commit()
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            if test_client.get("/api/events").json()[0]["status"] == "open":
+                break
+            time.sleep(0.2)
+        else:
+            pytest.fail("Scheduled event was not published")
+        assert app.state.discord.publish.call_count == 1
+    app.state.engine.dispose()
+
+
 def test_templates_save_reusable_details_without_an_event_date_and_are_private(client):
     headers = login(client)
     body = {
