@@ -7,6 +7,7 @@ import { FormField } from "./FormFields";
 import {
   api,
   errorMessage,
+  mutationOptions,
   type EventRecord,
   type ModeratorSession,
 } from "./api";
@@ -28,6 +29,7 @@ const sortOptions = [
 ] as const;
 type SortOrder = typeof sortOptions[number]["value"];
 const titleOrder = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+interface RecurringSeriesRecord { id: string; title: string; frequency: string; time_zone: string; opens_before_hours: number; closes_before_hours: number }
 
 export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [query, setQuery] = useState("");
@@ -36,6 +38,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [exporting, setExporting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [events, setEvents] = useState<EventRecord[]>([]);
+  const [series, setSeries] = useState<RecurringSeriesRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -95,6 +98,30 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
     return () => controller.abort();
   }, [attempt, onAccessError]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    api<RecurringSeriesRecord[]>("/recurring-series", { signal: controller.signal })
+      .then((rows) => { if (!controller.signal.aborted) setSeries(rows); })
+      .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    return () => controller.abort();
+  }, [attempt, onAccessError]);
+
+  async function cancelScheduled(event: EventRecord) {
+    try {
+      await api(`/events/${event.id}/cancel-scheduled`, mutationOptions(session.csrf));
+      setNotice(`Canceled ${event.title} on ${new Date(event.starts_at * 1000).toLocaleString()}.`);
+      setAttempt((value) => value + 1);
+    } catch (failure) { if (!onAccessError(failure)) setNotice(errorMessage(failure)); }
+  }
+
+  async function stopSchedule(row: RecurringSeriesRecord) {
+    try {
+      await api(`/recurring-series/${row.id}/stop`, mutationOptions(session.csrf));
+      setNotice(`Stopped ${row.title}. Upcoming unposted events were removed.`);
+      setAttempt((value) => value + 1);
+    } catch (failure) { if (!onAccessError(failure)) setNotice(errorMessage(failure)); }
+  }
+
   function refresh() {
     setLoading(true);
     setError("");
@@ -104,7 +131,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
 
   const titleQuery = query.trim().toLocaleLowerCase();
   const visibleEvents = events.filter((event) =>
-    (showArchived || !event.archived_at) && event.title.toLocaleLowerCase().includes(titleQuery),
+    event.status !== "scheduled" && (showArchived || !event.archived_at) && event.title.toLocaleLowerCase().includes(titleQuery),
   ).sort((a, b) => {
     const byTitle = titleOrder.compare(a.title, b.title);
     const byDate = a.starts_at - b.starts_at;
@@ -177,6 +204,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           event={editing}
           csrf={session.csrf}
           onCreated={created}
+          onScheduled={(title) => { setCreating(false); setNotice(`Recurring schedule created: ${title}.`); setAttempt((value) => value + 1); }}
           onCancel={() => {
             setCreating(false);
             setEditing(undefined);
@@ -194,6 +222,16 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           <button onClick={refresh}>Try again</button>
         </div>
       )}
+      {!loading && !error && (series.length > 0 || events.some((event) => event.status === "scheduled")) && <section className="panel" aria-label="Scheduled events">
+        <h3>Scheduled Events</h3>
+        {events.filter((event) => event.status === "scheduled").sort((a, b) => a.starts_at - b.starts_at).slice(0, 4).map((event) => <div key={event.id} className="section-heading">
+          <span>{event.title} · {new Date(event.starts_at * 1000).toLocaleString()} · Posts {new Date((event.scheduled_publish_at ?? 0) * 1000).toLocaleString()}</span>
+          {session.organization_role !== "user" && <button type="button" onClick={() => void cancelScheduled(event)}>Cancel</button>}
+        </div>)}
+        {series.map((row) => <div key={row.id} className="section-heading"><span>{row.title} · {row.frequency} · {row.time_zone}</span>
+          {session.organization_role !== "user" && <button type="button" onClick={() => void stopSchedule(row)}>Stop repeating</button>}
+        </div>)}
+      </section>}
       {!loading &&
         !error &&
         (visibleEvents.length ? (

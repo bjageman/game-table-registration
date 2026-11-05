@@ -23,6 +23,7 @@ interface Props {
   csrf: string;
   event?: EventRecord;
   onCreated: (event: EventRecord) => void;
+  onScheduled?: (title: string) => void;
   onCancel: () => void;
   onAccessError: (error: unknown) => boolean;
 }
@@ -35,6 +36,7 @@ export default function EventForm({
   csrf,
   event: draft,
   onCreated,
+  onScheduled,
   onCancel,
   onAccessError,
 }: Props) {
@@ -59,6 +61,9 @@ export default function EventForm({
       : initialTime(),
   );
   const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
+  const [frequency, setFrequency] = useState("once");
+  const [opensBefore, setOpensBefore] = useState("72");
+  const [closesBefore, setClosesBefore] = useState("24");
   const [tables, setTables] = useState(
     draft
       ? draft.tables.map((table, id) => ({
@@ -205,7 +210,7 @@ export default function EventForm({
     const errors = validateEvent({
       title,
       startsAt: startsAtLocal,
-      duration,
+      duration: frequency === "once" ? duration : String(Number(opensBefore) - Number(closesBefore)),
       tables,
     });
     setFieldErrors(errors);
@@ -218,11 +223,23 @@ export default function EventForm({
     }
     const start = new Date(startsAtLocal);
     const hours = Number(duration);
+    if (frequency !== "once") {
+      const open = Number(opensBefore);
+      const close = Number(closesBefore);
+      if (!Number.isInteger(open) || !Number.isInteger(close) || open > 768 || close < 1 || close >= open) {
+        setError("Choose whole-hour offsets with signups opening before they close.");
+        return;
+      }
+      if (start.getTime() - open * 3600000 <= Date.now()) {
+        setError("The first signup window must begin in the future.");
+        return;
+      }
+    }
     inFlight.current = true;
     setSaving(true);
     try {
-      const result = await api<EventRecord>(
-        draft ? `/events/${draft.id}` : "/events",
+      const result = await api<EventRecord | { id: string; title: string }>(
+        frequency !== "once" ? "/recurring-series" : draft ? `/events/${draft.id}` : "/events",
         {
           ...mutationOptions(csrf, {
             title: title.trim(),
@@ -230,6 +247,12 @@ export default function EventForm({
             location: location.trim(),
             starts_at: start.toISOString(),
             duration_hours: hours,
+            ...(frequency !== "once" ? {
+              frequency,
+              time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              opens_before_hours: Number(opensBefore),
+              closes_before_hours: Number(closesBefore),
+            } : {}),
             tables: tables.map((table) => ({
               name: table.name.trim(),
               capacity: Number(table.capacity),
@@ -238,7 +261,8 @@ export default function EventForm({
           method: draft ? "PUT" : "POST",
         },
       );
-      onCreated(result);
+      if (frequency !== "once") onScheduled?.(result.title);
+      else onCreated(result as EventRecord);
     } catch (failure) {
       if (!onAccessError(failure)) {
         setError(errorMessage(failure));
@@ -268,7 +292,7 @@ export default function EventForm({
   return (
     <section className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
       <div className="section-heading template-heading">
-        <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : "Create Event Draft"}</h3>
+        <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : frequency === "once" ? "Create Event Draft" : "Create Repeating Event"}</h3>
         {templates.length > 0 && <button type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
       </div>
       {choosingTemplate && <TemplatePicker templates={templates} onSelect={loadTemplate} onClose={() => setChoosingTemplate(false)} />}
@@ -297,6 +321,9 @@ export default function EventForm({
             }}
           />
           <div className="form-grid event-schedule-fields">
+            {!draft && <div><label htmlFor={`${prefix}-frequency`}>Repeat</label><select id={`${prefix}-frequency`} value={frequency} onChange={(event) => setFrequency(event.target.value)}>
+              <option value="once">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+            </select></div>}
             <div className="date-time-fields" ref={scheduleFields}>
               {isMobile ? (
                 <div className="mobile-date-time-fields">
@@ -378,7 +405,7 @@ export default function EventForm({
               )}
             </div>
             <div>
-              <TextField
+              {frequency === "once" ? <TextField
                 id={`${prefix}-signup-start`}
                 label="Signup starts"
                 value="When the event is published"
@@ -388,10 +415,10 @@ export default function EventForm({
                   input: { readOnly: true },
                   inputLabel: { shrink: true },
                 }}
-              />
+              /> : <TextField label="Signups open (hours before event)" type="number" value={opensBefore} onChange={(event) => setOpensBefore(event.target.value)} fullWidth required slotProps={{ htmlInput: { min: 2, max: 768, step: 1 } }} />}
             </div>
             <div>
-              <TextField
+              {frequency === "once" ? <TextField
                 id={`${prefix}-duration`}
                 error={Boolean(fieldErrors.duration)}
                 helperText={fieldErrors.duration}
@@ -406,7 +433,7 @@ export default function EventForm({
                   inputLabel: { shrink: true },
                   htmlInput: { min: 1, max: 768, step: 1 },
                 }}
-              />
+              /> : <TextField label="Signups close (hours before event)" type="number" value={closesBefore} onChange={(event) => setClosesBefore(event.target.value)} fullWidth required slotProps={{ htmlInput: { min: 1, max: 767, step: 1 } }} />}
             </div>
           </div>
           <TextField
@@ -514,7 +541,7 @@ export default function EventForm({
         {templateNotice && <p role="status" className="notice">{templateNotice}</p>}
         <div className="form-actions">
           <button className="primary" type="submit" disabled={saving}>
-            {saving ? "Saving draft…" : "Save draft"}
+            {saving ? "Saving…" : frequency === "once" ? "Save draft" : "Create schedule"}
           </button>
           <button type="button" onClick={() => void saveTemplate()} disabled={saving}>
             {saving ? "Saving template…" : "Save as Template"}

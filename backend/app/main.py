@@ -46,6 +46,7 @@ from app.gateway import SignupGateway
 from app.models import (
     Announcement,
     AssignmentPreference,
+    CanceledOccurrence,
     Event,
     EventManagerSignup,
     EventPlayerSetting,
@@ -56,6 +57,7 @@ from app.models import (
     OrganizationMember,
     OrganizationSelection,
     PlayerProfile,
+    RecurringSeries,
     Session,
     SignupInteraction,
     TableSignup,
@@ -64,6 +66,7 @@ from app.models import (
 )
 from app.reactions import EMOJIS
 from app.reactions import publication as reaction_publication
+from app.recurrence import fill_schedule
 from app.signup_exports import event_csv, event_pdf, summary_csv
 from app.signups import apply_manager_signups, table_rows
 from app.test_signups import (
@@ -112,6 +115,30 @@ class EventInput(BaseModel):
             raise ValueError("Event must start after the signup window ends")
         if len({table.name.casefold() for table in self.tables}) != len(self.tables):
             raise ValueError("Table names must be unique")
+        return self
+
+
+class RecurringInput(EventInput):
+    frequency: str
+    time_zone: str = Field(max_length=100)
+    opens_before_hours: int = Field(ge=2, le=768)
+    closes_before_hours: int = Field(ge=1, le=767)
+
+    @model_validator(mode="after")
+    def validate_recurrence(self) -> "RecurringInput":
+        if self.frequency not in {"daily", "weekly", "monthly"}:
+            raise ValueError("Choose a daily, weekly, or monthly schedule")
+        try:
+            zone = ZoneInfo(self.time_zone)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError("Choose a valid time zone") from error
+        local = self.starts_at.astimezone(zone).replace(tzinfo=None)
+        if local.replace(tzinfo=zone).timestamp() != self.starts_at.timestamp():
+            raise ValueError("Event time must match the selected time zone")
+        if self.closes_before_hours >= self.opens_before_hours:
+            raise ValueError("Signups must open before they close")
+        if self.starts_at.timestamp() - self.opens_before_hours * 3600 <= time.time():
+            raise ValueError("The first signup window must begin in the future")
         return self
 
 
@@ -213,6 +240,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         def work() -> None:
             while not stop.is_set():
                 try:
+                    with DBSession(engine) as db:
+                        for series in db.scalars(
+                            select(RecurringSeries).where(RecurringSeries.active)
+                        ):
+                            fill_schedule(db, series, time.time())
+                        db.commit()
+                        scheduled = [
+                            (event.id, event.guild_id, event.channel_id)
+                            for event in db.scalars(
+                                select(Event)
+                                .where(
+                                    Event.status == "scheduled",
+                                    Event.scheduled_publish_at <= time.time(),
+                                )
+                                .limit(50)
+                            )
+                        ]
+                    for event_id, guild, channel in scheduled:
+                        try:
+                            if (
+                                config.discord_signup_mode == "custom"
+                                and config.discord_gateway_enabled
+                            ):
+                                if gateway is None or not gateway.is_ready():
+                                    continue
+                            target = config.model_copy(
+                                update={
+                                    "discord_guild_id": guild,
+                                    "discord_channel_id": channel,
+                                }
+                            )
+                            publish_event(event_id, client_for(target), "scheduled")
+                            with DBSession(engine) as archive_db:
+                                current = archive_db.get(Event, event_id)
+                                if current and current.series_id:
+                                    archive_db.execute(
+                                        update(Event)
+                                        .where(
+                                            Event.series_id == current.series_id,
+                                            Event.starts_at < current.starts_at,
+                                            Event.status == "assigned",
+                                            Event.archived_at.is_(None),
+                                        )
+                                        .values(archived_at=time.time())
+                                    )
+                                    archive_db.commit()
+                        except HTTPException as error:
+                            logging.getLogger(__name__).warning(
+                                "Scheduled publication for %s: %s",
+                                event_id,
+                                error.detail,
+                            )
+                        except Exception:
+                            logging.getLogger(__name__).exception(
+                                "Scheduled publication failed for %s", event_id
+                            )
                     # Close expired signups from durable event state. This also
                     # retries events left in `closing` after Discord was still
                     # finalizing a poll or reaction synchronization.
@@ -466,6 +549,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "signup_mode": event.signup_mode,
             "closes_at": event.closes_at,
             "published_at": event.published_at,
+            "series_id": event.series_id,
+            "scheduled_publish_at": event.scheduled_publish_at,
             "archived_at": event.archived_at,
             "signup_deleted_at": event.signup_deleted_at,
             "close_error": event.close_error or event.reaction_error,
@@ -1824,6 +1909,121 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             return serialize(event)
 
+    @app.get("/api/recurring-series")
+    def recurring_series(request: Request) -> list[dict[str, Any]]:
+        authenticated(request)
+        with DBSession(engine) as db:
+            target = destination(request)
+            rows = db.scalars(
+                select(RecurringSeries).where(
+                    RecurringSeries.organization_id == request.state.organization_id
+                    if request.state.organization_id
+                    else RecurringSeries.organization_id.is_(None)
+                    & (RecurringSeries.created_by == request.state.user_id),
+                    RecurringSeries.guild_id == target.discord_guild_id,
+                    RecurringSeries.channel_id == target.discord_channel_id,
+                    RecurringSeries.active,
+                )
+            )
+            return [
+                {
+                    "id": row.id,
+                    "title": row.title,
+                    "frequency": row.frequency,
+                    "time_zone": row.time_zone,
+                    "opens_before_hours": row.opens_before_hours,
+                    "closes_before_hours": row.closes_before_hours,
+                }
+                for row in rows
+            ]
+
+    @app.post("/api/recurring-series", status_code=201)
+    def create_recurring_series(
+        body: RecurringInput, request: Request
+    ) -> dict[str, Any]:
+        session = authenticated(request, True)
+        target = destination(request)
+        with DBSession(engine) as db:
+            series = RecurringSeries(
+                id=str(uuid.uuid4()),
+                created_by=session.user_id,
+                organization_id=request.state.organization_id,
+                guild_id=target.discord_guild_id,
+                channel_id=target.discord_channel_id,
+                title=body.title.strip(),
+                description=body.description.strip(),
+                location=body.location.strip(),
+                tables=[table.model_dump() for table in body.tables],
+                first_local=body.starts_at.astimezone(
+                    ZoneInfo(body.time_zone)
+                ).strftime("%Y-%m-%dT%H:%M"),
+                time_zone=body.time_zone,
+                frequency=body.frequency,
+                opens_before_hours=body.opens_before_hours,
+                closes_before_hours=body.closes_before_hours,
+                active=True,
+            )
+            db.add(series)
+            fill_schedule(db, series, time.time())
+            db.commit()
+            return {"id": series.id, "title": series.title}
+
+    @app.post("/api/recurring-series/{series_id}/stop")
+    def stop_recurring_series(series_id: str, request: Request) -> Response:
+        authenticated(request, True)
+        target = destination(request)
+        with DBSession(engine) as db:
+            series = db.get(RecurringSeries, series_id)
+            if (
+                not series
+                or series.organization_id != request.state.organization_id
+                or (
+                    series.organization_id is None
+                    and series.created_by != request.state.user_id
+                )
+                or series.guild_id != target.discord_guild_id
+                or series.channel_id != target.discord_channel_id
+            ):
+                raise HTTPException(404, "Schedule not found")
+            series.active = False
+            db.execute(
+                delete(Event).where(
+                    Event.series_id == series_id, Event.status == "scheduled"
+                )
+            )
+            db.commit()
+        return Response(status_code=204)
+
+    @app.post("/api/events/{event_id}/cancel-scheduled")
+    def cancel_scheduled(event_id: str, request: Request) -> Response:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if not event or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "scheduled" or not event.series_id:
+                raise HTTPException(
+                    409, "Only unposted scheduled events can be canceled"
+                )
+            removed = db.execute(
+                delete(Event)
+                .where(Event.id == event_id, Event.status == "scheduled")
+                .returning(Event.series_id, Event.starts_at)
+            ).first()
+            if not removed or not removed.series_id:
+                raise HTTPException(409, "This event has already started publishing")
+            db.add(
+                CanceledOccurrence(
+                    series_id=removed.series_id, starts_at=removed.starts_at
+                )
+            )
+            series = db.get(RecurringSeries, removed.series_id)
+            db.flush()
+            if series:
+                fill_schedule(db, series, time.time())
+            db.commit()
+        return Response(status_code=204)
+
     @app.put("/api/events/{event_id}")
     def edit_event(event_id: str, body: EventInput, request: Request) -> dict[str, Any]:
         authenticated(request, True)
@@ -2054,28 +2254,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
         return Response(status_code=204)
 
-    @app.post("/api/events/{event_id}/publish")
-    def publish(event_id: str, request: Request) -> dict[str, Any]:
-        authenticated(request, True)
-        if config.discord_signup_mode == "custom" and config.discord_gateway_enabled:
-            gateway = getattr(app.state, "gateway", None)
-            if gateway is None or not gateway.is_ready():
-                raise HTTPException(
-                    503,
-                    "Discord signup listener is not connected. Check the API logs, "
-                    "bot token, and that Discord's Interactions Endpoint URL is blank.",
-                )
+    def publish_event(
+        event_id: str, discord: DiscordAPI, expected_status: str
+    ) -> dict[str, Any]:
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
-            if not event or not matches_destination(event, request):
+            if not event:
                 raise HTTPException(404, "Event not found")
+            if (
+                expected_status == "scheduled"
+                and event.scheduled_publish_at is not None
+            ):
+                if event.scheduled_publish_at > time.time():
+                    raise HTTPException(409, "Publication is not due yet")
+                if (
+                    event.scheduled_publish_at + event.duration_hours * 3600
+                    <= time.time()
+                ):
+                    event.status = "needs_review"
+                    event.close_error = "The signup window passed before publication."
+                    db.commit()
+                    raise HTTPException(409, event.close_error)
             if event.starts_at <= time.time() + event.duration_hours * 3600:
+                if expected_status == "scheduled":
+                    event.status = "needs_review"
+                    event.close_error = "Too late to publish the signup window."
+                    db.commit()
+                    raise HTTPException(409, event.close_error)
                 raise HTTPException(
                     400, "Signup window would end after the event starts"
                 )
             claimed = db.execute(
                 update(Event)
-                .where(Event.id == event_id, Event.status == "draft")
+                .where(Event.id == event_id, Event.status == expected_status)
                 .values(
                     status="publishing",
                     signup_mode=(
@@ -2092,7 +2303,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.refresh(event)
             try:
                 closes_at = time.time() + event.duration_hours * 3600
-                message = scoped_discord(request).publish(
+                message = discord.publish(
                     reaction_publication(event, closes_at)
                     if event.signup_mode == "reactions"
                     else {
@@ -2131,7 +2342,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     # Save the message identity before seeding: an uncertain PUT
                     # must never cause a second publication on retry.
                     db.commit()
-                    scoped_discord(request).seed_reactions(
+                    discord.seed_reactions(
                         event.message_id, list(EMOJIS[: len(event.tables)])
                     )
                 else:
@@ -2155,6 +2366,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "before retrying; this event is held for review.",
                 ) from None
             return serialize(event)
+
+    @app.post("/api/events/{event_id}/publish")
+    def publish(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        if config.discord_signup_mode == "custom" and config.discord_gateway_enabled:
+            gateway = getattr(app.state, "gateway", None)
+            if gateway is None or not gateway.is_ready():
+                raise HTTPException(
+                    503,
+                    "Discord signup listener is not connected. Check the API logs, "
+                    "bot token, and that Discord's Interactions Endpoint URL is blank.",
+                )
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if not event or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+        return publish_event(event_id, scoped_discord(request), "draft")
 
     return app
 
