@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import CanceledOccurrence, Event, RecurringSeries
@@ -44,6 +45,11 @@ def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
             )
         )
     )
+    # Archived occurrences still occupy the unique (series_id, starts_at) key.
+    # Keep them out of the window size above, but never try to recreate them.
+    occupied = set(
+        db.scalars(select(Event.starts_at).where(Event.series_id == series.id))
+    )
     canceled = set(
         db.scalars(
             select(CanceledOccurrence.starts_at).where(
@@ -55,28 +61,35 @@ def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
     while len(future) < 4 and index < 20000:
         start = occurrence(series, index)
         index += 1
-        if start is None or start <= now or start in future or start in canceled:
+        if start is None or start <= now or start in occupied or start in canceled:
             continue
         publish_at = start - series.opens_before_hours * 3600
         if publish_at <= now:
             continue
-        db.add(
-            Event(
-                id=str(uuid.uuid4()),
-                series_id=series.id,
-                scheduled_publish_at=publish_at,
-                closes_at=start - series.closes_before_hours * 3600,
-                guild_id=series.guild_id,
-                channel_id=series.channel_id,
-                title=series.title,
-                description=series.description,
-                location=series.location,
-                starts_at=start,
-                duration_hours=series.opens_before_hours - series.closes_before_hours,
-                tables=series.tables,
-                status="scheduled",
-                created_by=series.created_by,
-                organization_id=series.organization_id,
-            )
+        event = Event(
+            id=str(uuid.uuid4()),
+            series_id=series.id,
+            scheduled_publish_at=publish_at,
+            closes_at=start - series.closes_before_hours * 3600,
+            guild_id=series.guild_id,
+            channel_id=series.channel_id,
+            title=series.title,
+            description=series.description,
+            location=series.location,
+            starts_at=start,
+            duration_hours=series.opens_before_hours - series.closes_before_hours,
+            tables=series.tables,
+            status="scheduled",
+            created_by=series.created_by,
+            organization_id=series.organization_id,
         )
+        try:
+            # A request and the background worker can fill a series at the same
+            # time. The unique constraint is the final arbiter for that race.
+            with db.begin_nested():
+                db.add(event)
+                db.flush()
+        except IntegrityError:
+            pass
         future.add(start)
+        occupied.add(start)
