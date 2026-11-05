@@ -263,3 +263,18 @@ it("closes an inline weight edit without saving on Escape", async () => {
   expect(screen.queryByRole("textbox", { name: "Weight for Mary" })).not.toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
+
+it.each([[11, 10], [-1, 0.1]])("clamps event weight %s to %s", async (entered, expected) => {
+  const fetchMock = vi.fn(async (path: string, options?: RequestInit) => {
+    if (options?.method === "PUT") return new Response(JSON.stringify({ weighting: expected, guaranteed_table: null, guaranteed_seat: false }));
+    return new Response(JSON.stringify([{ name: "Table A", players: [{ id: "1", name: "Mary", weighting: 5 }] }]));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Edit weight for Mary: 5.0" }));
+  const input = screen.getByRole("textbox", { name: "Weight for Mary" });
+  fireEvent.change(input, { target: { value: String(entered) } });
+  fireEvent.submit(input.closest("form")!);
+  await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === "PUT" && JSON.parse(options.body as string).weighting === expected)).toBe(true));
+  expect(screen.getByText(entered > 10 ? /maximum weight is 10/ : /minimum weight is 0.1/)).toBeVisible();
+});

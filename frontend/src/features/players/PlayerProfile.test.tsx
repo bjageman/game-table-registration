@@ -58,7 +58,7 @@ it("keeps the player dialog open when Enter finds an invalid weighting", async (
   const onClose = vi.fn();
   render(<PlayerProfile player={player} csrf="csrf" onClose={onClose} onAccessError={() => false} />);
   const weight = await screen.findByLabelText("Global Weighting");
-  fireEvent.change(weight, { target: { value: "20" } });
+  fireEvent.change(weight, { target: { value: "" } });
   fireEvent.keyDown(weight, { key: "Enter" });
   expect(screen.getByRole("alert")).toHaveTextContent("Choose a weighting from 0.1 to 10.");
   expect(onClose).not.toHaveBeenCalled();
@@ -76,6 +76,17 @@ it("saves global weighting on blur in 0.1 steps", async () => {
   expect(weight).toHaveValue(2.5);
   expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ weighting: 2.5 });
   expect(onSaved).toHaveBeenCalledOnce();
+});
+
+it.each([[11, 10, "maximum weight is 10"], [-1, 0.1, "minimum weight is 0.1"]])("clamps %s to %s and explains the limit", async (entered, expected, message) => {
+  const { profile } = mockProfile();
+  render(<PlayerProfile player={player} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} />);
+  const weight = await screen.findByLabelText("Global Weighting");
+  fireEvent.change(weight, { target: { value: String(entered) } });
+  fireEvent.blur(weight);
+  await waitFor(() => expect(profile.weighting).toBe(expected));
+  expect(weight).toHaveValue(expected);
+  expect(await screen.findByRole("status")).toHaveTextContent(String(message));
 });
 
 it("saves a checkbox toggle immediately and serializes rapid changes", async () => {

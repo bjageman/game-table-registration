@@ -160,7 +160,7 @@ class PlayerProfile(Base):
     guaranteed_seat: Mapped[bool] = mapped_column(default=False)
     is_test: Mapped[bool] = mapped_column(default=False)
     real_name: Mapped[str] = mapped_column(String(100), default="")
-    weighting: Mapped[float] = mapped_column(Float, default=1.0)
+    weighting: Mapped[float] = mapped_column(Float, default=5.0)
 
 
 class UserSettings(Base):

@@ -1143,7 +1143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if profile
             else signup_name or discord_name(player_id),
             "real_name": profile.real_name if profile else "",
-            "weighting": profile.weighting if profile else 1.0,
+            "weighting": profile.weighting if profile else 5.0,
             "is_test": profile.is_test if profile else False,
             "guaranteed_seat": profile.guaranteed_seat if profile else False,
         }
@@ -1231,7 +1231,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     discord_id=player_id,
                     discord_name=discord_name(player_id),
                     real_name=body.real_name or "",
-                    weighting=body.weighting if body.weighting is not None else 1.0,
+                    weighting=body.weighting if body.weighting is not None else 5.0,
                 )
                 db.add(profile)
             else:
@@ -1354,7 +1354,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         if setting and setting.weighting is not None
                         else profile.weighting
                         if profile
-                        else 1.0
+                        else 5.0
                     ),
                     guaranteed_table=setting.guaranteed_table if setting else None,
                     guaranteed_seat=profile.guaranteed_seat if profile else False,
@@ -1653,7 +1653,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if setting.weighting is not None
                 else profile.weighting
                 if profile
-                else 1.0,
+                else 5.0,
                 "guaranteed_table": setting.guaranteed_table,
                 "guaranteed_seat": profile.guaranteed_seat if profile else False,
             }
@@ -1773,14 +1773,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                 else:
                     player["name"] = f"Test Player {index + 1:03d}"
-                    player["weight"] = 1.0
+                    player["weight"] = 5.0
                     db.add(
                         PlayerProfile(
                             guild_id=event.guild_id,
                             discord_id=player["id"],
                             discord_name=player["name"],
                             real_name="",
-                            weighting=1.0,
+                            weighting=5.0,
                             is_test=True,
                         )
                     )

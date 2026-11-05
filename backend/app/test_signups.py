@@ -31,7 +31,7 @@ def generate(event_id: str, tables: list[dict[str, Any]], count: int) -> dict[st
                 + hashlib.sha256(f"{event_id}:{seed}:{i}".encode()).hexdigest()[:24],
                 "name": f"Test Player {i + 1:03d}",
                 "choices": rng.sample(names, rng.randint(1, len(names))),
-                "weight": rng.choice([0.5, 1.0, 2.0]),
+                "weight": rng.choice([2.5, 5.0, 10.0]),
             }
             for i in range(count)
         ],

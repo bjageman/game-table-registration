@@ -1,6 +1,9 @@
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+
+from app.models import Event, EventPlayerSetting, PlayerProfile
 
 
 def test_weight_reset_migration_runs_once_and_preserves_profile_fields(
@@ -29,11 +32,56 @@ def test_weight_reset_migration_runs_once_and_preserves_profile_fields(
                 "FROM player_profiles ORDER BY guild_id"
             )
         ).all()
-        assert rows == [("Saved Display", 1.0, 0, 1), ("Test Display", 1.0, 1, 0)]
+        assert rows == [("Saved Display", 5.0, 0, 1), ("Test Display", 5.0, 1, 0)]
         connection.execute(text("UPDATE player_profiles SET weighting = 1.1"))
     command.upgrade(config, "head")
     with engine.connect() as connection:
         assert set(
             connection.execute(text("SELECT weighting FROM player_profiles")).scalars()
         ) == {1.1}
+    engine.dispose()
+
+
+def test_five_point_scale_migration_preserves_history_and_runs_once(
+    tmp_path, monkeypatch
+):
+    url = f"sqlite:///{tmp_path}/scale.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    config = Config("alembic.ini")
+    command.upgrade(config, "20261105_public_event_sharing")
+    engine = create_engine(url)
+    with Session(engine) as db:
+        db.add(
+            Event(
+                id="event",
+                guild_id="guild",
+                title="Event",
+                starts_at=2000000000,
+                duration_hours=24,
+                tables=[],
+                created_by="owner",
+            )
+        )
+        for pid, weight in (("seated", 0.9), ("waiting", 1.1), ("custom", 3)):
+            db.add(
+                PlayerProfile(
+                    guild_id="guild", discord_id=pid, discord_name=pid, weighting=weight
+                )
+            )
+        db.commit()
+        db.add(EventPlayerSetting(event_id="event", discord_id="custom", weighting=1.2))
+        db.commit()
+    command.upgrade(config, "head")
+    with Session(engine) as db:
+        assert {p.discord_id: p.weighting for p in db.query(PlayerProfile)} == {
+            "seated": 4.5,
+            "waiting": 5.5,
+            "custom": 10,
+        }
+        assert db.get(EventPlayerSetting, ("event", "custom")).weighting == 6
+        db.get(PlayerProfile, ("guild", "waiting")).weighting = 6
+        db.commit()
+    command.upgrade(config, "head")
+    with Session(engine) as db:
+        assert db.get(PlayerProfile, ("guild", "waiting")).weighting == 6
     engine.dispose()

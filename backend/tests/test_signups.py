@@ -277,7 +277,7 @@ def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
         assert len(result["assignments"]) == 2
         assert len(result["waitlist"]) == 1
         for player in snapshot["players"]:
-            expected = 0.9 if player["id"] in result["assignments"] else 1.1
+            expected = 4.5 if player["id"] in result["assignments"] else 5.5
             assert db.get(PlayerProfile, ("guild", player["id"])).weighting == expected
     assert client.post(path + "/close", headers=headers).status_code == 200
     with Session(client.app.state.engine) as db:

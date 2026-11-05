@@ -21,14 +21,14 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
   const nameField = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const profileRef = useRef<Profile | undefined>(undefined);
-  const submitted = useRef({ real_name: "", weighting: 1, guaranteed_seat: false });
+  const submitted = useRef({ real_name: "", weighting: 5, guaranteed_seat: false });
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const pending = useRef(0);
   const failed = useRef(false);
   const closing = useRef(false);
   const [profile, setProfile] = useState<Profile>();
   const [realName, setRealName] = useState("");
-  const [weighting, setWeighting] = useState("1");
+  const [weighting, setWeighting] = useState("5");
   const [guaranteedSeat, setGuaranteedSeat] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingWeight, setSavingWeight] = useState(false);
@@ -108,16 +108,21 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
   }
   function saveWeight(): boolean {
     if (!profileRef.current) return true;
-    const value = Number(weighting);
-    if (!weighting.trim() || !Number.isFinite(value) || value < 0.1 || value > 10) {
+    const entered = Number(weighting);
+    const value = Math.min(10, Math.max(0.1, entered));
+    const message = entered > 10 ? "The maximum weight is 10. Weight set to 10." : entered < 0.1 ? "The minimum weight is 0.1. Weight set to 0.1." : "Global weighting saved.";
+    if (!weighting.trim() || !Number.isFinite(entered)) {
       setError("Choose a weighting from 0.1 to 10.");
       return false;
     }
+    setWeighting(String(value));
+    setError("");
     if (value === submitted.current.weighting) {
+      setNotice(message);
       return true;
     }
     setSavingWeight(true);
-    void saveChange({ weighting: value }, "Global weighting saved.").finally(() => setSavingWeight(false));
+    void saveChange({ weighting: value }, message).finally(() => setSavingWeight(false));
     return true;
   }
   async function close() {
