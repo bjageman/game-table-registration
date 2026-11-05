@@ -3,7 +3,7 @@
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20261104_assignment_preference_backfill"
+revision = "20261104_assignment_backfill"
 down_revision = "20261104_assignment_preferences"
 branch_labels = None
 depends_on = None
