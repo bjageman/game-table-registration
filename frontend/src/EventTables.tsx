@@ -140,7 +140,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       } finally {
         if (!controller.signal.aborted) {
           onRefreshingChange?.(false);
-          if (event.status !== "assigned") timer = setTimeout(() => void refresh(), 15000);
+          timer = setTimeout(() => void refresh(), 15000);
         }
       }
     }

@@ -230,3 +230,10 @@ class GuildSettings(Base):
     __tablename__ = "guild_settings"
     guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
+
+
+class AssignmentPreference(Base):
+    __tablename__ = "assignment_preferences"
+    scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
+    announce_table_changes: Mapped[bool] = mapped_column(default=False)

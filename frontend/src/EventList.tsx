@@ -110,7 +110,7 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {event.status !== "draft" && (
+          {event.status !== "draft" && event.status !== "assigned" && (
           <button type="button" className="event-icon-action"
             aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
             title={refreshing ? "Refreshing Signups" : "Refresh Signups"}

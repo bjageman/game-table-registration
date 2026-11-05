@@ -384,6 +384,16 @@ class DiscordAPI:
             raise DiscordRequestError(None)
         return message
 
+    def edit_announcement(
+        self, channel_id: str, message_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.bot(
+            "PATCH",
+            f"/channels/{channel_id}/messages/{message_id}",
+            json=payload,
+            timeout=8,
+        )
+
     def find_announcement(
         self, channel_id: str, payload: dict[str, Any], attempted_at: float
     ) -> str | None:

@@ -4,7 +4,7 @@ import ConfirmationDialog from "./ConfirmationDialog";
 import { api, errorMessage, mutationOptions, type EventRecord } from "./api";
 import LoadingIndicator from "./LoadingIndicator";
 
-interface Delivery { status: "pending" | "sent" | "needs_review" | "unavailable" | "deleted"; error: string | null; url: string | null; }
+interface Delivery { status: "pending" | "sent" | "needs_review" | "unavailable" | "deleted"; error: string | null; url: string | null; update_pending?: boolean; update_error?: string | null; }
 
 export default function AssignmentAnnouncement({ event, csrf, refreshToken, readOnly = false, onAccessError }: {
   event: EventRecord; csrf: string; refreshToken: number; readOnly?: boolean; onAccessError: (error: unknown) => boolean;
@@ -22,13 +22,13 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken, read
         const value = await api<Delivery>(`/events/${encodeURIComponent(event.id)}/announcement`, { signal: controller.signal });
         if (!controller.signal.aborted) {
           setDelivery(value); setError("");
-          if (value.status === "pending") timer = setTimeout(() => void load(), 5000);
+          if (!event.archived_at) timer = setTimeout(() => void load(), value.update_pending || value.status === "pending" ? 5000 : 15000);
         }
       } catch (failure) { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); }
     }
     void load();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [event.id, refreshToken, attempt, onAccessError]);
+  }, [event.id, event.archived_at, refreshToken, attempt, onAccessError]);
   async function retry() {
     if (busy) return;
     setBusy(true); setError("");
@@ -42,6 +42,8 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken, read
     {!delivery && !error && <p><LoadingIndicator label="Loading announcement status…" /></p>}
     {error && <p role="alert" className="error">{error}</p>}
     {delivery?.status === "sent" && delivery.url && <p><DiscordLink url={delivery.url} label="View Assignment Announcement">View Assignment Announcement</DiscordLink></p>}
+    {delivery?.update_pending && <p role="status">Updating Discord assignments…</p>}
+    {delivery?.update_error && <p role="alert" className="error">Could not update Discord assignments: {delivery.update_error}</p>}
     {delivery?.status === "pending" && <p role="status">Assignment announcement queued for Discord.</p>}
     {delivery?.status === "deleted" && <p>Assignment announcement removed from Discord.</p>}
     {delivery?.error && <p className="error">{delivery.error}</p>}
