@@ -167,8 +167,8 @@ def event_pdf(
             values: list[list[Any]] = [
                 [
                     check_icon(),
-                    Paragraph("Username", header_style),
                     Paragraph("Display Name", header_style),
+                    Paragraph("Username", header_style),
                 ]
             ]
             sections: list[int] = []
@@ -187,8 +187,8 @@ def event_pdf(
                 values.append(
                     [
                         Spacer(0, 0),
-                        Paragraph(escape(player["name"]), name_style),
                         Paragraph(escape(player.get("display_name") or ""), name_style),
+                        Paragraph(escape(player["name"]), name_style),
                     ]
                 )
             if not chunk:
@@ -201,7 +201,7 @@ def event_pdf(
                 )
             listing = Table(
                 values,
-                colWidths=[17, 104, card_width - 121],
+                colWidths=[17, card_width - 121, 104],
                 hAlign="LEFT",
             )
             styling: list[tuple[Any, ...]] = [
