@@ -17,7 +17,7 @@ it("shows Connect and allows saving assignment settings without Discord", async 
   await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === "/api/settings/assignment")).toHaveLength(2));
 });
 
-it("shows Disconnect beside Save and refreshes the server picker", async () => {
+it("shows Disconnect beside Save and refreshes the server dropdown", async () => {
   let guilds = [{ id: "100", name: "First" }];
   vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(
     path === "/api/settings" ? { selection: { guild_id: "100", guild_name: "First", channel_id: "101", channel_name: "games" }, organization_role: "admin", disconnected: false }
@@ -26,15 +26,14 @@ it("shows Disconnect beside Save and refreshes the server picker", async () => {
       : { automatic_weight_adjustment: true, announce_table_changes: false }
   ))));
   render(<ConnectionSettings {...props} />);
-  const server = await screen.findByRole("textbox", { name: "Discord Server" });
-  expect(server).toBeDisabled();
+  const server = await screen.findByRole("combobox", { name: "Discord Server" });
+  expect(server).toHaveAttribute("aria-disabled", "true");
   const disconnect = screen.getByRole("button", { name: "Disconnect" });
   expect(disconnect.previousElementSibling).toContainElement(screen.getByRole("button", { name: "Save" }));
   guilds = [...guilds, { id: "200", name: "Second" }];
   fireEvent.click(screen.getByRole("button", { name: "Refresh Servers" }));
-  await waitFor(() => expect(server).not.toBeDisabled());
-  fireEvent.click(server);
-  expect(await screen.findByRole("dialog", { name: "Discord Server" })).toBeInTheDocument();
-  fireEvent.click(screen.getByText("Second"));
-  expect(server).toHaveValue("Second");
+  await waitFor(() => expect(server).not.toHaveAttribute("aria-disabled", "true"));
+  fireEvent.mouseDown(server);
+  fireEvent.click(await screen.findByRole("option", { name: "Second" }));
+  expect(server).toHaveTextContent("Second");
 });

@@ -1,11 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { FormField } from "../../components/FormFields";
 import { RefreshCw } from "lucide-react";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import List from "@mui/material/List";
-import ListItemButton from "@mui/material/ListItemButton";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import MenuItem from "@mui/material/MenuItem";
@@ -30,7 +25,6 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
   const [tab, setTab] = useState("discord");
   const [setup, setSetup] = useState<Setup>();
   const [guilds, setGuilds] = useState<Choice[]>([]);
-  const [choosingServer, setChoosingServer] = useState(false);
   const [refreshingServers, setRefreshingServers] = useState(false);
   const [guildId, setGuildId] = useState("");
   const [channelId, setChannelId] = useState("");
@@ -113,10 +107,13 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
       {setup.selection && <form onSubmit={(event) => void save(event)} aria-label="Discord settings">
         <div className="form-grid">
           <div className="signup-channel-field">
-          <FormField label="Discord Server" value={guilds.find((g) => g.id === guildId)?.name ?? setup.selection.guild_name}
-            disabled={restricted || saving || guilds.length <= 1} slotProps={{ input: { readOnly: true } }}
-            onKeyDown={(event) => { if (!restricted && !saving && guilds.length > 1 && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setChoosingServer(true); } }}
-            onClick={() => { if (!restricted && !saving && guilds.length > 1) setChoosingServer(true); }} />
+          <FormField select label="Discord Server" value={guildId} fullWidth
+            disabled={restricted || saving || guilds.length <= 1}
+            onChange={(event) => { setGuildId(event.target.value); setChannelId(""); setChannels(undefined); setChannelError(""); }}>
+            {guildId && !guilds.some((guild) => guild.id === guildId) &&
+              <MenuItem value={guildId}>{setup.selection.guild_name}</MenuItem>}
+            {guilds.map((guild) => <MenuItem key={guild.id} value={guild.id}>{guild.name}</MenuItem>)}
+          </FormField>
           <button type="button" className="settings-refresh" aria-label="Refresh Servers" title="Refresh Servers"
             disabled={restricted || saving || refreshingServers} onClick={() => void refreshServers()}><RefreshCw size={18} aria-hidden="true" /></button>
           </div>
@@ -152,13 +149,6 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
           }} />}
         </div>
       </form>}
-      <Dialog open={choosingServer} onClose={() => setChoosingServer(false)} aria-labelledby={`${tabId}-servers-title`} fullWidth maxWidth="xs">
-        <DialogTitle id={`${tabId}-servers-title`}>Discord Server</DialogTitle>
-        <DialogContent><List>{guilds.map((guild) => <ListItemButton key={guild.id} selected={guild.id === guildId}
-          onClick={() => { if (guild.id !== guildId) { setGuildId(guild.id); setChannelId(""); setChannels(undefined); setChannelError(""); } setChoosingServer(false); }}>{guild.name}</ListItemButton>)}</List>
-          <button type="button" onClick={() => setChoosingServer(false)}>Close</button>
-        </DialogContent>
-      </Dialog>
     </>}
     </div>
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
