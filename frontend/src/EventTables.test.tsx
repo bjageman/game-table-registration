@@ -89,6 +89,29 @@ it("refreshes names and counts when votes are added and removed, and stops on cl
   expect(fetchMock).toHaveBeenCalledTimes(4);
 });
 
+it("refreshes assigned placements while the modal is open", async () => {
+  vi.useFakeTimers();
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify([
+      { name: "Table A", players: [{ id: "1", name: "Mary" }], waitlist: [] },
+      { name: "Table B", players: [], waitlist: [] },
+    ])))
+    .mockResolvedValueOnce(new Response(JSON.stringify([
+      { name: "Table A", players: [{ id: "1", name: "Mary" }, { id: "2", name: "Dan" }], waitlist: [] },
+      { name: "Table B", players: [], waitlist: [] },
+    ])));
+  vi.stubGlobal("fetch", fetchMock);
+  const view = render(<EventTables csrf="csrf" event={{ ...event, status: "assigned" }} onAccessError={() => false} />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(screen.getByText("1/8")).toBeVisible();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  expect(screen.getByText("2/8")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Dan" })).toBeVisible();
+  view.unmount();
+  await vi.advanceTimersByTimeAsync(15000);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
 it("prefers display names for assigned and waiting players, with Discord name fallback", () => {
   render(<TableColumns event={{ ...event, status: "assigned" }} onSelect={() => {}} rows={[
     { name: "Table A", players: [{ id: "1", name: "DiscordMary", display_name: "Mary Display" }, { id: "2", name: "A very long assigned player name" }], waitlist: [{ id: "3", name: "DiscordCarl", display_name: "Carl Display" }] },
