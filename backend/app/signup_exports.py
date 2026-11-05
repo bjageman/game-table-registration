@@ -107,8 +107,8 @@ def event_pdf(
         for table in rows
     )
     font_size = 10.5 if expanded else 8
-    leading = 12 if expanded else 9
-    row_padding = 1.35 if expanded else 0.25
+    leading = 11.5 if expanded else 8.5
+    row_padding = 1.5 if expanded else 0.5
     name_style = ParagraphStyle(
         "SignupName",
         fontName="SignupVera",
