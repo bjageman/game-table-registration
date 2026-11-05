@@ -414,8 +414,6 @@ def test_closing_claim_rejects_late_choices_before_snapshot(custom_client, monke
 
 
 def test_custom_signups_share_test_players_and_assignment_settings(custom_client):
-    from app.models import GuildSettings
-
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
     dispatch(custom_client, interaction(event, "select"))
@@ -425,9 +423,17 @@ def test_custom_signups_share_test_players_and_assignment_settings(custom_client
         ).status_code
         == 200
     )
-    with Session(client.app.state.engine) as db:
-        db.add(GuildSettings(guild_id="guild", automatic_weight_adjustment=False))
-        db.commit()
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={
+                "automatic_weight_adjustment": False,
+                "announce_table_changes": False,
+            },
+        ).status_code
+        == 200
+    )
     rows = client.get(path + "/signups", headers=headers).json()
     assert "1" in {p["id"] for row in rows for p in row["players"]}
     assert any(p["id"].startswith("test-") for row in rows for p in row["players"])

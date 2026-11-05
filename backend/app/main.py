@@ -31,6 +31,7 @@ from app.announcements import (
 from app.announcements import (
     status as announcement_status,
 )
+from app.assignment_preferences import scope_key as assignment_scope_key
 from app.branding import load_branding
 from app.closing import close_and_assign
 from app.config import Settings
@@ -44,12 +45,12 @@ from app.event_description import POLL_DESCRIPTION, signup_description, signup_l
 from app.gateway import SignupGateway
 from app.models import (
     Announcement,
+    AssignmentPreference,
     CanceledOccurrence,
     Event,
     EventManagerSignup,
     EventPlayerSetting,
     EventTemplate,
-    GuildSettings,
     LoginState,
     LotteryRun,
     Organization,
@@ -160,6 +161,7 @@ class EventTemplateInput(BaseModel):
 class AssignmentSettingsInput(BaseModel):
     model_config = {"extra": "forbid"}
     automatic_weight_adjustment: bool
+    announce_table_changes: bool
 
 
 class PlayerProfileInput(BaseModel):
@@ -1071,30 +1073,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/settings/assignment")
     def assignment_settings(request: Request) -> dict[str, Any]:
-        authenticated(request, require_channel=False)
-        guild_id = destination(request).discord_guild_id
+        session = authenticated(request, require_channel=False)
+        key = assignment_scope_key(request.state.organization_id, session.user_id)
         with DBSession(engine) as db:
-            saved = db.get(GuildSettings, guild_id)
+            saved = db.get(AssignmentPreference, key)
             return {
                 "automatic_weight_adjustment": saved.automatic_weight_adjustment
                 if saved
-                else True
+                else True,
+                "announce_table_changes": saved.announce_table_changes
+                if saved
+                else False,
             }
 
     @app.put("/api/settings/assignment")
     def save_assignment_settings(
         body: AssignmentSettingsInput, request: Request
     ) -> dict[str, Any]:
-        authenticated(request, True, require_channel=False)
+        session = authenticated(request, True, require_channel=False)
+        if request.state.organization_id and request.state.organization_role != "admin":
+            raise HTTPException(
+                403, "Only organization admins can save assignment settings"
+            )
         with DBSession(engine) as db:
             db.merge(
-                GuildSettings(
-                    guild_id=destination(request).discord_guild_id,
+                AssignmentPreference(
+                    scope_key=assignment_scope_key(
+                        request.state.organization_id, session.user_id
+                    ),
                     automatic_weight_adjustment=body.automatic_weight_adjustment,
+                    announce_table_changes=body.announce_table_changes,
                 )
             )
             db.commit()
-        return {"automatic_weight_adjustment": body.automatic_weight_adjustment}
+        return body.model_dump()
 
     def discord_name(player_id: str) -> str:
         discord: DiscordAPI = app.state.discord
@@ -2068,7 +2080,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     409, "Archive the event before deleting its messages"
                 )
-            query = select(Announcement).where(Announcement.event_id == event_id)
+            query = select(Announcement).where(
+                Announcement.event_id == event_id,
+                Announcement.kind != "refresh",
+            )
             if promotions_only:
                 query = query.where(Announcement.kind == "promotion")
             rows = list(db.scalars(query.order_by(Announcement.part)))

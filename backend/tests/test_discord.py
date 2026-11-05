@@ -257,6 +257,16 @@ def test_discord_rate_limit_delay_is_preserved():
         assert not error.value.ambiguous
 
 
+def test_edit_announcement_uses_existing_message():
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(return_value={"id": "message"})
+    payload = {"content": "Updated", "embeds": [], "allowed_mentions": {"parse": []}}
+    api.edit_announcement("channel", "message", payload)
+    api.bot.assert_called_once_with(
+        "PATCH", "/channels/channel/messages/message", json=payload, timeout=8
+    )
+
+
 def test_reconcile_announcement_requires_our_bot_and_matches_saved_payload():
     api = DiscordAPI(Settings(_env_file=None))
     api.bot = Mock(return_value={"id": "bot"})

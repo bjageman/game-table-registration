@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20261104_repeated_events"
-down_revision = "20261104_merge_location_manual"
+down_revision = "20261104_assignment_backfill"
 branch_labels = None
 depends_on = None
 

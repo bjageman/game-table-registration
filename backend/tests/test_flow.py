@@ -1259,6 +1259,14 @@ def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(cli
     from app.models import Announcement, EventWithdrawal
 
     headers, event, path, _ = closing_event(client)
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+        ).status_code
+        == 200
+    )
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     rows = client.get(path + "/signups").json()
@@ -1310,8 +1318,10 @@ def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(cli
         notice = (
             db.query(Announcement)
             .filter_by(event_id=event["id"], kind="promotion")
-            .one()
+            .order_by(Announcement.part.desc())
+            .first()
         )
+        assert notice is not None
         assert (
             notice.payload["content"]
             == f"<@{seated}> has left their seat at **{table['name']}**."
@@ -1319,12 +1329,26 @@ def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(cli
         assert notice.payload["allowed_mentions"] == {"parse": [], "users": [seated]}
         withdrawal = db.get(EventWithdrawal, (event["id"], seated))
         assert withdrawal is not None and withdrawal.promoted_id is None
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="refresh")
+            .count()
+            == 1
+        )
 
 
 def test_manager_remove_from_full_table_promotes_next_waitlisted_player(client):
     from app.models import Announcement, EventWithdrawal
 
     headers, event, path, _ = closing_event(client)
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+        ).status_code
+        == 200
+    )
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
@@ -1359,6 +1383,14 @@ def test_reaction_promotion_notice_has_no_table_update_heading(client):
     from app.withdrawals import withdraw
 
     headers, event, path, _ = closing_event(client)
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+        ).status_code
+        == 200
+    )
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
@@ -1373,6 +1405,170 @@ def test_reaction_promotion_notice_has_no_table_update_heading(client):
         assert "Table Update" not in notice.payload["content"]
         assert notice.payload["content"].startswith("<@")
         assert "has been promoted to" in notice.payload["content"]
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="refresh")
+            .count()
+            == 1
+        )
+
+
+def test_table_change_notices_are_off_until_enabled(client):
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    seated = table["players"][0]["id"]
+    assert (
+        client.delete(f"{path}/manager-players/{seated}", headers=headers).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .count()
+            == 0
+        )
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="refresh")
+            .count()
+            == 1
+        )
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+        ).status_code
+        == 200
+    )
+    target_table = next(
+        row for row in client.get(path + "/signups").json() if row["waitlist"]
+    )
+    waiting = target_table["waitlist"][0]["id"]
+    assert (
+        client.post(
+            f"{path}/assigned-players/{waiting}",
+            headers=headers,
+            json={"table": target_table["name"]},
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        notice = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .one()
+        )
+        assert "has been promoted from the waitlist" in notice.payload["content"]
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": False},
+        ).status_code
+        == 200
+    )
+    before = client.app.state.discord.send_announcement.call_count
+    from app.announcements import deliver_event
+
+    deliver_event(
+        client.app.state.engine, client.app.state.discord, event["id"], limit=5
+    )
+    assert all(
+        "has been promoted" not in call.args[1].get("content", "")
+        for call in client.app.state.discord.send_announcement.call_args_list[before:]
+    )
+    with DBSession(client.app.state.engine) as db:
+        saved = db.get(Announcement, notice.id)
+        assert saved is not None and saved.deleted_at is not None
+
+
+def test_assignment_settings_follow_selected_organization_and_admin_role(client):
+    owner_headers = login(client)
+    personal = {"automatic_weight_adjustment": False, "announce_table_changes": True}
+    assert (
+        client.put(
+            "/api/settings/assignment", headers=owner_headers, json=personal
+        ).json()
+        == personal
+    )
+    org = client.post(
+        "/api/organizations", headers=owner_headers, json={"name": "Settings Scope"}
+    ).json()
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=owner_headers,
+            json={"organization_id": org["id"]},
+        ).status_code
+        == 200
+    )
+    defaults = {"automatic_weight_adjustment": True, "announce_table_changes": False}
+    assert client.get("/api/settings/assignment").json() == defaults
+    shared = {"automatic_weight_adjustment": False, "announce_table_changes": False}
+    assert (
+        client.put(
+            "/api/settings/assignment", headers=owner_headers, json=shared
+        ).json()
+        == shared
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "editor",
+        "username": "Editor",
+    }
+    editor_headers = login(client)
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner_headers = login(client)
+    assert (
+        client.put(
+            f"/api/organizations/{org['id']}/members/editor",
+            headers=owner_headers,
+            json={"user_id": "editor", "role": "editor"},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "editor",
+        "username": "Editor",
+    }
+    editor_headers = login(client)
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=editor_headers,
+            json={"organization_id": org["id"]},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/settings/assignment").json() == shared
+    assert (
+        client.put(
+            "/api/settings/assignment", headers=editor_headers, json=personal
+        ).status_code
+        == 403
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner_headers = login(client)
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=owner_headers,
+            json={"organization_id": None},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/settings/assignment").json() == personal
 
 
 def test_close_waits_for_finalization_and_freezes_weights_before_retries(client):
@@ -1542,6 +1738,93 @@ def test_close_immediately_announces_assignments_without_duplicate_delivery(clie
     assert discord.send_announcement.call_count == 2
     with DBSession(client.app.state.engine) as db:
         assert db.query(Announcement).filter_by(event_id=event["id"]).count() == 2
+
+
+def test_assignment_changes_refresh_existing_discord_message_with_retry(client):
+    from app.announcements import dispatch_due
+    from app.discord_api import DiscordRequestError
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    waiting = table["waitlist"][0]["id"]
+    assert (
+        client.post(
+            f"{path}/assigned-players/{waiting}",
+            headers=headers,
+            json={"table": table["name"]},
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "pending"
+    assert client.get(path + "/announcement").json()["update_pending"] is True
+    discord.at.return_value.edit_announcement.side_effect = DiscordRequestError(429)
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    with DBSession(client.app.state.engine) as db:
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "pending"
+        refresh.next_attempt = 0
+        db.commit()
+    discord.at.return_value.edit_announcement.side_effect = None
+    sent_before = discord.send_announcement.call_count
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    assert discord.send_announcement.call_count == sent_before
+    channel, message_id, edit = discord.at.return_value.edit_announcement.call_args.args
+    assert (channel, message_id) == ("channel", "announcement")
+    assert edit["allowed_mentions"] == {"parse": [], "users": []}
+    assert "<@" not in edit["content"]
+    table_field = next(
+        field
+        for field in edit["embeds"][0]["fields"]
+        if field["name"].startswith(table["name"])
+    )
+    assert table_field["name"].endswith("(2/1)")
+    assert f"<@{waiting}>" in table_field["value"]
+    with DBSession(client.app.state.engine) as db:
+        row = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="assignment")
+            .one()
+        )
+        assert row.payload["embeds"] == edit["embeds"]
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "sent" and refresh.deleted_at is not None
+        db.add(
+            Announcement(
+                id="extra-assignment-part",
+                event_id=event["id"],
+                part=3,
+                kind="assignment",
+                channel_id="channel",
+                payload={"content": "Old extra roster", "nonce": "extra"},
+                state="sent",
+                message_id="old-extra",
+                created_at=time.time(),
+                next_attempt=time.time(),
+            )
+        )
+        db.commit()
+    assert (
+        client.delete(f"{path}/manager-players/{waiting}", headers=headers).status_code
+        == 200
+    )
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    _, extra_id, extra_edit = discord.at.return_value.edit_announcement.call_args.args
+    assert extra_id == "old-extra"
+    assert extra_edit["embeds"] == []
+    assert extra_edit["content"].startswith("Assignments updated above")
+    assert client.get(path + "/announcement").json()["update_pending"] is False
 
 
 def test_announcement_failure_retries_without_redrawing(client):
@@ -1734,6 +2017,56 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
         assert "Updated Display" not in payload["content"]
         assert "<@test-" not in payload["content"]
         assert payload["allowed_mentions"].get("users", []) == []
+
+
+def test_reaction_close_merges_test_players_with_manager_overrides(client):
+    from app.models import Event, LotteryRun
+
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    assert (
+        client.post(
+            path + "/test-users", headers=headers, json={"players": 3}
+        ).status_code
+        == 200
+    )
+    users = client.get(path + "/signups").json()[0]["players"]
+    assert (
+        client.put(
+            f"{path}/manager-players/{users[0]['id']}",
+            headers=headers,
+            json={"table": "Clocktower", "name": "Updated Test Player"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.delete(
+            f"{path}/manager-players/{users[1]['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        saved = db.get(Event, event["id"])
+        saved.status = "open"
+        saved.signup_mode = "reactions"
+        saved.message_id = "message"
+        saved.reaction_checkpoint = time.time()
+        saved.closes_at = time.time() + 60
+        db.commit()
+    response = client.post(path + "/close", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "assigned"
+    with DBSession(client.app.state.engine) as db:
+        run = db.get(LotteryRun, event["id"])
+        assert run is not None
+        players = run.snapshot["players"]
+        assert len(players) == 2
+        assert len({player["id"] for player in players}) == 2
+        assert (
+            next(player for player in players if player["id"] == users[0]["id"])["name"]
+            == "Updated Test Player"
+        )
 
 
 def test_test_population_requires_server_allowlist_and_can_be_cleared(client):
@@ -2175,15 +2508,20 @@ def test_draft_cannot_be_archived(client):
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, enabled):
-    from app.models import GuildSettings, PlayerProfile
+    from app.models import AssignmentPreference, PlayerProfile
 
     headers, event, path, _ = closing_event(client)
     assert client.get("/api/settings/assignment").json() == {
-        "automatic_weight_adjustment": True
+        "automatic_weight_adjustment": True,
+        "announce_table_changes": False,
     }
     assert (
         client.put(
-            "/api/settings/assignment", json={"automatic_weight_adjustment": enabled}
+            "/api/settings/assignment",
+            json={
+                "automatic_weight_adjustment": enabled,
+                "announce_table_changes": False,
+            },
         ).status_code
         == 403
     )
@@ -2191,7 +2529,10 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
         client.put(
             "/api/settings/assignment",
             headers=headers,
-            json={"automatic_weight_adjustment": enabled},
+            json={
+                "automatic_weight_adjustment": enabled,
+                "announce_table_changes": False,
+            },
         ).status_code
         == 200
     )
@@ -2200,7 +2541,13 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
         is enabled
     )
     with DBSession(client.app.state.engine) as db:
-        db.add(GuildSettings(guild_id="other", automatic_weight_adjustment=not enabled))
+        db.add(
+            AssignmentPreference(
+                scope_key="user:other",
+                automatic_weight_adjustment=not enabled,
+                announce_table_changes=True,
+            )
+        )
         db.add(
             PlayerProfile(
                 guild_id="guild",
@@ -2225,7 +2572,10 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
     client.put(
         "/api/settings/assignment",
         headers=headers,
-        json={"automatic_weight_adjustment": not enabled},
+        json={
+            "automatic_weight_adjustment": not enabled,
+            "announce_table_changes": False,
+        },
     )
     discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
@@ -2257,7 +2607,10 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
     assert current() == weights
     with DBSession(client.app.state.engine) as db:
         assert db.get(PlayerProfile, ("other", "1")).weighting == 2.0
-        assert db.get(GuildSettings, "other").automatic_weight_adjustment is not enabled
+        assert (
+            db.get(AssignmentPreference, "user:other").automatic_weight_adjustment
+            is not enabled
+        )
         assert db.get(PlayerProfile, ("guild", "1")).real_name == "Display"
 
 

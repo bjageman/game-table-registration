@@ -122,7 +122,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     </>}
     </div>
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
-      {setup?.selection ? <AssignmentSettings key={setup.selection.guild_id} csrf={csrf} onAccessError={onAccessError} />
+      {setup?.selection ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} />
         : setup ? <a className="button" href={connectUrl}>Connect Discord</a>
         : <p><LoadingIndicator label="Loading settings…" /></p>}
     </div>

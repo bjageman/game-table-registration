@@ -43,6 +43,20 @@ it("opens event details from a compact event listing", async () => {
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+it("omits the refresh button from assigned event details", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+    url === "/api/events" ? [{ ...draft, status: "assigned" }]
+      : url.endsWith("/announcement") ? { status: "unavailable", error: null, url: null }
+        : [{ name: "Clocktower", players: [], waitlist: [] }],
+  ))));
+  render(<Dashboard {...props} />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Friday games/ }));
+  expect(screen.getByRole("dialog", { name: "Friday games" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Refresh signups" })).not.toBeInTheDocument();
+});
+
 it("offers PDF and CSV downloads for assigned events", async () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
