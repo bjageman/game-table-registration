@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
 import TextField from "@mui/material/TextField";
+import MenuItem from "@mui/material/MenuItem";
+import Tooltip from "@mui/material/Tooltip";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
@@ -61,9 +63,10 @@ export default function EventForm({
       : initialTime(),
   );
   const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
+  const [scheduled, setScheduled] = useState(Boolean(draft?.scheduled_publish_at));
   const [frequency, setFrequency] = useState("once");
   const [opensBefore, setOpensBefore] = useState("72");
-  const [closesBefore, setClosesBefore] = useState("24");
+  const [closesBefore, setClosesBefore] = useState(String(draft?.duration_hours ?? 24));
   const [tables, setTables] = useState(
     draft
       ? draft.tables.map((table, id) => ({
@@ -165,6 +168,7 @@ export default function EventForm({
     setDescription(template.description ?? "");
     setLocation(template.location ?? "");
     setDuration(String(template.duration_hours));
+    setClosesBefore(String(template.duration_hours));
     setTables(template.tables.map((table, id) => ({ id, name: table.name, capacity: String(table.capacity) })));
     nextId.current = template.tables.length;
     setFieldErrors({});
@@ -210,7 +214,7 @@ export default function EventForm({
     const errors = validateEvent({
       title,
       startsAt: startsAtLocal,
-      duration: frequency === "once" ? duration : String(Number(opensBefore) - Number(closesBefore)),
+      duration: scheduled ? String(Number(opensBefore) - Number(closesBefore)) : duration,
       tables,
     });
     setFieldErrors(errors);
@@ -222,16 +226,19 @@ export default function EventForm({
       return;
     }
     const start = new Date(startsAtLocal);
-    const hours = Number(duration);
-    if (frequency !== "once") {
+    const hours = scheduled ? Number(opensBefore) - Number(closesBefore) : Number(duration);
+    if (scheduled) {
       const open = Number(opensBefore);
       const close = Number(closesBefore);
       if (!Number.isInteger(open) || !Number.isInteger(close) || open > 768 || close < 1 || close >= open) {
         setError("Choose whole-hour offsets with signups opening before they close.");
         return;
       }
-      if (start.getTime() - open * 3600000 <= Date.now()) {
-        setError("The first signup window must begin in the future.");
+      const opening = new Date(start.getTime() - open * 3600000);
+      const now = new Date();
+      if (opening.getTime() <= now.getTime()) {
+        const format = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "long" });
+        setError(`Open signup of ${format.format(opening)} needs to start after the current time ${format.format(now)}.`);
         return;
       }
     }
@@ -247,6 +254,7 @@ export default function EventForm({
             location: location.trim(),
             starts_at: start.toISOString(),
             duration_hours: hours,
+            ...(scheduled ? { opens_before_hours: Number(opensBefore), closes_before_hours: Number(closesBefore) } : {}),
             ...(frequency !== "once" ? {
               frequency,
               time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -292,7 +300,7 @@ export default function EventForm({
   return (
     <section className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
       <div className="section-heading template-heading">
-        <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : frequency === "once" ? "Create Event Draft" : "Create Repeating Event"}</h3>
+        <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : !scheduled ? "Create Draft Event" : frequency === "once" ? "Create Scheduled Event" : "Create Recurring Scheduled Event"}</h3>
         {templates.length > 0 && <button type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
       </div>
       {choosingTemplate && <TemplatePicker templates={templates} onSelect={loadTemplate} onClose={() => setChoosingTemplate(false)} />}
@@ -303,6 +311,7 @@ export default function EventForm({
       >
         <fieldset disabled={saving}>
           <legend className="sr-only">Event details</legend>
+          <div className="event-title-start-row">
           <TextField
             id={`${prefix}-title`}
             error={Boolean(fieldErrors.title)}
@@ -314,16 +323,11 @@ export default function EventForm({
             autoFocus
             fullWidth
             variant="outlined"
-            sx={{ mb: 3 }}
             slotProps={{
               inputLabel: { shrink: true },
               htmlInput: { maxLength: 100 },
             }}
           />
-          <div className="form-grid event-schedule-fields">
-            {!draft && <div><label htmlFor={`${prefix}-frequency`}>Repeat</label><select id={`${prefix}-frequency`} value={frequency} onChange={(event) => setFrequency(event.target.value)}>
-              <option value="once">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
-            </select></div>}
             <div className="date-time-fields" ref={scheduleFields}>
               {isMobile ? (
                 <div className="mobile-date-time-fields">
@@ -404,38 +408,44 @@ export default function EventForm({
                 />
               )}
             </div>
-            <div>
-              {frequency === "once" ? <TextField
-                id={`${prefix}-signup-start`}
-                label="Signup starts"
-                value="When the event is published"
-                fullWidth
-                variant="outlined"
-                slotProps={{
-                  input: { readOnly: true },
-                  inputLabel: { shrink: true },
-                }}
-              /> : <TextField label="Signups open (hours before event)" type="number" value={opensBefore} onChange={(event) => setOpensBefore(event.target.value)} fullWidth required slotProps={{ htmlInput: { min: 2, max: 768, step: 1 } }} />}
-            </div>
-            <div>
-              {frequency === "once" ? <TextField
-                id={`${prefix}-duration`}
-                error={Boolean(fieldErrors.duration)}
-                helperText={fieldErrors.duration}
-                label="Signup duration (hours)"
-                type="number"
-                value={duration}
-                onChange={(event) => setDuration(event.target.value)}
-                required
-                fullWidth
-                variant="outlined"
-                slotProps={{
-                  inputLabel: { shrink: true },
-                  htmlInput: { min: 1, max: 768, step: 1 },
-                }}
-              /> : <TextField label="Signups close (hours before event)" type="number" value={closesBefore} onChange={(event) => setClosesBefore(event.target.value)} fullWidth required slotProps={{ htmlInput: { min: 1, max: 767, step: 1 } }} />}
-            </div>
           </div>
+          <label className="scheduled-event-checkbox"><input type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
+          {scheduled && <div className="form-grid event-schedule-fields">
+            <Tooltip title="Open before event (hours)" arrow>
+            <TextField
+              id={`${prefix}-opens-before`}
+              label="Open before event (hours)"
+              type="number"
+              value={opensBefore}
+              onChange={(event) => setOpensBefore(event.target.value)}
+              fullWidth
+              slotProps={{ inputLabel: { title: "Open before event (hours)" }, htmlInput: { min: 2, max: 768, step: 1 } }}
+            />
+            </Tooltip>
+            <Tooltip title="Close before event (hours)" arrow>
+            <TextField
+              id={`${prefix}-closes-before`}
+              label="Close before event (hours)"
+              type="number"
+              value={closesBefore}
+              onChange={(event) => {
+                setClosesBefore(event.target.value);
+                setDuration(event.target.value);
+              }}
+              error={Boolean(fieldErrors.duration)}
+              helperText={fieldErrors.duration}
+              fullWidth
+              required
+              slotProps={{ inputLabel: { title: "Close before event (hours)" }, htmlInput: { min: 1, max: 768, step: 1 } }}
+            />
+            </Tooltip>
+            {!draft && <TextField select id={`${prefix}-frequency`} label="Repeat" value={frequency} onChange={(event) => setFrequency(event.target.value)} fullWidth>
+              <MenuItem value="once">Does not repeat</MenuItem>
+              <MenuItem value="daily">Daily</MenuItem>
+              <MenuItem value="weekly">Weekly</MenuItem>
+              <MenuItem value="monthly">Monthly</MenuItem>
+            </TextField>}
+          </div>}
           <TextField
             id={`${prefix}-description`}
             label="Description"

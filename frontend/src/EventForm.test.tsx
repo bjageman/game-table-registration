@@ -87,9 +87,11 @@ it("creates a weekly schedule with signup offsets", async () => {
   vi.stubGlobal("fetch", fetchMock);
   render(<LocalizationProvider dateAdapter={AdapterDayjs}><EventForm {...props} onScheduled={scheduled} /></LocalizationProvider>);
   fill();
-  fireEvent.change(screen.getByLabelText("Repeat"), { target: { value: "weekly" } });
-  fireEvent.change(screen.getByLabelText(/^Signups open \(hours before event\)/), { target: { value: "78" } });
-  fireEvent.change(screen.getByLabelText(/^Signups close \(hours before event\)/), { target: { value: "24" } });
+  fireEvent.click(screen.getByLabelText("Scheduled Event"));
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Repeat" }));
+  fireEvent.click(screen.getByRole("option", { name: "Weekly" }));
+  fireEvent.change(screen.getByRole("spinbutton", { name: /^Open before event/ }), { target: { value: "78" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /^Close before event/ }), { target: { value: "24" } });
   fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
   await waitFor(() => expect(scheduled).toHaveBeenCalledWith("Friday games"));
   const request = fetchMock.mock.calls.find(([path]) => path === "/api/recurring-series") as unknown as [string, RequestInit];
@@ -195,6 +197,7 @@ it("loads a template while preserving the selected event date", async () => {
   expect(screen.getByLabelText(/^Event title/)).toHaveValue("Friday games");
   expect(screen.getByLabelText("Description")).toHaveValue("Bring friends");
   expect(screen.getByLabelText("Location")).toHaveValue("Queen & Rook");
-  expect(screen.getByLabelText(/^Signup duration/)).toHaveValue(48);
+  fireEvent.click(screen.getByLabelText("Scheduled Event"));
+  expect(screen.getByRole("spinbutton", { name: /^Close before event/ })).toHaveValue(48);
   expect(screen.getByLabelText(/^Table 2 name/)).toHaveValue("Root");
 });

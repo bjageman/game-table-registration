@@ -103,6 +103,8 @@ class EventInput(BaseModel):
     location: str = Field(default="", max_length=200)
     starts_at: datetime
     duration_hours: int = Field(ge=1, le=768)
+    opens_before_hours: int | None = Field(default=None, ge=2, le=768)
+    closes_before_hours: int | None = Field(default=None, ge=1, le=767)
     tables: list[TableInput] = Field(min_length=1, max_length=10)
 
     @model_validator(mode="after")
@@ -113,6 +115,11 @@ class EventInput(BaseModel):
             raise ValueError("Event time must include a timezone")
         if self.starts_at.timestamp() <= time.time() + self.duration_hours * 3600:
             raise ValueError("Event must start after the signup window ends")
+        if self.opens_before_hours is not None and (
+            self.closes_before_hours is None
+            or self.opens_before_hours <= self.closes_before_hours
+        ):
+            raise ValueError("Signups must open before they close")
         if len({table.name.casefold() for table in self.tables}) != len(self.tables):
             raise ValueError("Table names must be unique")
         return self
@@ -137,8 +144,15 @@ class RecurringInput(EventInput):
             raise ValueError("Event time must match the selected time zone")
         if self.closes_before_hours >= self.opens_before_hours:
             raise ValueError("Signups must open before they close")
-        if self.starts_at.timestamp() - self.opens_before_hours * 3600 <= time.time():
-            raise ValueError("The first signup window must begin in the future")
+        opening = datetime.fromtimestamp(
+            self.starts_at.timestamp() - self.opens_before_hours * 3600, zone
+        )
+        now = datetime.now(zone)
+        if opening <= now:
+            raise ValueError(
+                f"Open signup of {opening:%b %d, %Y, %I:%M:%S %p %Z} needs to "
+                f"start after the current time {now:%b %d, %Y, %I:%M:%S %p %Z}."
+            )
         return self
 
 
@@ -547,7 +561,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "tables": event.tables,
             "status": event.status,
             "signup_mode": event.signup_mode,
-            "closes_at": event.closes_at,
+            "closes_at": event.closes_at
+            if event.closes_at is not None
+            else event.scheduled_publish_at + event.duration_hours * 3600
+            if event.series_id and event.scheduled_publish_at is not None
+            else None,
             "published_at": event.published_at,
             "series_id": event.series_id,
             "scheduled_publish_at": event.scheduled_publish_at,
@@ -1475,7 +1493,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open"]),
                 )
                 .values(status=Event.status)
                 .returning(Event.id)
@@ -1544,7 +1562,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open"]),
                 )
                 .values(status=Event.status)
                 .returning(Event.id)
@@ -1721,7 +1739,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open"]),
                 )
                 .values(test_signups=population)
                 .returning(Event.id)
@@ -1899,6 +1917,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 description=body.description.strip(),
                 location=body.location.strip(),
                 starts_at=body.starts_at.timestamp(),
+                scheduled_publish_at=body.starts_at.timestamp()
+                - body.opens_before_hours * 3600
+                if body.opens_before_hours is not None
+                else None,
+                closes_at=body.starts_at.timestamp() - body.closes_before_hours * 3600
+                if body.closes_before_hours is not None
+                else None,
                 duration_hours=body.duration_hours,
                 tables=[table.model_dump() for table in body.tables],
                 created_by=session.user_id,
@@ -2033,13 +2058,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status == "draft",
+                    Event.status.in_(["draft", "scheduled"]),
                 )
                 .values(
                     title=body.title.strip(),
                     description=body.description.strip(),
                     location=body.location.strip(),
                     starts_at=body.starts_at.timestamp(),
+                    scheduled_publish_at=body.starts_at.timestamp()
+                    - body.opens_before_hours * 3600
+                    if body.opens_before_hours is not None
+                    else None,
+                    closes_at=body.starts_at.timestamp()
+                    - body.closes_before_hours * 3600
+                    if body.closes_before_hours is not None
+                    else None,
                     duration_hours=body.duration_hours,
                     tables=[table.model_dump() for table in body.tables],
                 )
@@ -2239,7 +2272,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open"]),
                 )
                 .returning(Event.message_id)
             ).first()
@@ -2255,14 +2288,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(status_code=204)
 
     def publish_event(
-        event_id: str, discord: DiscordAPI, expected_status: str
+        event_id: str, discord: DiscordAPI, expected_status: str, force: bool = False
     ) -> dict[str, Any]:
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
             if not event:
                 raise HTTPException(404, "Event not found")
             if (
-                expected_status == "scheduled"
+                not force
+                and expected_status == "scheduled"
                 and event.scheduled_publish_at is not None
             ):
                 if event.scheduled_publish_at > time.time():
@@ -2275,7 +2309,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     event.close_error = "The signup window passed before publication."
                     db.commit()
                     raise HTTPException(409, event.close_error)
-            if event.starts_at <= time.time() + event.duration_hours * 3600:
+            if (event.closes_at is not None and event.closes_at <= time.time()) or (
+                event.closes_at is None
+                and event.starts_at <= time.time() + event.duration_hours * 3600
+            ):
                 if expected_status == "scheduled":
                     event.status = "needs_review"
                     event.close_error = "Too late to publish the signup window."
@@ -2302,7 +2339,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(409, "Already published or awaiting publish review")
             db.refresh(event)
             try:
-                closes_at = time.time() + event.duration_hours * 3600
+                closes_at = event.closes_at or (
+                    event.scheduled_publish_at + event.duration_hours * 3600
+                    if event.scheduled_publish_at
+                    else time.time() + event.duration_hours * 3600
+                )
                 message = discord.publish(
                     reaction_publication(event, closes_at)
                     if event.signup_mode == "reactions"
@@ -2347,9 +2388,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                 else:
                     event.answers = message["poll"]["answers"]
-                    event.closes_at = datetime.fromisoformat(
-                        message["poll"]["expiry"]
-                    ).timestamp()
+                    event.closes_at = (
+                        event.closes_at
+                        or datetime.fromisoformat(message["poll"]["expiry"]).timestamp()
+                    )
                 event.status = "open"
                 db.commit()
             except Exception:
@@ -2382,7 +2424,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             event = db.get(Event, event_id)
             if not event or not matches_destination(event, request):
                 raise HTTPException(404, "Event not found")
-        return publish_event(event_id, scoped_discord(request), "draft")
+            status = event.status
+            if status not in ("draft", "scheduled"):
+                raise HTTPException(409, "Already published or awaiting publish review")
+        return publish_event(event_id, scoped_discord(request), status, force=True)
 
     return app
 
