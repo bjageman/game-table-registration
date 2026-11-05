@@ -13,6 +13,7 @@ from threading import Event as StopEvent
 from threading import Thread
 from typing import Any
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -63,6 +64,7 @@ from app.models import (
 )
 from app.reactions import EMOJIS
 from app.reactions import publication as reaction_publication
+from app.signup_exports import event_csv, event_pdf, summary_csv
 from app.signups import apply_manager_signups, table_rows
 from app.test_signups import (
     add_to_rows,
@@ -1308,6 +1310,70 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             guild_id = event.guild_id
             db.rollback()
         return list_names(rows, guild_id, event_id)
+
+    @app.get("/api/events/{event_id}/signups.csv")
+    def download_event_csv(event_id: str, request: Request) -> Response:
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            authenticated(request)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned":
+                raise HTTPException(409, "Signups must be assigned before export")
+        rows = event_signups(event_id, request)
+        return Response(
+            event_csv(rows),
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="signups-{event_id}.csv"'
+            },
+        )
+
+    @app.get("/api/events/{event_id}/signups.pdf")
+    def download_event_pdf(
+        event_id: str, request: Request, timezone: str = "UTC"
+    ) -> Response:
+        authenticated(request)
+        try:
+            time_zone = ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise HTTPException(400, "Invalid timezone") from None
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned":
+                raise HTTPException(409, "Signups must be assigned before export")
+            rows = event_signups(event_id, request)
+            content = event_pdf(event, rows, time_zone)
+        return Response(
+            content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="signups-{event_id}.pdf"'
+            },
+        )
+
+    @app.get("/api/exports/signups.csv")
+    def download_summary_csv(request: Request) -> Response:
+        authenticated(request)
+        with DBSession(engine) as db:
+            selected = list(
+                db.scalars(
+                    select(Event)
+                    .where(*event_scope(request))
+                    .order_by(Event.starts_at, Event.id)
+                )
+            )
+            data = [(event, event_signups(event.id, request)) for event in selected]
+            content = summary_csv(data)
+        return Response(
+            content,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="all-event-signups.csv"'
+            },
+        )
 
     @app.put("/api/events/{event_id}/manager-players/{player_id}")
     def add_manager_player(
