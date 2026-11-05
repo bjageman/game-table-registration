@@ -3156,3 +3156,30 @@ def test_organization_connection_is_independent_of_personal_and_other_orgs(clien
         assert db.get(Organization, second).guild_id == ""
         assert db.get(UserSettings, "owner").guild_id == "200"
         assert db.get(UserSettings, "owner").channel_id == "201"
+
+
+@pytest.mark.parametrize("discord_status", [403, 404, 429, 500])
+def test_server_list_skips_inaccessible_servers_but_reports_discord_outages(
+    client, discord_status
+):
+    from app.discord_api import DiscordRequestError
+
+    login(client)
+    discord = client.app.state.discord
+    discord.bot_items.return_value = [
+        {"id": "100", "name": "Available"},
+        {"id": "200", "name": "Other Server"},
+    ]
+
+    def manager_context(_user_id, guild_id):
+        if guild_id == "200":
+            raise DiscordRequestError(discord_status)
+        return {"id": "100", "name": "Available"}, {}, []
+
+    discord.manager_context.side_effect = manager_context
+    response = client.get("/api/settings/guilds")
+    if discord_status in (403, 404):
+        assert response.status_code == 200
+        assert response.json()["guilds"] == [{"id": "100", "name": "Available"}]
+    else:
+        assert response.status_code == 502

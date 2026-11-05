@@ -7,7 +7,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import Settings
-from app.discord_api import DiscordAPI
+from app.discord_api import DiscordAPI, DiscordRequestError
 from app.models import (
     Organization,
     OrganizationMember,
@@ -123,7 +123,10 @@ def register_settings(
                 try:
                     discord.manager_context(session.user_id, guild_id)
                 except HTTPException as error:
-                    if error.status_code in (403, 404):
+                    if error.status_code in (403, 404) or (
+                        isinstance(error, DiscordRequestError)
+                        and error.discord_status in (403, 404)
+                    ):
                         continue
                     raise
             result.append({"id": guild_id, "name": str(guild["name"])})
