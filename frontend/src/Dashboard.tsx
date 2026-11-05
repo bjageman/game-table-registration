@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownWideNarrow, RefreshCw, Search } from "lucide-react";
+import { ArrowDownWideNarrow, Download, RefreshCw, Search } from "lucide-react";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -13,6 +13,7 @@ import {
 import EventList from "./EventList";
 import EventForm from "./EventForm";
 import LoadingIndicator from "./LoadingIndicator";
+import { download } from "./download";
 
 export interface DashboardProps {
   session: ModeratorSession;
@@ -32,6 +33,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortOrder>("date-asc");
   const [sortAnchor, setSortAnchor] = useState<HTMLElement | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,6 +127,13 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             onClick={(event) => setSortAnchor(event.currentTarget)}>
             <ArrowDownWideNarrow size={18} aria-hidden="true" />
           </button>
+          <button type="button" className="event-icon-action" aria-label="Download all event signups" title="Download All Event Signups"
+            disabled={exporting || loading || Boolean(error)} onClick={() => {
+              setExporting(true);
+              void download("/exports/signups.csv", "all-event-signups.csv")
+                .catch((failure) => { if (!onAccessError(failure)) setNotice(`Could not download signups: ${errorMessage(failure)}`); })
+                .finally(() => setExporting(false));
+            }}><Download size={18} aria-hidden="true" /></button>
           <Menu id="event-sort-menu" anchorEl={sortAnchor} open={Boolean(sortAnchor)} onClose={() => setSortAnchor(null)}
             slotProps={{ list: { "aria-label": "Sort events" } }}>
             {sortOptions.map((option) => <MenuItem key={option.value} role="menuitemradio" aria-checked={sort === option.value}

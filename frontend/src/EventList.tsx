@@ -8,6 +8,7 @@ import EventTables from "./EventTables";
 import DiscordLink from "./DiscordLink";
 import PopulateTestUsers from "./PopulateTestUsers";
 import AssignmentAnnouncement from "./AssignmentAnnouncement";
+import SignupDownload from "./SignupDownload";
 import CloseSignups from "./CloseSignups";
 import EventActions from "./EventActions";
 import type { EventRecord } from "./api";
@@ -107,6 +108,7 @@ function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, onEdit, 
           {event.archived_at ? "Archived" : event.status.replaceAll("_", " ")}{event.is_test ? " · test" : ""}
         </span>
         <div className="event-header-actions">
+          {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
           {event.status !== "draft" && (
           <button type="button" className="event-icon-action"
