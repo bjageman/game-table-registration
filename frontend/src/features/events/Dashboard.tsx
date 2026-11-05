@@ -238,9 +238,9 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             <div className="scheduled-event-occurrences">
               {events.filter((event) => event.status === "scheduled" && event.series_id === row.id).sort((a, b) => a.starts_at - b.starts_at).slice(0, 4).map((event) => <div key={event.id} className="scheduled-event-row">
                 <span className="scheduled-event-times">
-                  <span>{new Date(event.starts_at * 1000).toLocaleString()}</span>
-                  <span className="scheduled-event-time-separator" aria-hidden="true"> · </span>
-                  <span>Signups Open {new Date((event.scheduled_publish_at ?? 0) * 1000).toLocaleString()}</span>
+                  <span>EVENT: {new Date(event.starts_at * 1000).toLocaleString()}</span>
+                  <span className="scheduled-event-time-separator" aria-hidden="true"> - </span>
+                  <span>SIGNUPS: {new Date((event.scheduled_publish_at ?? 0) * 1000).toLocaleString()}</span>
                 </span>
                 <div className="scheduled-event-actions">
                   <button type="button" className="event-icon-action" aria-label="View scheduled event" title="View scheduled event" onClick={() => setScheduledDetails(event)}><Eye size={18} aria-hidden="true" /></button>
