@@ -30,10 +30,9 @@ export default function PublicEvent({ token }: { token: string }) {
     {error && <p role="alert" className="error">{error}</p>}
     {!event && !error && <p role="status">Loading table assignments…</p>}
     {event && <>
-      <header><h1>{event.title}</h1><p>Table assignments{event.archived ? " · Archived" : " · Updates automatically"}</p></header>
+      <header><h1>{event.title}</h1>{event.location && <p>{event.location}</p>}</header>
       <dl className="event-details">
         <div><dt>Event starts</dt><dd><time dateTime={new Date(event.starts_at * 1000).toISOString()}>{new Date(event.starts_at * 1000).toLocaleString()}</time></dd></div>
-        {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
       </dl>
       {event.description && <p className="public-event-description">{event.description}</p>}
       <ul className="event-tables" aria-label="Table assignments">{event.tables.map((table) => <li className="event-table" key={table.name}>

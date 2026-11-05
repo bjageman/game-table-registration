@@ -196,8 +196,8 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         </div>
       </div>
       <div className="archive-filter-controls">
-        <label className="archive-filter"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Show Archived</label>
-        {(series.length > 0 || events.some((event) => event.status === "scheduled")) && <label className="archive-filter"><input type="checkbox" checked={showScheduled} onChange={(event) => setShowScheduled(event.target.checked)} /> View scheduled events</label>}
+        <label className="archive-filter"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Archived</label>
+        {(series.length > 0 || events.some((event) => event.status === "scheduled")) && <label className="archive-filter"><input type="checkbox" checked={showScheduled} onChange={(event) => setShowScheduled(event.target.checked)} /> Scheduled Events</label>}
       </div>
       {notice && (
         <p role="status" className="notice" ref={noticeElement} tabIndex={-1}>

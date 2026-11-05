@@ -51,9 +51,9 @@ export default function EventList({
             >
               <span className="event-list-top">
                 <span className="event-list-title">{event.title}</span>
-                <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-                  {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}{event.is_test ? " · test" : ""}
-                </span>
+                <span className="event-badges"><span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
+                  {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}
+                </span>{event.is_test && <span className="badge">Test</span>}</span>
                 <span className="event-table-count">{event.tables.length} {event.tables.length === 1 ? "table" : "tables"}</span>
               </span>
               <span className="event-list-dates help">
@@ -130,9 +130,9 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <div className="event-modal-header">
         <h2 ref={title} id={`event-${event.id}`}>{event.title}</h2>
-        <span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-          {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}{event.is_test ? " · test" : ""}
-        </span>
+        <span className="event-badges"><span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
+          {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}
+        </span>{event.is_test && <span className="badge">Test</span>}</span>
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
