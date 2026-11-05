@@ -48,9 +48,9 @@ services:
     volumes:
       - ${BRANDING_CONFIG_DIR:?Set BRANDING_CONFIG_DIR}/public:/usr/share/nginx/html/branding:ro
     environment:
-      VIRTUAL_HOST: ${SIGNUPS_HOST}
+      VIRTUAL_HOST: ${SIGNUPS_HOSTS:-${SIGNUPS_HOST}}
       VIRTUAL_PORT: '80'
-      LETSENCRYPT_HOST: ${SIGNUPS_HOST}
+      LETSENCRYPT_HOST: ${SIGNUPS_HOSTS:-${SIGNUPS_HOST}}
       LETSENCRYPT_EMAIL: ${EMAIL:?Set EMAIL}
     depends_on:
       api:
