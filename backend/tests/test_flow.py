@@ -1032,6 +1032,83 @@ def test_close_signups_assigns_once_and_replays_saved_results(client):
     assert client.delete(path, headers=headers).status_code == 409
 
 
+def test_signup_exports_use_saved_placements_and_scope(client):
+    import csv
+    import io
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    rows = client.get(path + "/signups").json()
+    pdf = client.get(path + "/signups.pdf")
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content.startswith(b"%PDF-")
+    assert pdf.headers["content-disposition"].endswith('.pdf"')
+    export = client.get(path + "/signups.csv")
+    assert export.status_code == 200
+    parsed = list(csv.DictReader(io.StringIO(export.content.decode("utf-8-sig"))))
+    assert len(parsed) == sum(
+        len(row["players"]) + len(row["waitlist"]) for row in rows
+    )
+    assert {row["Status"] for row in parsed} == {"Seated", "Waitlisted"}
+    summary = client.get("/api/exports/signups.csv")
+    all_rows = list(csv.DictReader(io.StringIO(summary.content.decode("utf-8-sig"))))
+    assert len(all_rows) == len(parsed)
+    assert {row["Event ID"] for row in all_rows} == {event["id"]}
+    assert client.get("/api/events/missing/signups.csv").status_code == 404
+    assert client.get("/api/events/missing/signups.pdf").status_code == 404
+
+
+def test_signup_csv_quotes_spreadsheet_formulas():
+    import csv
+    import io
+
+    from app.signup_exports import event_csv
+
+    content = event_csv(
+        [
+            {
+                "name": "=TABLE()",
+                "players": [{"id": "123", "name": "+discord", "display_name": "@Name"}],
+                "waitlist": [],
+            }
+        ]
+    )
+    row = next(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
+    assert row["Table"] == "'=TABLE()"
+    assert row["Player"] == "'@Name"
+    assert row["Discord username"] == "'+discord"
+
+
+def test_summary_export_respects_selected_organization(client):
+    import csv
+    import io
+
+    headers, personal, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    organization = client.post(
+        "/api/organizations", headers=headers, json={"name": "Export Scope"}
+    ).json()
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=headers,
+            json={"organization_id": organization["id"]},
+        ).status_code
+        == 200
+    )
+    shared = client.post("/api/events", headers=headers, json=event_body()).json()
+    response = client.get("/api/exports/signups.csv")
+    rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig"))))
+    assert len(rows) == 1
+    assert rows[0]["Event ID"] == shared["id"]
+    assert rows[0]["Player"] == ""
+    assert client.get(f"/api/events/{personal['id']}/signups.pdf").status_code == 404
+    assert client.get(f"/api/events/{personal['id']}/signups.csv").status_code == 404
+
+
 def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(client):
     from app.models import Announcement, EventWithdrawal
 
