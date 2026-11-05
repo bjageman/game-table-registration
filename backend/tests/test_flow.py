@@ -877,6 +877,17 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
         == 200
     )
     assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
+    assert client.delete("/api/settings", headers=owner).status_code == 204
+    assert client.get("/api/settings").json()["disconnected"] is True
+    assert (
+        client.put(
+            "/api/settings",
+            headers=owner,
+            json={"guild_id": "100", "channel_id": "102"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/settings").json()["disconnected"] is False
     discord.organization_channels.assert_called()
 
     discord.identity.return_value = {"id": "second", "username": "Second"}
@@ -904,7 +915,7 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
         ).status_code
         == 403
     )
-    assert client.delete("/api/settings", headers=second).status_code == 409
+    assert client.delete("/api/settings", headers=second).status_code == 403
 
     discord.identity.return_value = {"id": "owner", "username": "organizer"}
     owner = login(client)
@@ -2790,6 +2801,56 @@ def test_weight_adjustment_clamps_and_updates_test_profiles(client):
     with DBSession(client.app.state.engine) as db:
         assert db.get(PlayerProfile, ("guild", players[0]["id"])).weighting == 0.1
         assert db.get(PlayerProfile, ("guild", players[1]["id"])).weighting == 10
+
+
+def test_organization_admin_disconnect_preserves_personal_connection(client):
+    from app.models import Organization, OrganizationMember, UserSettings
+
+    headers = login(client)
+    created = client.post(
+        "/api/organizations", headers=headers, json={"name": "Disconnect Crew"}
+    )
+    assert created.status_code == 201
+    org_id = created.json()["id"]
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=headers,
+            json={"organization_id": org_id},
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        db.add(
+            UserSettings(
+                user_id="owner",
+                guild_id="personal",
+                guild_name="Personal",
+                channel_id="saved",
+                channel_name="Saved",
+                disconnected=False,
+            )
+        )
+        db.commit()
+    for role in ("editor", "user"):
+        with DBSession(client.app.state.engine) as db:
+            db.get(OrganizationMember, (org_id, "owner")).role = role
+            db.commit()
+        assert client.delete("/api/settings", headers=headers).status_code == 403
+    with DBSession(client.app.state.engine) as db:
+        db.get(OrganizationMember, (org_id, "owner")).role = "admin"
+        db.commit()
+    assert client.delete("/api/settings", headers=headers).status_code == 204
+    settings = client.get("/api/settings").json()
+    assert settings["disconnected"] is True
+    assert settings["selection"]["channel_id"] == ""
+    assert client.get("/api/me").json()["needs_setup"] is True
+    assert client.get("/api/events").status_code == 409
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Organization, org_id).channel_id == ""
+        personal = db.get(UserSettings, "owner")
+        assert personal.channel_id == "saved"
+        assert personal.disconnected is False
 
 
 @pytest.mark.parametrize("saved_connection", [True, False])
