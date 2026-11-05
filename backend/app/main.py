@@ -668,7 +668,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/auth/connect")
     def connect(request: Request) -> Response:
         session = authenticated(request, require_destination=False)
-        return begin_login("settings", session.user_id)
+        if request.state.organization_id and request.state.organization_role != "admin":
+            raise HTTPException(403, "Organization admin access required")
+        response = begin_login("settings", session.user_id)
+        cookie(response, "oauth_organization", request.state.organization_id or "", 600)
+        return response
 
     @app.get("/api/auth/callback")
     def callback(
@@ -720,26 +724,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 guild, _, _ = app.state.discord.manager_context(user["id"], chosen_id)
                 if str(guild.get("id")) != chosen_id:
                     raise HTTPException(502, "Could not verify the authorized server.")
-                previous = db.get(UserSettings, user["id"])
-                keep_channel = (
-                    previous is not None
-                    and not previous.disconnected
-                    and previous.guild_id == chosen_id
-                )
-                db.merge(
-                    UserSettings(
-                        user_id=user["id"],
-                        disconnected=False,
-                        guild_id=chosen_id,
-                        guild_name=str(guild["name"]),
-                        channel_id=previous.channel_id
-                        if keep_channel and previous
-                        else "",
-                        channel_name=previous.channel_name
-                        if keep_channel and previous
-                        else "",
+                organization_id = request.cookies.get("oauth_organization", "")
+                if organization_id:
+                    organization = db.get(Organization, organization_id)
+                    member = db.get(OrganizationMember, (organization_id, user["id"]))
+                    if not organization or not member or member.role != "admin":
+                        raise HTTPException(403, "Organization admin access required")
+                    if organization.guild_id != chosen_id:
+                        organization.channel_id = ""
+                    organization.guild_id = chosen_id
+                else:
+                    previous = db.get(UserSettings, user["id"])
+                    keep_channel = (
+                        previous is not None
+                        and not previous.disconnected
+                        and previous.guild_id == chosen_id
                     )
-                )
+                    db.merge(
+                        UserSettings(
+                            user_id=user["id"],
+                            disconnected=False,
+                            guild_id=chosen_id,
+                            guild_name=str(guild["name"]),
+                            channel_id=previous.channel_id
+                            if keep_channel and previous
+                            else "",
+                            channel_name=previous.channel_name
+                            if keep_channel and previous
+                            else "",
+                        )
+                    )
             token = secrets.token_urlsafe(32)
             db.execute(
                 delete(Session).where(
@@ -770,6 +784,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         response.delete_cookie("oauth_state", path="/api")
         response.delete_cookie("oauth_return", path="/api")
+        response.delete_cookie("oauth_organization", path="/api")
         cookie(response, "session", token, 28800)
         return response
 
@@ -864,30 +879,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not name or len(name.casefold()) > 100:
             raise HTTPException(422, "Choose a name of up to 100 characters")
         with DBSession(engine) as db:
-            saved = db.get(UserSettings, session.user_id)
-            if saved and not saved.disconnected and saved.guild_id and saved.channel_id:
-                guild_id, channel_id = saved.guild_id, saved.channel_id
-            elif (
-                legacy_access(session.user_id)
-                and config.discord_guild_id
-                and config.discord_channel_id
-            ):
-                guild_id, channel_id = (
-                    config.discord_guild_id,
-                    config.discord_channel_id,
-                )
-            else:
-                raise HTTPException(
-                    409,
-                    "Connect a Discord server and channel first",
-                )
             org = Organization(
                 id=str(uuid.uuid4()),
                 name=name,
                 normalized_name=name.casefold(),
                 created_by=session.user_id,
-                guild_id=guild_id,
-                channel_id=channel_id,
+                guild_id="",
+                channel_id="",
             )
             db.add(org)
             db.add(
@@ -1103,7 +1101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/settings/assignment")
     def assignment_settings(request: Request) -> dict[str, Any]:
-        session = authenticated(request, require_channel=False)
+        session = authenticated(request, require_destination=False)
         key = assignment_scope_key(request.state.organization_id, session.user_id)
         with DBSession(engine) as db:
             saved = db.get(AssignmentPreference, key)
@@ -1120,7 +1118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def save_assignment_settings(
         body: AssignmentSettingsInput, request: Request
     ) -> dict[str, Any]:
-        session = authenticated(request, True, require_channel=False)
+        session = authenticated(request, True, require_destination=False)
         if request.state.organization_id and request.state.organization_role != "admin":
             raise HTTPException(
                 403, "Only organization admins can save assignment settings"
