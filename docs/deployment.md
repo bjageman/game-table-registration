@@ -143,7 +143,7 @@ move its data. Do not run old and new instances with the same bot token or hostn
 
 To serve additional hostnames on one instance, set `SIGNUPS_HOSTS` to a
 comma-separated list including the primary hostname, for example
-`SIGNUPS_HOSTS=signups.phillybotc.com,tablesignup.com`. Point every hostname at
+`SIGNUPS_HOSTS=signups.example.com,events.example.com`. Point every hostname at
 the server. The proxy requests certificates for all listed names. Keep
 `SIGNUPS_HOST` set to one primary hostname; it determines OAuth callbacks and
 application links. Redeploy after changing the hostname list.
