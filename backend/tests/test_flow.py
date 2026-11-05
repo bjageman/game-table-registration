@@ -1045,6 +1045,10 @@ def test_signup_exports_use_saved_placements_and_scope(client):
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF-")
     assert pdf.headers["content-disposition"].endswith('.pdf"')
+    assert (
+        client.get(path + "/signups.pdf?timezone=America%2FNew_York").status_code == 200
+    )
+    assert client.get(path + "/signups.pdf?timezone=Invalid").status_code == 400
     export = client.get(path + "/signups.csv")
     assert export.status_code == 200
     parsed = list(csv.DictReader(io.StringIO(export.content.decode("utf-8-sig"))))
@@ -1081,13 +1085,16 @@ def test_signup_csv_quotes_spreadsheet_formulas():
     assert row["Discord username"] == "'+discord"
 
 
-def test_pdf_fits_six_full_tables_on_one_portrait_page():
+@pytest.mark.parametrize("table_count", [4, 6])
+def test_pdf_fits_full_tables_on_one_portrait_page(table_count):
     import re
     from types import SimpleNamespace
 
     from app.signup_exports import event_pdf
 
-    tables = [{"name": f"Table {index}", "capacity": 15} for index in range(6)]
+    tables = [
+        {"name": f"Table {index}", "capacity": 15} for index in range(table_count)
+    ]
     rows = [
         {
             "name": table["name"],

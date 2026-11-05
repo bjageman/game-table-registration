@@ -23,7 +23,8 @@ export default function SignupDownload({ event, onAccessError }: {
     setBusy(true);
     setError("");
     try {
-      await download(`/events/${encodeURIComponent(event.id)}/signups.${format}`, `signups-${event.id}.${format}`);
+      const timezone = format === "pdf" ? `?timezone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")}` : "";
+      await download(`/events/${encodeURIComponent(event.id)}/signups.${format}${timezone}`, `signups-${event.id}.${format}`);
       setOpen(false);
     } catch (failure) {
       if (!onAccessError(failure)) setError(errorMessage(failure));

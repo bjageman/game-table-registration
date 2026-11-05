@@ -13,6 +13,7 @@ from threading import Event as StopEvent
 from threading import Thread
 from typing import Any
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -1317,8 +1318,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/api/events/{event_id}/signups.pdf")
-    def download_event_pdf(event_id: str, request: Request) -> Response:
+    def download_event_pdf(
+        event_id: str, request: Request, timezone: str = "UTC"
+    ) -> Response:
         authenticated(request)
+        try:
+            time_zone = ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise HTTPException(400, "Invalid timezone") from None
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
             if event is None or not matches_destination(event, request):
@@ -1326,7 +1333,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if event.status != "assigned":
                 raise HTTPException(409, "Signups must be assigned before export")
             rows = event_signups(event_id, request)
-            content = event_pdf(event, rows)
+            content = event_pdf(event, rows, time_zone)
         return Response(
             content,
             media_type="application/pdf",

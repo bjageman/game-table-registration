@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import reportlab
 from reportlab.graphics.shapes import Drawing, Rect
@@ -82,7 +83,9 @@ def summary_csv(events: list[tuple[Any, list[dict[str, Any]]]]) -> bytes:
     return csv_bytes(SUMMARY_HEADERS, result)
 
 
-def event_pdf(event: Any, rows: list[dict[str, Any]]) -> bytes:
+def event_pdf(
+    event: Any, rows: list[dict[str, Any]], time_zone: ZoneInfo | None = None
+) -> bytes:
     output = io.BytesIO()
     page_width = 8.5 * inch
     page_height = 11 * inch
@@ -99,23 +102,30 @@ def event_pdf(event: Any, rows: list[dict[str, Any]]) -> bytes:
     fonts = Path(reportlab.__file__).parent / "fonts"
     pdfmetrics.registerFont(TTFont("SignupVera", str(fonts / "Vera.ttf")))
     pdfmetrics.registerFont(TTFont("SignupVeraBold", str(fonts / "VeraBd.ttf")))
+    expanded = len(rows) <= 4 and all(
+        len(table.get("players", [])) + len(table.get("waitlist", [])) <= 20
+        for table in rows
+    )
+    font_size = 10.5 if expanded else 8
+    leading = 12 if expanded else 9
+    row_padding = 1.35 if expanded else 0.25
     name_style = ParagraphStyle(
         "SignupName",
         fontName="SignupVera",
-        fontSize=7,
-        leading=8.2,
+        fontSize=font_size,
+        leading=leading,
     )
     header_style = ParagraphStyle(
         "SignupHeader",
         fontName="SignupVeraBold",
-        fontSize=7,
-        leading=8.2,
+        fontSize=font_size,
+        leading=leading,
     )
     title_style = ParagraphStyle(
         "SignupTableTitle",
         fontName="SignupVeraBold",
-        fontSize=8.2,
-        leading=10,
+        fontSize=11 if expanded else 9,
+        leading=13 if expanded else 11,
     )
     card_width = (page_width - 2 * margin) / 2 - 8
     cards: list[list[Any]] = []
@@ -164,7 +174,7 @@ def event_pdf(event: Any, rows: list[dict[str, Any]]) -> bytes:
             sections: list[int] = []
             last_status = ""
             for status, player in chunk:
-                if status != last_status:
+                if status == "Waitlisted" and status != last_status:
                     sections.append(len(values))
                     values.append(
                         [
@@ -196,10 +206,10 @@ def event_pdf(event: Any, rows: list[dict[str, Any]]) -> bytes:
             )
             styling: list[tuple[Any, ...]] = [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf2")),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.35, colors.HexColor("#aab7c4")),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#b8c2cb")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 0.5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0.5),
+                ("TOPPADDING", (0, 0), (-1, -1), row_padding),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), row_padding),
                 ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
             ]
@@ -220,15 +230,25 @@ def event_pdf(event: Any, rows: list[dict[str, Any]]) -> bytes:
 
     def page_header(canvas: Any, doc: Any) -> None:
         canvas.saveState()
-        canvas.setFont("SignupVeraBold", 11)
-        canvas.drawString(margin, page_height - 0.31 * inch, event.title)
-        canvas.setFont("SignupVera", 8)
-        date = datetime.fromtimestamp(event.starts_at, UTC).strftime("%B %d, %Y")
+        title_size = 13.0
+        while (
+            title_size > 8
+            and pdfmetrics.stringWidth(event.title, "SignupVeraBold", title_size)
+            > page_width - 2 * margin
+        ):
+            title_size -= 0.5
+        canvas.setFont("SignupVeraBold", title_size)
+        canvas.drawCentredString(page_width / 2, page_height - 0.31 * inch, event.title)
+        canvas.setFont("SignupVera", 8.5)
+        zone = time_zone or ZoneInfo("UTC")
+        date = datetime.fromtimestamp(event.starts_at, zone).strftime(
+            "%B %d, %Y at %I:%M %p %Z"
+        )
         signup_count = sum(
             len(row.get("players", [])) + len(row.get("waitlist", [])) for row in rows
         )
-        canvas.drawString(
-            margin,
+        canvas.drawCentredString(
+            page_width / 2,
             page_height - 0.47 * inch,
             f"{date}  ·  {len(rows)} tables  ·  "
             f"{signup_count} signups (including waitlist)",
