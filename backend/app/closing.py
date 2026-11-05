@@ -101,7 +101,7 @@ def reconcile(
                     "id": pid,
                     "name": user.get("global_name") or user["username"],
                     "choices": [],
-                    "weight": weights.get(pid, 1.0),
+                    "weight": weights.get(pid, 5.0),
                 },
             )
             player["choices"].append(name)
@@ -253,7 +253,7 @@ def close_and_assign(
                         {
                             **player,
                             "choices": [],
-                            "weight": weights.get(player["id"], 1.0),
+                            "weight": weights.get(player["id"], 5.0),
                         },
                     )
                     entry["choices"].append(row["name"])
@@ -261,7 +261,7 @@ def close_and_assign(
                 for player in test_population["players"]:
                     participants[player["id"]] = {
                         **player,
-                        "weight": weights.get(player["id"], 1.0),
+                        "weight": weights.get(player["id"], 5.0),
                     }
             with Session(engine) as manager_db:
                 manager_event = manager_db.get(Event, event_id)
@@ -298,7 +298,7 @@ def close_and_assign(
                     "id": player["id"],
                     "name": player["name"],
                     "choices": player["choices"],
-                    "weight": weights.get(player["id"], 1.0),
+                    "weight": weights.get(player["id"], 5.0),
                     "is_test": True,
                 }
                 for player in test_population["players"]
@@ -359,12 +359,12 @@ def close_and_assign(
                             guild_id=event.guild_id,
                             discord_id=player["id"],
                             discord_name=player["name"],
-                            weighting=1.0,
+                            weighting=5.0,
                             is_test=bool(player.get("is_test")),
                         )
                         db.add(profile)
                     delta = Decimal(
-                        "-0.1" if player["id"] in result["assignments"] else "0.1"
+                        "-0.5" if player["id"] in result["assignments"] else "0.5"
                     )
                     profile.weighting = float(
                         min(

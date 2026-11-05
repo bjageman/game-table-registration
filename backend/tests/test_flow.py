@@ -521,7 +521,7 @@ def test_signup_endpoint_is_authorized_and_scoped_to_guild(client):
             "players": [
                 {
                     **players[0]["players"][0],
-                    "weighting": 1.0,
+                    "weighting": 5.0,
                     "guaranteed_table": None,
                     "guaranteed_seat": False,
                 }
@@ -597,7 +597,7 @@ def test_player_profile_survives_event_and_poll_deletion(client):
         "is_test": False,
         "guaranteed_seat": False,
         "real_name": "",
-        "weighting": 1.0,
+        "weighting": 5.0,
     }
     client.app.state.discord.bot.reset_mock()
     assert (
@@ -1095,7 +1095,7 @@ def test_event_player_settings_are_scoped_and_frozen_for_assignment(client):
     rows = client.get(path + "/signups").json()
     assert rows[0]["players"][0]["guaranteed_table"] == "B"
     assert rows[1]["players"][0]["weighting"] == 2.5
-    assert client.get("/api/players/1").json()["weighting"] == 1.0
+    assert client.get("/api/players/1").json()["weighting"] == 5.0
     assert client.get("/api/players/1").json()["guaranteed_seat"] is False
     discord.poll_message.return_value = closing_message()
     closed = client.post(path + "/close", headers=headers)
@@ -2362,7 +2362,7 @@ def test_display_names_are_guild_scoped_and_clear_to_discord_name(client):
         "id": "123",
         "name": "MaryDiscord",
         "display_name": "Mary Display",
-        "weighting": 1.0,
+        "weighting": 5.0,
         "guaranteed_table": None,
         "guaranteed_seat": False,
     }
@@ -2370,7 +2370,7 @@ def test_display_names_are_guild_scoped_and_clear_to_discord_name(client):
     assert client.get(path + "/signups").json()[0]["players"][0] == {
         "id": "123",
         "name": "MaryDiscord",
-        "weighting": 1.0,
+        "weighting": 5.0,
         "guaranteed_table": None,
         "guaranteed_seat": False,
     }
@@ -2693,9 +2693,9 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
 
     weights = current()
     for player in run["snapshot"]["players"]:
-        original = 1.25 if player["id"] == "1" else 1.0
+        original = 1.25 if player["id"] == "1" else 5.0
         if enabled:
-            delta = -0.1 if player["id"] in run["result"]["assignments"] else 0.1
+            delta = -0.5 if player["id"] in run["result"]["assignments"] else 0.5
             assert weights[player["id"]] == pytest.approx(original + delta)
         elif player["id"] == "1":
             assert weights[player["id"]] == original

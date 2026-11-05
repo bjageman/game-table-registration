@@ -33,6 +33,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [rows, setRows] = useState<TableSignups[]>();
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [weightNotice, setWeightNotice] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [editingWeight, setEditingWeight] = useState<string>();
   const [weight, setWeight] = useState("");
@@ -186,14 +187,24 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       Could not refresh signups. {rows ? "Showing the last loaded list. " : ""}{error}{" "}
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
     </p>}
+    {weightNotice && <p role="status" className="notice">{weightNotice}</p>}
     {actionError && !assigning && <p role="alert" className="error">{actionError}</p>}
     <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
       canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingTable(table); }} onRemovePlayer={(player, willPromote) => setRemoving({ player, willPromote })}
       onAssignWaitlisted={!readOnly && event.status === "assigned" ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}
       editingWeight={editingWeight} weight={weight} saving={saving} readOnly={readOnly} onWeightChange={setWeight}
-      onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 1)); }}
+      onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 5)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
-      onSaveWeight={(player) => { const value = Number(weight); if (weight.trim() && Number.isFinite(value) && value >= 0.1 && value <= 10) { if (value === (player.weighting ?? 1)) setEditingWeight(undefined); else void saveSetting(player, { weighting: value }); } else setActionError("Choose a weight from 0.1 to 10."); }}
+      onSaveWeight={(player) => {
+        const entered = Number(weight);
+        if (!weight.trim() || !Number.isFinite(entered)) { setActionError("Enter a valid weight."); return; }
+        const value = Math.min(10, Math.max(0.1, entered));
+        setActionError("");
+        setWeight(String(value));
+        setWeightNotice(entered > 10 ? "The maximum weight is 10. Weight set to 10." : entered < 0.1 ? "The minimum weight is 0.1. Weight set to 0.1." : "");
+        if (value === (player.weighting ?? 5)) setEditingWeight(undefined);
+        else void saveSetting(player, { weighting: value });
+      }}
       onToggleGuarantee={(player, table) => void saveSetting(player, { guaranteed_table: player.guaranteed_table === table ? null : table })} />
   </>;
 }
@@ -239,7 +250,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
           const difference = sort.column === "guarantee"
             ? Number(isGuaranteedAtTable(b, table.name)) - Number(isGuaranteedAtTable(a, table.name))
             : sort.column === "weight"
-              ? (a.weighting ?? 1) - (b.weighting ?? 1)
+              ? (a.weighting ?? 5) - (b.weighting ?? 5)
               : (a.display_name || a.name).localeCompare(b.display_name || b.name, undefined, { sensitivity: "base" });
           return sort.descending ? -difference : difference;
         }) : players;
@@ -267,12 +278,12 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog"
                 title={player.display_name || player.name} aria-label={player.display_name || player.name}
                 onClick={() => onSelect(player)}>{event.status === "open" ? <>{(player.display_name || player.name).slice(0, 26)}{(player.display_name || player.name).length > 26 ? "…" : ""}</> : player.display_name || player.name}</button> : event.status === "open" ? (player.display_name || player.name).slice(0, 26) : player.display_name || player.name}
-              {event.status === "open" && (readOnly ? <span className="player-weight">{(player.weighting ?? 1).toFixed(1)}</span> : editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
+              {event.status === "open" && (readOnly ? <span className="player-weight">{(player.weighting ?? 5).toFixed(1)}</span> : editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
                 <input type="text" inputMode="decimal" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)}
                   onBlur={() => onSaveWeight?.(player)} onKeyDown={(key) => { if (key.key === "Escape") { key.preventDefault(); onCancelWeight?.(); } }} disabled={saving} autoFocus />
-              </form> : <button type="button" className={`player-weight ${(player.weighting ?? 1) < 1 ? "low" : (player.weighting ?? 1) > 1 ? "high" : ""}`}
-                title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 1).toFixed(1)}`} disabled={saving}
-                onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 1).toFixed(1)}</button>)}
+              </form> : <button type="button" className={`player-weight ${(player.weighting ?? 5) < 5 ? "low" : (player.weighting ?? 5) > 5 ? "high" : ""}`}
+                title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 5).toFixed(1)}`} disabled={saving}
+                onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 5).toFixed(1)}</button>)}
               {canRemoveSignups && <button type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from ${event.status === "assigned" ? "table" : "signups"}`} title={event.status === "assigned" ? "Remove from table" : "Remove from signups"} onClick={() => onRemovePlayer?.(player, event.status === "assigned" && Boolean(row?.waitlist?.length) && (players?.length ?? 0) <= table.capacity)}>✕</button>}
             </li>)}
           </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}

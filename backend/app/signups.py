@@ -55,7 +55,7 @@ def players(
             "id": row.discord_id,
             "name": row.discord_name,
             "choices": list(row.choices),
-            "weight": weights.get(row.discord_id, 1.0),
+            "weight": weights.get(row.discord_id, 5.0),
         }
         for row in db.scalars(
             select(TableSignup)
@@ -134,7 +134,7 @@ def apply_manager_players(
                     "id": override.discord_id,
                     "name": override.discord_name,
                     "choices": [],
-                    "weight": (weights or {}).get(override.discord_id, 1.0),
+                    "weight": (weights or {}).get(override.discord_id, 5.0),
                 },
             )
             player["name"] = override.discord_name
