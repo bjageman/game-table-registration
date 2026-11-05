@@ -54,7 +54,7 @@ function fill() {
     target: { value: "Clocktower" },
   });
 }
-it("creates a draft with an offset, capacities, and CSRF protection", async () => {
+it.each([24, null])("creates a draft with closing offset %s, capacities, and CSRF protection", async (offset) => {
   const result = { id: "saved", title: "Friday games" };
   const fetchMock = vi.fn(
     async (path: string) => path === "/api/templates"
@@ -63,6 +63,8 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
   vi.stubGlobal("fetch", fetchMock);
   renderForm();
   fill();
+  expect(screen.getByLabelText("Signups Close Before Event (hours)")).toHaveValue(24);
+  if (offset === null) fireEvent.change(screen.getByLabelText("Signups Close Before Event (hours)"), { target: { value: "" } });
   fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
   await screen.findByRole("button", { name: "Save draft" });
   expect(props.onCreated).toHaveBeenCalledWith(result);
@@ -74,7 +76,8 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
     description: "",
     location: "",
     starts_at: new Date("2090-06-14T19:00").toISOString(),
-    duration_hours: 24,
+    duration_hours: 0,
+    closes_before_hours: offset,
     tables: [{ name: "Clocktower", capacity: 15 }],
   });
 });

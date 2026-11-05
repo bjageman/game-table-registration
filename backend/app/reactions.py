@@ -20,17 +20,22 @@ GAP = (
 )
 
 
-def publication(event: Event, closes_at: float) -> dict[str, Any]:
+def publication(event: Event, closes_at: float | None) -> dict[str, Any]:
     tables = "\n".join(
         f"{EMOJIS[i]} {clean(t['name'])} · {t['capacity']} seats"
         for i, t in enumerate(event.tables)
+    )
+    deadline = (
+        f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
+        if closes_at is not None
+        else "Signups stay open until closed manually."
     )
     return {
         "content": (
             f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
             f"Event: <t:{int(event.starts_at)}:F>\n"
             f"{signup_location(event.location)}"
-            f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)\n\n"
+            f"{deadline}\n\n"
             f"{tables}\n\n"
             f"{signup_description(event.description, REACTION_DESCRIPTION)}"
         ),
@@ -67,7 +72,7 @@ def change(
                 Event.id == event_id,
                 Event.status == "open",
                 Event.signup_mode == "reactions",
-                Event.closes_at > observed_at,
+                (Event.closes_at.is_(None)) | (Event.closes_at > observed_at),
             )
             .values(status=Event.status)
             .returning(Event.id)
@@ -117,7 +122,8 @@ def mark_gap(engine: Engine) -> None:
             .where(
                 Event.signup_mode == "reactions",
                 Event.status == "open",
-                (Event.reaction_checkpoint.is_(None))
+                (Event.closes_at.is_(None))
+                | (Event.reaction_checkpoint.is_(None))
                 | (Event.reaction_checkpoint < Event.closes_at),
             )
             .values(reaction_error=GAP)
@@ -141,7 +147,8 @@ def pending(engine: Engine) -> list[dict[str, Any]]:
                 select(Event).where(
                     Event.signup_mode == "reactions",
                     Event.status == "open",
-                    (Event.reaction_checkpoint.is_(None))
+                    (Event.closes_at.is_(None))
+                    | (Event.reaction_checkpoint.is_(None))
                     | (Event.reaction_checkpoint < Event.closes_at),
                 )
             )
@@ -157,7 +164,7 @@ def replace(
             .where(
                 Event.id == event_id,
                 Event.status == "open",
-                Event.closes_at > time.time(),
+                (Event.closes_at.is_(None)) | (Event.closes_at > time.time()),
                 Event.signup_mode == "reactions",
             )
             .values(reaction_checkpoint=started, reaction_error=None)
@@ -191,6 +198,11 @@ def checkpoint(engine: Engine, event_id: str) -> None:
                 Event.status == "open",
                 Event.reaction_error.is_(None),
             )
-            .values(reaction_checkpoint=min(time.time(), event.closes_at or 0))
+            .values(
+                reaction_checkpoint=min(
+                    time.time(),
+                    event.closes_at if event.closes_at is not None else time.time(),
+                )
+            )
         )
         db.commit()

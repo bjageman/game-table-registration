@@ -102,7 +102,11 @@ class EventInput(BaseModel):
     description: str = Field(default="", max_length=300)
     location: str = Field(default="", max_length=200)
     starts_at: datetime
-    duration_hours: int = Field(ge=1, le=768)
+    duration_hours: int = Field(
+        ge=0,
+        le=768,
+        description="Publication duration; zero uses an explicit or manual deadline",
+    )
     opens_before_hours: int | None = Field(default=None, ge=2, le=768)
     closes_before_hours: int | None = Field(default=None, ge=1, le=767)
     tables: list[TableInput] = Field(min_length=1, max_length=10)
@@ -115,6 +119,12 @@ class EventInput(BaseModel):
             raise ValueError("Event time must include a timezone")
         if self.starts_at.timestamp() <= time.time() + self.duration_hours * 3600:
             raise ValueError("Event must start after the signup window ends")
+        if (
+            self.closes_before_hours is not None
+            and self.starts_at.timestamp() - self.closes_before_hours * 3600
+            <= time.time()
+        ):
+            raise ValueError("Signup closing time must be in the future")
         if self.opens_before_hours is not None and (
             self.closes_before_hours is None
             or self.opens_before_hours <= self.closes_before_hours
@@ -2350,6 +2360,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             event = db.get(Event, event_id)
             if not event:
                 raise HTTPException(404, "Event not found")
+            if event.duration_hours == 0 and config.discord_gateway_enabled:
+                gateway = getattr(app.state, "gateway", None)
+                if gateway is None or not gateway.is_ready():
+                    raise HTTPException(
+                        503, "Discord signup listener is not connected."
+                    )
             if (
                 not force
                 and expected_status == "scheduled"
@@ -2385,6 +2401,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     signup_mode=(
                         "reactions"
                         if config.discord_signup_mode == "custom"
+                        or event.duration_hours == 0
                         else "poll"
                     ),
                 )
@@ -2399,6 +2416,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     event.scheduled_publish_at + event.duration_hours * 3600
                     if event.scheduled_publish_at
                     else time.time() + event.duration_hours * 3600
+                    if event.duration_hours
+                    else None
                 )
                 message = discord.publish(
                     reaction_publication(event, closes_at)
