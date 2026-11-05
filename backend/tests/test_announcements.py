@@ -7,7 +7,7 @@ from app.announcements import deliver_event, enqueue, payloads
 from app.models import Announcement, Base, Event
 
 
-def test_each_table_and_waitlist_has_its_own_message_without_repeated_intro():
+def test_small_assignment_fits_tables_and_waitlist_in_one_message():
     event = Event(id="event", guild_id="guild", title="Active Check", message_id="poll")
     one = {"id": "1", "name": "One", "choices": ["First"], "weight": 1.0}
     two = {"id": "2", "name": "Two", "choices": ["Second"], "weight": 1.0}
@@ -22,16 +22,16 @@ def test_each_table_and_waitlist_has_its_own_message_without_repeated_intro():
     messages = payloads(
         event, "channel", result, {"players": [one, two, waiting], "is_test": True}
     )
-    assert len(messages) == 3
+    assert len(messages) == 1
     assert "[TEST] Active Check — Table Assignments" in messages[0]["content"]
     assert "[Signup message]" in messages[0]["content"]
-    assert "First — 1 assigned" in messages[0]["content"]
-    assert "Second — 1 assigned" in messages[1]["content"]
-    assert "First — 1 assigned" not in messages[1]["content"]
-    assert "**Waitlist**" in messages[2]["content"]
-    for message in messages[1:]:
-        assert "Table Assignments" not in message["content"]
-        assert "Signup message" not in message["content"]
+    fields = messages[0]["embeds"][0]["fields"]
+    assert [(field["name"], field["inline"]) for field in fields] == [
+        ("First (1)", True),
+        ("Second (1)", True),
+        ("Waitlist (1)", False),
+    ]
+    assert fields[2]["value"] == "1. <@3>"
 
 
 def test_large_announcements_are_complete_bounded_and_private():
@@ -58,11 +58,27 @@ def test_large_announcements_are_complete_bounded_and_private():
     assert all(len(p["content"]) <= 2000 for p in chunks)
     assert all(len(p["allowed_mentions"]["users"]) <= 100 for p in chunks)
     assert all(p["allowed_mentions"]["parse"] == [] for p in chunks)
-    text = "\n".join(p["content"] for p in chunks)
-    assert "Private Real Name" not in text
-    assert "weight" not in text
-    for player in players:
-        assert text.count(f"<@{player['id']}>") == 1
+    assert all(len(p["embeds"][0]["fields"]) <= 25 for p in chunks)
+    fields = [field for p in chunks for field in p["embeds"][0]["fields"]]
+    assert all(len(field["value"]) <= 1024 for field in fields)
+    assert all(
+        sum(
+            len(field["name"]) + len(field["value"])
+            for field in p["embeds"][0]["fields"]
+        )
+        <= 6000
+        for p in chunks
+    )
+    content = "\n".join(p["content"] for p in chunks)
+    roster = "\n".join(field["value"] for field in fields)
+    assert "Private Real Name" not in content + roster
+    assert "weight" not in content + roster
+    for player in players[:300]:
+        assert content.count(f"<@{player['id']}>") == 1
+        assert roster.count(f"<@{player['id']}>") == 1
+    for player in players[300:]:
+        assert f"<@{player['id']}>" not in content
+        assert roster.count(f"<@{player['id']}>") == 1
     assert chunks == payloads(event, "channel", result, snapshot)
     assert sum("Table Assignments" in p["content"] for p in chunks) == 1
     assert sum("Signup message" in p["content"] for p in chunks) == 1

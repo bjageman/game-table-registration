@@ -190,10 +190,116 @@ def event_body():
     }
 
 
+def test_recurring_events_schedule_cancel_and_stop(client):
+    headers = login(client)
+    body = {
+        **event_body(),
+        "frequency": "weekly",
+        "time_zone": "America/New_York",
+        "opens_before_hours": 72,
+        "closes_before_hours": 24,
+    }
+    created = client.post("/api/recurring-series", headers=headers, json=body)
+    assert created.status_code == 201, created.text
+    series_id = created.json()["id"]
+    scheduled = [
+        row for row in client.get("/api/events").json() if row["series_id"] == series_id
+    ]
+    assert len(scheduled) == 4
+    assert all(row["status"] == "scheduled" for row in scheduled)
+    assert all(row["duration_hours"] == 48 for row in scheduled)
+    assert scheduled[0]["scheduled_publish_at"] == scheduled[0]["starts_at"] - 72 * 3600
+    assert (
+        client.post(
+            f"/api/events/{scheduled[0]['id']}/cancel-scheduled", headers=headers
+        ).status_code
+        == 204
+    )
+    replacement = [
+        row for row in client.get("/api/events").json() if row["series_id"] == series_id
+    ]
+    assert len(replacement) == 4
+    assert scheduled[0]["id"] not in {row["id"] for row in replacement}
+    assert (
+        client.post(
+            f"/api/recurring-series/{series_id}/stop", headers=headers
+        ).status_code
+        == 204
+    )
+    assert not [
+        row for row in client.get("/api/events").json() if row["series_id"] == series_id
+    ]
+
+
+def test_due_recurring_event_is_published_once_by_worker(tmp_path):
+    from sqlalchemy import update
+
+    from app.models import Event
+
+    settings = Settings(
+        _env_file=None,
+        announcement_worker_enabled=True,
+        database_url=f"sqlite:///{tmp_path}/scheduled.db",
+        discord_client_id="client",
+        discord_signup_mode="poll",
+        discord_gateway_enabled=False,
+        discord_client_secret="secret",
+        discord_bot_token="token",
+        discord_guild_id="guild",
+        discord_channel_id="channel",
+        owner_discord_id="owner",
+    )
+    app = create_app(settings)
+    Base.metadata.create_all(app.state.engine)
+    app.state.discord = Mock()
+    app.state.discord.identity.return_value = {"id": "owner", "username": "organizer"}
+    app.state.discord.publish.return_value = {
+        "id": "message",
+        "poll": {
+            "answers": [{"answer_id": 9}],
+            "expiry": (datetime.now(UTC) + timedelta(hours=48)).isoformat(),
+        },
+    }
+    with TestClient(app) as test_client:
+        headers = login(test_client)
+        body = {
+            **event_body(),
+            "frequency": "weekly",
+            "time_zone": "America/New_York",
+            "opens_before_hours": 72,
+            "closes_before_hours": 24,
+        }
+        assert (
+            test_client.post(
+                "/api/recurring-series", headers=headers, json=body
+            ).status_code
+            == 201
+        )
+        first = test_client.get("/api/events").json()[0]
+        with DBSession(app.state.engine) as db:
+            db.execute(
+                update(Event)
+                .where(Event.id == first["id"])
+                .values(scheduled_publish_at=time.time() - 1)
+            )
+            db.commit()
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            if test_client.get("/api/events").json()[0]["status"] == "open":
+                break
+            time.sleep(0.2)
+        else:
+            pytest.fail("Scheduled event was not published")
+        assert app.state.discord.publish.call_count == 1
+    app.state.engine.dispose()
+
+
 def test_templates_save_reusable_details_without_an_event_date_and_are_private(client):
     headers = login(client)
     body = {
         "title": "Friday games",
+        "description": "Bring friends",
+        "location": "Queen & Rook",
         "duration_hours": 24,
         "tables": [{"name": "Clocktower", "capacity": 15}],
     }
@@ -228,7 +334,11 @@ def test_templates_save_reusable_details_without_an_event_date_and_are_private(c
 
 def test_login_publish_and_duplicate_protection(client):
     headers = login(client)
-    response = client.post("/api/events", headers=headers, json=event_body())
+    response = client.post(
+        "/api/events",
+        headers=headers,
+        json={**event_body(), "description": "Bring friends"},
+    )
     assert response.status_code == 201
     event = response.json()
     path = f"/api/events/{event['id']}/publish"
@@ -238,6 +348,8 @@ def test_login_publish_and_duplicate_protection(client):
     assert published.json()["discord_url"].endswith("/message")
     assert client.post(path, headers=headers).status_code == 409
     payload = client.app.state.discord.publish.call_args.args[0]
+    assert "Bring friends" in payload["content"]
+    assert "This is a lottery entry" not in payload["content"]
     assert payload["poll"]["allow_multiselect"] is True
     assert payload["allowed_mentions"] == {"parse": []}
     assert (
@@ -409,7 +521,7 @@ def test_signup_endpoint_is_authorized_and_scoped_to_guild(client):
             "players": [
                 {
                     **players[0]["players"][0],
-                    "weighting": 1.0,
+                    "weighting": 5.0,
                     "guaranteed_table": None,
                     "guaranteed_seat": False,
                 }
@@ -485,7 +597,7 @@ def test_player_profile_survives_event_and_poll_deletion(client):
         "is_test": False,
         "guaranteed_seat": False,
         "real_name": "",
-        "weighting": 1.0,
+        "weighting": 5.0,
     }
     client.app.state.discord.bot.reset_mock()
     assert (
@@ -567,6 +679,70 @@ def test_player_profiles_are_scoped_to_guild_and_global_weight_can_be_edited(cli
         assert db.get(PlayerProfile, ("other", "123")).weighting == 2.0
 
 
+def test_admin_removes_organization_member_and_selection(client):
+    owner = login(client)
+    org_id = client.post(
+        "/api/organizations", headers=owner, json={"name": "Friday Crew"}
+    ).json()["id"]
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second = login(client)
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner = login(client)
+    assert (
+        client.put(
+            f"/api/organizations/{org_id}/members/second",
+            headers=owner,
+            json={"user_id": "second", "role": "editor"},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    second = login(client)
+    client.put(
+        "/api/organizations/selection",
+        headers=second,
+        json={"organization_id": org_id},
+    )
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/owner", headers=second
+        ).status_code
+        == 403
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner = login(client)
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/owner", headers=owner
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(
+            f"/api/organizations/{org_id}/members/second", headers=owner
+        ).status_code
+        == 204
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "second",
+        "username": "Second",
+    }
+    login(client)
+    assert client.get("/api/me").json()["organization"] is None
+
+
 def test_settings_switch_channels_without_retargeting_existing_events(client):
     headers = login(client)
     base = client.app.state.discord
@@ -617,6 +793,88 @@ def test_settings_switch_channels_without_retargeting_existing_events(client):
     scoped["100", "101"].publish.assert_called_once()
     assert ("100", "102") in scoped
     base.publish.assert_not_called()
+
+
+def test_organization_discord_settings_follow_selection_and_admin_role(client):
+    owner = login(client)
+    discord = client.app.state.discord
+    discord.destination_channels.return_value = (
+        "Server A",
+        [{"id": "101", "name": "personal"}, {"id": "102", "name": "shared"}],
+    )
+    discord.organization_channels.return_value = (
+        "Server A",
+        [{"id": "101", "name": "personal"}, {"id": "102", "name": "shared"}],
+    )
+    discord.bot.side_effect = lambda _method, path: {
+        "name": "Server A" if path.startswith("/guilds/") else "personal"
+    }
+    assert (
+        client.put(
+            "/api/settings",
+            headers=owner,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 200
+    )
+    org_id = client.post(
+        "/api/organizations", headers=owner, json={"name": "Shared"}
+    ).json()["id"]
+    client.put(
+        "/api/organizations/selection", headers=owner, json={"organization_id": org_id}
+    )
+    assert client.get("/api/settings").json()["organization_role"] == "admin"
+    discord.destination_channels.side_effect = HTTPException(
+        403, "You need Manage Server permission to configure this server."
+    )
+    assert (
+        client.get("/api/settings/channels?guild_id=100").json()["channels"][1]["id"]
+        == "102"
+    )
+    assert (
+        client.put(
+            "/api/settings",
+            headers=owner,
+            json={"guild_id": "100", "channel_id": "102"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
+    discord.organization_channels.assert_called()
+
+    discord.identity.return_value = {"id": "second", "username": "Second"}
+    second = login(client)
+    discord.identity.return_value = {"id": "owner", "username": "organizer"}
+    owner = login(client)
+    client.put(
+        f"/api/organizations/{org_id}/members/second",
+        headers=owner,
+        json={"user_id": "second", "role": "editor"},
+    )
+    discord.identity.return_value = {"id": "second", "username": "Second"}
+    second = login(client)
+    client.put(
+        "/api/organizations/selection", headers=second, json={"organization_id": org_id}
+    )
+    assert client.get("/api/settings").json()["organization_role"] == "editor"
+    assert client.get("/api/settings/channels?guild_id=100").status_code == 403
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
+    assert (
+        client.put(
+            "/api/settings",
+            headers=second,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 403
+    )
+    assert client.delete("/api/settings", headers=second).status_code == 409
+
+    discord.identity.return_value = {"id": "owner", "username": "organizer"}
+    owner = login(client)
+    client.put(
+        "/api/organizations/selection", headers=owner, json={"organization_id": None}
+    )
+    assert client.get("/api/settings").json()["selection"]["channel_id"] == "101"
 
 
 def test_settings_are_per_user_and_recheck_permissions(client):
@@ -837,7 +1095,7 @@ def test_event_player_settings_are_scoped_and_frozen_for_assignment(client):
     rows = client.get(path + "/signups").json()
     assert rows[0]["players"][0]["guaranteed_table"] == "B"
     assert rows[1]["players"][0]["weighting"] == 2.5
-    assert client.get("/api/players/1").json()["weighting"] == 1.0
+    assert client.get("/api/players/1").json()["weighting"] == 5.0
     assert client.get("/api/players/1").json()["guaranteed_seat"] is False
     discord.poll_message.return_value = closing_message()
     closed = client.post(path + "/close", headers=headers)
@@ -876,6 +1134,543 @@ def test_close_signups_assigns_once_and_replays_saved_results(client):
     with DBSession(client.app.state.engine) as db:
         assert len(db.query(LotteryRun).all()) == 1
     assert client.delete(path, headers=headers).status_code == 409
+
+
+def test_signup_exports_use_saved_placements_and_scope(client):
+    import csv
+    import io
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    rows = client.get(path + "/signups").json()
+    pdf = client.get(path + "/signups.pdf")
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content.startswith(b"%PDF-")
+    assert pdf.headers["content-disposition"].endswith('.pdf"')
+    assert (
+        client.get(path + "/signups.pdf?timezone=America%2FNew_York").status_code == 200
+    )
+    assert client.get(path + "/signups.pdf?timezone=Invalid").status_code == 400
+    export = client.get(path + "/signups.csv")
+    assert export.status_code == 200
+    parsed = list(csv.DictReader(io.StringIO(export.content.decode("utf-8-sig"))))
+    assert len(parsed) == sum(
+        len(row["players"]) + len(row["waitlist"]) for row in rows
+    )
+    assert {row["Status"] for row in parsed} == {"Seated", "Waitlisted"}
+    summary = client.get("/api/exports/signups.csv")
+    all_rows = list(csv.DictReader(io.StringIO(summary.content.decode("utf-8-sig"))))
+    assert len(all_rows) == len(parsed)
+    assert {row["Event ID"] for row in all_rows} == {event["id"]}
+    assert client.get("/api/events/missing/signups.csv").status_code == 404
+    assert client.get("/api/events/missing/signups.pdf").status_code == 404
+
+
+def test_public_assignment_link_is_opt_in_scoped_and_live(client):
+    headers, event, path, _ = closing_event(client)
+    assert client.post(path + "/share", headers=headers).status_code == 409
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    assert client.post(path + "/share").status_code == 403
+    shared = client.post(path + "/share", headers=headers)
+    assert shared.status_code == 200
+    assert client.post(path + "/share", headers=headers).json() == shared.json()
+    token = shared.json()["path"].rsplit("/", 1)[1]
+    with TestClient(client.app) as public:
+        assert public.get(path + "/signups").status_code == 401
+        assert public.get("/api/public/events/unknown").status_code == 404
+        response = public.get(f"/api/public/events/{token}")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        data = response.json()
+        assert data["title"] == event["title"]
+        assert set(data) == {
+            "title",
+            "description",
+            "location",
+            "starts_at",
+            "archived",
+            "tables",
+        }
+        assert all(
+            set(player) == {"name"}
+            for table in data["tables"]
+            for key in ("players", "waitlist")
+            for player in table[key]
+        )
+        rows = client.get(path + "/signups").json()
+        removed = rows[0]["players"][0]["id"]
+        assert (
+            client.delete(
+                path + f"/manager-players/{removed}", headers=headers
+            ).status_code
+            == 200
+        )
+        current = client.get(path + "/signups").json()
+        updated = public.get(f"/api/public/events/{token}").json()
+        assert [[p["name"] for p in t["players"]] for t in updated["tables"]] == [
+            [p.get("display_name") or p["name"] for p in t["players"]] for t in current
+        ]
+    client.app.state.discord.identity.return_value = {
+        "id": "other",
+        "username": "Other",
+    }
+    other_headers = login(client)
+    assert client.post(path + "/share", headers=other_headers).status_code == 404
+
+
+def test_assigned_exports_reflect_current_roster_and_display_names(client):
+    import csv
+    import io
+    from unittest.mock import patch
+
+    headers, _, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    initial = client.get(path + "/signups").json()
+    table = next(row for row in initial if row["waitlist"])
+    removed = table["players"][0]["id"]
+    promoted = table["waitlist"][0]["id"]
+    assert (
+        client.delete(path + f"/manager-players/{removed}", headers=headers).status_code
+        == 200
+    )
+    current = client.get(path + "/signups").json()
+    assert any(p["id"] == promoted for row in current for p in row["players"])
+    assert all(p["id"] != removed for row in current for p in row["players"])
+    assert (
+        client.put(
+            f"/api/players/{promoted}",
+            headers=headers,
+            json={"real_name": "Current display name"},
+        ).status_code
+        == 200
+    )
+    current = client.get(path + "/signups").json()
+    csv_response = client.get(path + "/signups.csv")
+    assert csv_response.headers["cache-control"] == "no-store"
+    csv_rows = list(
+        csv.DictReader(io.StringIO(csv_response.content.decode("utf-8-sig")))
+    )
+    assert any(
+        row["Discord ID"] == promoted
+        and row["Player"] == "Current display name"
+        and row["Status"] == "Seated"
+        for row in csv_rows
+    )
+    assert not any(
+        row["Discord ID"] == removed and row["Status"] == "Seated" for row in csv_rows
+    )
+    with patch("app.main.event_pdf", return_value=b"%PDF-current") as render:
+        pdf_response = client.get(path + "/signups.pdf")
+    assert pdf_response.headers["cache-control"] == "no-store"
+    assert render.call_args.args[1] == current
+    assert client.get("/api/exports/signups.csv").headers["cache-control"] == "no-store"
+
+
+def test_signup_csv_quotes_spreadsheet_formulas():
+    import csv
+    import io
+
+    from app.signup_exports import event_csv
+
+    content = event_csv(
+        [
+            {
+                "name": "=TABLE()",
+                "players": [{"id": "123", "name": "+discord", "display_name": "@Name"}],
+                "waitlist": [],
+            }
+        ]
+    )
+    row = next(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
+    assert row["Table"] == "'=TABLE()"
+    assert row["Player"] == "'@Name"
+    assert row["Discord username"] == "'+discord"
+
+
+@pytest.mark.parametrize("table_count", [4, 6])
+def test_pdf_fits_full_tables_on_one_portrait_page(table_count):
+    import re
+    from types import SimpleNamespace
+
+    from app.signup_exports import event_pdf
+
+    tables = [
+        {"name": f"Table {index}", "capacity": 15} for index in range(table_count)
+    ]
+    rows = [
+        {
+            "name": table["name"],
+            "players": [
+                {
+                    "name": f"player-{table_index}-{number}",
+                    "display_name": f"Player {number}",
+                }
+                for number in range(15)
+            ],
+            "waitlist": [
+                {"name": f"waiting-{table_index}-{number}"} for number in range(5)
+            ],
+        }
+        for table_index, table in enumerate(tables)
+    ]
+    event = SimpleNamespace(
+        title="Monday Tables",
+        starts_at=1794265200,
+        tables=tables,
+        status="assigned",
+    )
+    pdf = event_pdf(event, rows)
+    assert pdf.startswith(b"%PDF-")
+    assert len(re.findall(rb"/Type\s*/Page\b", pdf)) == 1
+    assert b"/MediaBox [ 0 0 612 792 ]" in pdf
+
+
+def test_summary_export_respects_selected_organization(client):
+    import csv
+    import io
+
+    headers, personal, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    organization = client.post(
+        "/api/organizations", headers=headers, json={"name": "Export Scope"}
+    ).json()
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=headers,
+            json={"organization_id": organization["id"]},
+        ).status_code
+        == 200
+    )
+    shared = client.post("/api/events", headers=headers, json=event_body()).json()
+    response = client.get("/api/exports/signups.csv")
+    rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig"))))
+    assert len(rows) == 1
+    assert rows[0]["Event ID"] == shared["id"]
+    assert rows[0]["Player"] == ""
+    assert client.get(f"/api/events/{personal['id']}/signups.pdf").status_code == 404
+    assert client.get(f"/api/events/{personal['id']}/signups.csv").status_code == 404
+
+
+def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(client):
+    from app.models import Announcement, EventWithdrawal
+
+    headers, event, path, _ = closing_event(client)
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    rows = client.get(path + "/signups").json()
+    table = next(row for row in rows if row["waitlist"])
+    seated = table["players"][0]["id"]
+    waiting = table["waitlist"][0]["id"]
+    target = f"{path}/assigned-players/{waiting}"
+    assert client.post(target, json={"table": table["name"]}).status_code == 403
+    assert (
+        client.post(target, headers=headers, json={"table": "missing"}).status_code
+        == 409
+    )
+    assert (
+        client.post(target, headers=headers, json={"table": table["name"]}).status_code
+        == 200
+    )
+    assert (
+        client.post(target, headers=headers, json={"table": table["name"]}).status_code
+        == 409
+    )
+    updated = next(
+        row
+        for row in client.get(path + "/signups").json()
+        if row["name"] == table["name"]
+    )
+    assert len(updated["players"]) == 2
+    assert len({player["id"] for player in updated["players"]}) == 2
+    assert waiting not in {player["id"] for player in updated["waitlist"]}
+    assert (
+        client.get(path + "/assignments").json()["current_result"]["assignments"][
+            waiting
+        ]
+        == table["name"]
+    )
+    assert (
+        client.delete(f"{path}/manager-players/{seated}", headers=headers).status_code
+        == 200
+    )
+    after = next(
+        row
+        for row in client.get(path + "/signups").json()
+        if row["name"] == table["name"]
+    )
+    assert [player["id"] for player in after["players"]] == [waiting]
+    assert [player["id"] for player in after["waitlist"]] == [
+        player["id"] for player in updated["waitlist"]
+    ]
+    with DBSession(client.app.state.engine) as db:
+        notice = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .order_by(Announcement.part.desc())
+            .first()
+        )
+        assert notice is not None
+        assert (
+            notice.payload["content"]
+            == f"<@{seated}> has left their seat at **{table['name']}**."
+        )
+        assert notice.payload["allowed_mentions"] == {"parse": [], "users": [seated]}
+        withdrawal = db.get(EventWithdrawal, (event["id"], seated))
+        assert withdrawal is not None and withdrawal.promoted_id is None
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="refresh")
+            .count()
+            == 1
+        )
+
+
+def test_manager_remove_from_full_table_promotes_next_waitlisted_player(client):
+    from app.models import Announcement, EventWithdrawal
+
+    headers, event, path, _ = closing_event(client)
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    seated = table["players"][0]["id"]
+    promoted = table["waitlist"][0]["id"]
+    assert (
+        client.delete(f"{path}/manager-players/{seated}", headers=headers).status_code
+        == 200
+    )
+    after = next(
+        row
+        for row in client.get(path + "/signups").json()
+        if row["name"] == table["name"]
+    )
+    assert [player["id"] for player in after["players"]] == [promoted]
+    with DBSession(client.app.state.engine) as db:
+        withdrawal = db.get(EventWithdrawal, (event["id"], seated))
+        assert withdrawal is not None and withdrawal.promoted_id == promoted
+        notice = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .one()
+        )
+        expected = (
+            f"<@{promoted}> has been promoted from the waitlist to **{table['name']}**."
+        )
+        assert notice.payload["content"] == expected
+
+
+def test_reaction_promotion_notice_has_no_table_update_heading(client):
+    from app.models import Announcement
+    from app.withdrawals import withdraw
+
+    headers, event, path, _ = closing_event(client)
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    seated = table["players"][0]["id"]
+    assert withdraw(client.app.state.engine, "guild", "channel", "announcement", seated)
+    with DBSession(client.app.state.engine) as db:
+        notice = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .one()
+        )
+        assert "Table Update" not in notice.payload["content"]
+        assert notice.payload["content"].startswith("<@")
+        assert "has been promoted to" in notice.payload["content"]
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="refresh")
+            .count()
+            == 1
+        )
+
+
+def test_table_change_notices_are_off_until_enabled(client):
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    seated = table["players"][0]["id"]
+    assert (
+        client.delete(f"{path}/manager-players/{seated}", headers=headers).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .count()
+            == 0
+        )
+        assert (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="refresh")
+            .count()
+            == 1
+        )
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+        ).status_code
+        == 200
+    )
+    target_table = next(
+        row for row in client.get(path + "/signups").json() if row["waitlist"]
+    )
+    waiting = target_table["waitlist"][0]["id"]
+    assert (
+        client.post(
+            f"{path}/assigned-players/{waiting}",
+            headers=headers,
+            json={"table": target_table["name"]},
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        notice = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="promotion")
+            .one()
+        )
+        assert "has been promoted from the waitlist" in notice.payload["content"]
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={"automatic_weight_adjustment": True, "announce_table_changes": False},
+        ).status_code
+        == 200
+    )
+    before = client.app.state.discord.send_announcement.call_count
+    from app.announcements import deliver_event
+
+    deliver_event(
+        client.app.state.engine, client.app.state.discord, event["id"], limit=5
+    )
+    assert all(
+        "has been promoted" not in call.args[1].get("content", "")
+        for call in client.app.state.discord.send_announcement.call_args_list[before:]
+    )
+    with DBSession(client.app.state.engine) as db:
+        saved = db.get(Announcement, notice.id)
+        assert saved is not None and saved.deleted_at is not None
+
+
+def test_assignment_settings_follow_selected_organization_and_admin_role(client):
+    owner_headers = login(client)
+    personal = {"automatic_weight_adjustment": False, "announce_table_changes": True}
+    assert (
+        client.put(
+            "/api/settings/assignment", headers=owner_headers, json=personal
+        ).json()
+        == personal
+    )
+    org = client.post(
+        "/api/organizations", headers=owner_headers, json={"name": "Settings Scope"}
+    ).json()
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=owner_headers,
+            json={"organization_id": org["id"]},
+        ).status_code
+        == 200
+    )
+    defaults = {"automatic_weight_adjustment": True, "announce_table_changes": False}
+    assert client.get("/api/settings/assignment").json() == defaults
+    shared = {"automatic_weight_adjustment": False, "announce_table_changes": False}
+    assert (
+        client.put(
+            "/api/settings/assignment", headers=owner_headers, json=shared
+        ).json()
+        == shared
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "editor",
+        "username": "Editor",
+    }
+    editor_headers = login(client)
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner_headers = login(client)
+    assert (
+        client.put(
+            f"/api/organizations/{org['id']}/members/editor",
+            headers=owner_headers,
+            json={"user_id": "editor", "role": "editor"},
+        ).status_code
+        == 200
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "editor",
+        "username": "Editor",
+    }
+    editor_headers = login(client)
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=editor_headers,
+            json={"organization_id": org["id"]},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/settings/assignment").json() == shared
+    assert (
+        client.put(
+            "/api/settings/assignment", headers=editor_headers, json=personal
+        ).status_code
+        == 403
+    )
+    client.app.state.discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+    }
+    owner_headers = login(client)
+    assert (
+        client.put(
+            "/api/organizations/selection",
+            headers=owner_headers,
+            json={"organization_id": None},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/settings/assignment").json() == personal
 
 
 def test_close_waits_for_finalization_and_freezes_weights_before_retries(client):
@@ -1042,9 +1837,96 @@ def test_close_immediately_announces_assignments_without_duplicate_delivery(clie
     assert client.post(path + "/close", headers=headers).status_code == 200
     dispatch_due(client.app.state.engine, lambda guild, channel: discord)
     assert client.get(path + "/announcement").json()["status"] == "sent"
-    assert discord.send_announcement.call_count == 4
+    assert discord.send_announcement.call_count == 2
     with DBSession(client.app.state.engine) as db:
-        assert db.query(Announcement).filter_by(event_id=event["id"]).count() == 4
+        assert db.query(Announcement).filter_by(event_id=event["id"]).count() == 2
+
+
+def test_assignment_changes_refresh_existing_discord_message_with_retry(client):
+    from app.announcements import dispatch_due
+    from app.discord_api import DiscordRequestError
+    from app.models import Announcement
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
+    waiting = table["waitlist"][0]["id"]
+    assert (
+        client.post(
+            f"{path}/assigned-players/{waiting}",
+            headers=headers,
+            json={"table": table["name"]},
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "pending"
+    assert client.get(path + "/announcement").json()["update_pending"] is True
+    discord.at.return_value.edit_announcement.side_effect = DiscordRequestError(429)
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    with DBSession(client.app.state.engine) as db:
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "pending"
+        refresh.next_attempt = 0
+        db.commit()
+    discord.at.return_value.edit_announcement.side_effect = None
+    sent_before = discord.send_announcement.call_count
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    assert discord.send_announcement.call_count == sent_before
+    channel, message_id, edit = discord.at.return_value.edit_announcement.call_args.args
+    assert (channel, message_id) == ("channel", "announcement")
+    assert edit["allowed_mentions"] == {"parse": [], "users": []}
+    assert "<@" not in edit["content"]
+    table_field = next(
+        field
+        for field in edit["embeds"][0]["fields"]
+        if field["name"].startswith(table["name"])
+    )
+    assert table_field["name"].endswith("(2/1)")
+    assert f"<@{waiting}>" in table_field["value"]
+    with DBSession(client.app.state.engine) as db:
+        row = (
+            db.query(Announcement)
+            .filter_by(event_id=event["id"], kind="assignment")
+            .one()
+        )
+        assert row.payload["embeds"] == edit["embeds"]
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "sent" and refresh.deleted_at is not None
+        db.add(
+            Announcement(
+                id="extra-assignment-part",
+                event_id=event["id"],
+                part=3,
+                kind="assignment",
+                channel_id="channel",
+                payload={"content": "Old extra roster", "nonce": "extra"},
+                state="sent",
+                message_id="old-extra",
+                created_at=time.time(),
+                next_attempt=time.time(),
+            )
+        )
+        db.commit()
+    assert (
+        client.delete(f"{path}/manager-players/{waiting}", headers=headers).status_code
+        == 200
+    )
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    _, extra_id, extra_edit = discord.at.return_value.edit_announcement.call_args.args
+    assert extra_id == "old-extra"
+    assert extra_edit["embeds"] == []
+    assert extra_edit["content"].startswith("Assignments updated above")
+    assert client.get(path + "/announcement").json()["update_pending"] is False
 
 
 def test_announcement_failure_retries_without_redrawing(client):
@@ -1068,7 +1950,7 @@ def test_announcement_failure_retries_without_redrawing(client):
     dispatch_due(client.app.state.engine, lambda guild, channel: discord)
     assert client.get(path + "/announcement").json()["status"] == "sent"
     assert client.get(path + "/assignments").json() == original
-    assert discord.send_announcement.call_count == 5
+    assert discord.send_announcement.call_count == 3
     discord.end_poll.assert_not_called()
 
 
@@ -1091,7 +1973,7 @@ def test_ambiguous_announcement_is_reconciled_without_blind_repost(client):
         db.commit()
     dispatch_due(client.app.state.engine, lambda guild, channel: discord)
     assert client.get(path + "/announcement").json()["status"] == "sent"
-    assert discord.send_announcement.call_count == 4
+    assert discord.send_announcement.call_count == 2
     discord.find_announcement.assert_called_once()
 
 
@@ -1237,6 +2119,56 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
         assert "Updated Display" not in payload["content"]
         assert "<@test-" not in payload["content"]
         assert payload["allowed_mentions"].get("users", []) == []
+
+
+def test_reaction_close_merges_test_players_with_manager_overrides(client):
+    from app.models import Event, LotteryRun
+
+    headers = login(client)
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    assert (
+        client.post(
+            path + "/test-users", headers=headers, json={"players": 3}
+        ).status_code
+        == 200
+    )
+    users = client.get(path + "/signups").json()[0]["players"]
+    assert (
+        client.put(
+            f"{path}/manager-players/{users[0]['id']}",
+            headers=headers,
+            json={"table": "Clocktower", "name": "Updated Test Player"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.delete(
+            f"{path}/manager-players/{users[1]['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+    with DBSession(client.app.state.engine) as db:
+        saved = db.get(Event, event["id"])
+        saved.status = "open"
+        saved.signup_mode = "reactions"
+        saved.message_id = "message"
+        saved.reaction_checkpoint = time.time()
+        saved.closes_at = time.time() + 60
+        db.commit()
+    response = client.post(path + "/close", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "assigned"
+    with DBSession(client.app.state.engine) as db:
+        run = db.get(LotteryRun, event["id"])
+        assert run is not None
+        players = run.snapshot["players"]
+        assert len(players) == 2
+        assert len({player["id"] for player in players}) == 2
+        assert (
+            next(player for player in players if player["id"] == users[0]["id"])["name"]
+            == "Updated Test Player"
+        )
 
 
 def test_test_population_requires_server_allowlist_and_can_be_cleared(client):
@@ -1430,7 +2362,7 @@ def test_display_names_are_guild_scoped_and_clear_to_discord_name(client):
         "id": "123",
         "name": "MaryDiscord",
         "display_name": "Mary Display",
-        "weighting": 1.0,
+        "weighting": 5.0,
         "guaranteed_table": None,
         "guaranteed_seat": False,
     }
@@ -1438,7 +2370,7 @@ def test_display_names_are_guild_scoped_and_clear_to_discord_name(client):
     assert client.get(path + "/signups").json()[0]["players"][0] == {
         "id": "123",
         "name": "MaryDiscord",
-        "weighting": 1.0,
+        "weighting": 5.0,
         "guaranteed_table": None,
         "guaranteed_seat": False,
     }
@@ -1496,7 +2428,7 @@ def test_close_can_delete_signup_message_and_archive_can_delete_announcements(cl
     )
     assert archived.status_code == 200
     assert archived.json()["archived_at"] > 0
-    assert scoped.delete_poll.call_count == 4
+    assert scoped.delete_poll.call_count == 3
     while True:
         cleanup = client.post(path + "/discord-messages/delete", headers=headers)
         assert cleanup.status_code == 200
@@ -1515,7 +2447,7 @@ def test_close_can_delete_signup_message_and_archive_can_delete_announcements(cl
         ).status_code
         == 200
     )
-    assert scoped.delete_poll.call_count == 5
+    assert scoped.delete_poll.call_count == 3
 
 
 def test_failed_archive_discord_cleanup_can_be_retried(client):
@@ -1543,16 +2475,16 @@ def test_failed_archive_discord_cleanup_can_be_retried(client):
     )
     assert failed.status_code == 200
     assert failed.json()["archived_at"] is not None
-    assert failed.json()["discord_cleanup_remaining"] == 4
+    assert failed.json()["discord_cleanup_remaining"] == 2
     assert "403" in failed.json()["discord_cleanup_error"]
     retried = client.post(path + "/discord-messages/delete", headers=headers)
     assert retried.status_code == 200
-    assert retried.json()["discord_cleanup_remaining"] == 1
+    assert retried.json()["discord_cleanup_remaining"] == 0
     retried = client.post(path + "/discord-messages/delete", headers=headers)
     assert retried.status_code == 200
     assert retried.json()["discord_cleanup_remaining"] == 0
     assert retried.json()["discord_cleanup_error"] is None
-    assert scoped.delete_poll.call_count == 6
+    assert scoped.delete_poll.call_count == 4
     assert (
         next(
             row for row in client.get("/api/events").json() if row["id"] == event["id"]
@@ -1593,7 +2525,7 @@ def test_archive_cleanup_respects_rate_limit_and_resumes_after_plain_archive(cli
     first = client.post(path + "/archive?delete_discord_messages=true", headers=headers)
     assert first.status_code == 200
     assert first.json()["archived_at"] is not None
-    assert first.json()["discord_cleanup_remaining"] == 14
+    assert first.json()["discord_cleanup_remaining"] == 12
     assert first.json()["discord_cleanup_retry_after"] == 0.25
     scoped.delete_poll.side_effect = None
     while True:
@@ -1601,7 +2533,7 @@ def test_archive_cleanup_respects_rate_limit_and_resumes_after_plain_archive(cli
         assert result.status_code == 200
         if result.json()["discord_cleanup_remaining"] == 0:
             break
-    assert scoped.delete_poll.call_count == 16
+    assert scoped.delete_poll.call_count == 14
     assert result.json()["discord_url"] is None
     assert (
         client.post(path + "/discord-messages/delete", headers=headers).json()[
@@ -1623,7 +2555,7 @@ def test_discord_cleanup_can_start_after_event_was_archived_without_it(client):
     assert client.post(path + "/archive", headers=headers).status_code == 200
     first = client.post(path + "/discord-messages/delete", headers=headers)
     assert first.status_code == 200
-    assert first.json()["discord_cleanup_remaining"] == 2
+    assert first.json()["discord_cleanup_remaining"] == 0
     last = client.post(path + "/discord-messages/delete", headers=headers)
     assert last.json()["discord_cleanup_remaining"] == 0
     assert last.json()["discord_url"] is None
@@ -1646,7 +2578,7 @@ def test_archive_cleanup_waits_for_queued_announcements(client):
         client.app.state.engine, lambda guild, channel: client.app.state.discord
     )
     first = client.post(path + "/discord-messages/delete", headers=headers)
-    assert first.json()["discord_cleanup_remaining"] == 1
+    assert first.json()["discord_cleanup_remaining"] == 0
 
 
 def test_assigned_signup_message_can_be_deleted_later(client):
@@ -1678,15 +2610,20 @@ def test_draft_cannot_be_archived(client):
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, enabled):
-    from app.models import GuildSettings, PlayerProfile
+    from app.models import AssignmentPreference, PlayerProfile
 
     headers, event, path, _ = closing_event(client)
     assert client.get("/api/settings/assignment").json() == {
-        "automatic_weight_adjustment": True
+        "automatic_weight_adjustment": True,
+        "announce_table_changes": False,
     }
     assert (
         client.put(
-            "/api/settings/assignment", json={"automatic_weight_adjustment": enabled}
+            "/api/settings/assignment",
+            json={
+                "automatic_weight_adjustment": enabled,
+                "announce_table_changes": False,
+            },
         ).status_code
         == 403
     )
@@ -1694,7 +2631,10 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
         client.put(
             "/api/settings/assignment",
             headers=headers,
-            json={"automatic_weight_adjustment": enabled},
+            json={
+                "automatic_weight_adjustment": enabled,
+                "announce_table_changes": False,
+            },
         ).status_code
         == 200
     )
@@ -1703,7 +2643,13 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
         is enabled
     )
     with DBSession(client.app.state.engine) as db:
-        db.add(GuildSettings(guild_id="other", automatic_weight_adjustment=not enabled))
+        db.add(
+            AssignmentPreference(
+                scope_key="user:other",
+                automatic_weight_adjustment=not enabled,
+                announce_table_changes=True,
+            )
+        )
         db.add(
             PlayerProfile(
                 guild_id="guild",
@@ -1728,7 +2674,10 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
     client.put(
         "/api/settings/assignment",
         headers=headers,
-        json={"automatic_weight_adjustment": not enabled},
+        json={
+            "automatic_weight_adjustment": not enabled,
+            "announce_table_changes": False,
+        },
     )
     discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
@@ -1744,9 +2693,9 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
 
     weights = current()
     for player in run["snapshot"]["players"]:
-        original = 1.25 if player["id"] == "1" else 1.0
+        original = 1.25 if player["id"] == "1" else 5.0
         if enabled:
-            delta = -0.1 if player["id"] in run["result"]["assignments"] else 0.1
+            delta = -0.5 if player["id"] in run["result"]["assignments"] else 0.5
             assert weights[player["id"]] == pytest.approx(original + delta)
         elif player["id"] == "1":
             assert weights[player["id"]] == original
@@ -1760,7 +2709,10 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
     assert current() == weights
     with DBSession(client.app.state.engine) as db:
         assert db.get(PlayerProfile, ("other", "1")).weighting == 2.0
-        assert db.get(GuildSettings, "other").automatic_weight_adjustment is not enabled
+        assert (
+            db.get(AssignmentPreference, "user:other").automatic_weight_adjustment
+            is not enabled
+        )
         assert db.get(PlayerProfile, ("guild", "1")).real_name == "Display"
 
 

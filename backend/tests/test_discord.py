@@ -180,6 +180,12 @@ def test_channel_picker_respects_user_and_bot_overwrites(mode):
         ([{"id": "103", "name": "no-polls"}] if mode == "custom" else [])
         + [{"id": "101", "name": "public"}],
     )
+    assert api.organization_channels("100") == (
+        "Games",
+        [{"id": "102", "name": "hidden"}]
+        + ([{"id": "103", "name": "no-polls"}] if mode == "custom" else [])
+        + [{"id": "101", "name": "public"}],
+    )
     roles[1]["permissions"] = "0"
     with pytest.raises(HTTPException) as error:
         api.destination_channels("user", "100")
@@ -249,6 +255,16 @@ def test_discord_rate_limit_delay_is_preserved():
             api.send_announcement("channel", {"content": "test"})
         assert error.value.retry_after == 42.5
         assert not error.value.ambiguous
+
+
+def test_edit_announcement_uses_existing_message():
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(return_value={"id": "message"})
+    payload = {"content": "Updated", "embeds": [], "allowed_mentions": {"parse": []}}
+    api.edit_announcement("channel", "message", payload)
+    api.bot.assert_called_once_with(
+        "PATCH", "/channels/channel/messages/message", json=payload, timeout=8
+    )
 
 
 def test_reconcile_announcement_requires_our_bot_and_matches_saved_payload():

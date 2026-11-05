@@ -8,8 +8,15 @@ from typing import Any
 from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import clean
-from app.models import Announcement, Event, EventWithdrawal, LotteryRun
+from app.announcements import clean, enqueue_refresh
+from app.assignment_preferences import announce_changes
+from app.models import (
+    Announcement,
+    Event,
+    EventManualAssignment,
+    EventWithdrawal,
+    LotteryRun,
+)
 
 
 def announcement_event(
@@ -51,6 +58,18 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
     for row in rows:
         if row.promoted_id and row.promoted_id not in withdrawn:
             assignments[row.promoted_id] = row.table_name
+    manual = list(
+        db.scalars(
+            select(EventManualAssignment)
+            .where(EventManualAssignment.event_id == run.event_id)
+            .order_by(
+                EventManualAssignment.assigned_at, EventManualAssignment.discord_id
+            )
+        )
+    )
+    for manual_row in manual:
+        if manual_row.discord_id not in withdrawn:
+            assignments[manual_row.discord_id] = manual_row.table_name
 
     by_id = {player["id"]: player for player in run.snapshot["players"]}
     tables = []
@@ -73,6 +92,15 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
                 player = by_id[promoted]
                 players.append({"id": promoted, "name": player["name"]})
                 included.add(promoted)
+        for manual_row in manual:
+            if (
+                manual_row.table_name == name
+                and assignments.get(manual_row.discord_id) == name
+                and manual_row.discord_id not in included
+            ):
+                player = by_id[manual_row.discord_id]
+                players.append({"id": manual_row.discord_id, "name": player["name"]})
+                included.add(manual_row.discord_id)
         tables.append(
             {
                 **table,
@@ -174,7 +202,7 @@ def withdraw(
                 promoted_id=promoted_id,
             )
         )
-        if promoted_id:
+        if promoted_id and announce_changes(db, event):
             left = next(
                 player
                 for player in run.snapshot["players"]
@@ -202,7 +230,6 @@ def withdraw(
             )
             part = (announce_id if announce_id is not None else -1) + 1
             content = (
-                f"**{clean(event.title)} — Table Update**\n"
                 f"{promoted_name} has been promoted to **{clean(table_name)}** "
                 f"after {left_name} left their seat.\n"
             )
@@ -230,6 +257,7 @@ def withdraw(
                     next_attempt=withdrawn_at,
                 )
             )
+        enqueue_refresh(db, event)
         db.commit()
         return True
 
@@ -237,7 +265,7 @@ def withdraw(
 def manager_remove(
     engine: Engine, guild_id: str, event_id: str, player_id: str
 ) -> bool:
-    """Remove an assigned player and announce any waitlist promotion."""
+    """Remove a player, promoting from the waitlist unless the table is overfull."""
     with Session(engine) as db:
         claimed = db.execute(
             update(Event)
@@ -262,22 +290,14 @@ def manager_remove(
         table_name = current["assignments"].get(player_id)
         if table_name is None:
             return False
-        table = next(row for row in run.result["tables"] if row["name"] == table_name)
-        active_ids = set(current["assignments"])
-        withdrawn_ids = set(
-            db.scalars(
-                select(EventWithdrawal.discord_id).where(
-                    EventWithdrawal.event_id == event_id
-                )
-            )
+        table = next(row for row in current["tables"] if row["name"] == table_name)
+        capacity = next(
+            row["capacity"] for row in event.tables if row["name"] == table_name
         )
-        promoted_id = next(
-            (
-                player["id"]
-                for player in table.get("waitlist", [])
-                if player["id"] not in active_ids and player["id"] not in withdrawn_ids
-            ),
-            None,
+        promoted_id = (
+            table["waitlist"][0]["id"]
+            if len(table["players"]) <= capacity and table["waitlist"]
+            else None
         )
         removed_at = time.time()
         db.add(
@@ -289,38 +309,56 @@ def manager_remove(
                 promoted_id=promoted_id,
             )
         )
-        if promoted_id and event.channel_id:
-            promoted = next(
-                player
-                for player in run.snapshot["players"]
-                if player["id"] == promoted_id
-            )
+        left = next(
+            player for player in run.snapshot["players"] if player["id"] == player_id
+        )
+        left_name = (
+            clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
+        )
+        if promoted_id:
             promoted_name = (
-                clean(promoted["name"])
+                clean(
+                    next(
+                        player["name"]
+                        for player in run.snapshot["players"]
+                        if player["id"] == promoted_id
+                    )
+                )
                 if promoted_id.startswith("test-")
                 else f"<@{promoted_id}>"
             )
+            content = (
+                f"{promoted_name} has been promoted from the waitlist "
+                f"to **{clean(table_name)}**."
+            )
+            mentions = [] if promoted_id.startswith("test-") else [promoted_id]
+        else:
+            content = f"{left_name} has left their seat at **{clean(table_name)}**."
+            mentions = [] if player_id.startswith("test-") else [player_id]
+        channel_id = event.channel_id or db.scalar(
+            select(Announcement.channel_id)
+            .where(Announcement.event_id == event_id)
+            .order_by(Announcement.part)
+            .limit(1)
+        )
+        if channel_id and announce_changes(db, event):
             part = db.scalar(
                 select(func.max(Announcement.part)).where(
                     Announcement.event_id == event_id
                 )
             )
-            mentions = [] if promoted_id.startswith("test-") else [promoted_id]
             db.add(
                 Announcement(
                     id=str(uuid.uuid4()),
                     event_id=event_id,
                     part=(part if part is not None else -1) + 1,
                     kind="promotion",
-                    channel_id=event.channel_id,
+                    channel_id=channel_id,
                     payload={
-                        "content": (
-                            f"{promoted_name} has been promoted from the waitlist "
-                            f"to **{clean(table_name)}**.\n"
-                        ),
+                        "content": content,
                         "allowed_mentions": {"parse": [], "users": mentions},
                         "nonce": hashlib.sha256(
-                            f"{event_id}:manager-promotion:{player_id}".encode()
+                            f"{event_id}:manager-removal:{player_id}".encode()
                         ).hexdigest()[:24],
                         "enforce_nonce": True,
                     },
@@ -328,5 +366,100 @@ def manager_remove(
                     next_attempt=removed_at,
                 )
             )
+        enqueue_refresh(db, event)
+        db.commit()
+        return True
+
+
+def manager_add(
+    engine: Engine, guild_id: str, event_id: str, player_id: str, table_name: str
+) -> bool:
+    """Assign an available waitlisted player to a table, even when it is full."""
+    with Session(engine) as db:
+        claimed = db.execute(
+            update(Event)
+            .where(
+                Event.id == event_id,
+                Event.guild_id == guild_id,
+                Event.status == "assigned",
+                Event.archived_at.is_(None),
+            )
+            .values(status=Event.status)
+            .returning(Event.id)
+        ).scalar_one_or_none()
+        if claimed is None:
+            return False
+        run = db.get(LotteryRun, event_id)
+        if run is None:
+            return False
+        current = current_result(db, run)
+        table = next(
+            (row for row in current["tables"] if row["name"] == table_name), None
+        )
+        if table is None or player_id not in {p["id"] for p in table["waitlist"]}:
+            return False
+        if player_id in current["assignments"]:
+            return False
+        db.add(
+            EventManualAssignment(
+                event_id=event_id,
+                discord_id=player_id,
+                table_name=table_name,
+                assigned_at=time.time(),
+            )
+        )
+        event = db.get(Event, event_id)
+        assert event is not None
+        if announce_changes(db, event):
+            promoted = next(
+                player
+                for player in run.snapshot["players"]
+                if player["id"] == player_id
+            )
+            name = (
+                clean(promoted["name"])
+                if player_id.startswith("test-")
+                else f"<@{player_id}>"
+            )
+            channel_id = event.channel_id or db.scalar(
+                select(Announcement.channel_id)
+                .where(Announcement.event_id == event_id)
+                .order_by(Announcement.part)
+                .limit(1)
+            )
+            if channel_id:
+                part = db.scalar(
+                    select(func.max(Announcement.part)).where(
+                        Announcement.event_id == event_id
+                    )
+                )
+                db.add(
+                    Announcement(
+                        id=str(uuid.uuid4()),
+                        event_id=event_id,
+                        part=(part if part is not None else -1) + 1,
+                        kind="promotion",
+                        channel_id=channel_id,
+                        payload={
+                            "content": (
+                                f"{name} has been promoted from the waitlist "
+                                f"to **{clean(table_name)}**."
+                            ),
+                            "allowed_mentions": {
+                                "parse": [],
+                                "users": (
+                                    [] if player_id.startswith("test-") else [player_id]
+                                ),
+                            },
+                            "nonce": hashlib.sha256(
+                                f"{event_id}:manager-add:{player_id}".encode()
+                            ).hexdigest()[:24],
+                            "enforce_nonce": True,
+                        },
+                        created_at=time.time(),
+                        next_attempt=time.time(),
+                    )
+                )
+        enqueue_refresh(db, event)
         db.commit()
         return True

@@ -1,5 +1,6 @@
 """Close a Discord poll and commit exactly one immutable lottery result."""
 
+import logging
 import secrets
 import time
 from datetime import datetime
@@ -11,12 +12,12 @@ from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.announcements import enqueue
+from app.assignment_preferences import for_event as assignment_preferences_for_event
 from app.discord_api import DiscordAPI
 from app.lottery import VERSION, GuaranteeConflict, assign
 from app.models import (
     Event,
     EventPlayerSetting,
-    GuildSettings,
     LotteryRun,
     PlayerProfile,
 )
@@ -100,7 +101,7 @@ def reconcile(
                     "id": pid,
                     "name": user.get("global_name") or user["username"],
                     "choices": [],
-                    "weight": weights.get(pid, 1.0),
+                    "weight": weights.get(pid, 5.0),
                 },
             )
             player["choices"].append(name)
@@ -182,7 +183,7 @@ def close_and_assign(
                     ] = setting.guaranteed_table
         adjust_weights = event.close_adjust_weights
         if adjust_weights is None:
-            settings = db.get(GuildSettings, event.guild_id)
+            settings = assignment_preferences_for_event(db, event)
             adjust_weights = settings.automatic_weight_adjustment if settings else True
         seed = event.close_seed or secrets.token_hex(32)
         claimed = db.execute(
@@ -223,12 +224,7 @@ def close_and_assign(
         if custom:
             custom_snapshot = {
                 "tables": tables,
-                "players": apply_manager_players(
-                    db,
-                    event,
-                    signup_players(db, event, weights),
-                    weights,
-                ),
+                "players": signup_players(db, event, weights),
             }
         custom_ended_at = min(now, event.closes_at or now)
         assert message_id is not None
@@ -257,7 +253,7 @@ def close_and_assign(
                         {
                             **player,
                             "choices": [],
-                            "weight": weights.get(player["id"], 1.0),
+                            "weight": weights.get(player["id"], 5.0),
                         },
                     )
                     entry["choices"].append(row["name"])
@@ -265,7 +261,7 @@ def close_and_assign(
                 for player in test_population["players"]:
                     participants[player["id"]] = {
                         **player,
-                        "weight": weights.get(player["id"], 1.0),
+                        "weight": weights.get(player["id"], 5.0),
                     }
             with Session(engine) as manager_db:
                 manager_event = manager_db.get(Event, event_id)
@@ -295,12 +291,6 @@ def close_and_assign(
             snapshot, ended_at = reconcile(
                 discord, message_id, tables, answers, weights
             )
-            with Session(engine) as db:
-                manager_event = db.get(Event, event_id)
-                if manager_event is not None:
-                    snapshot["players"] = apply_manager_players(
-                        db, manager_event, snapshot["players"], weights
-                    )
         if test_population:
             snapshot["is_test"] = True
             snapshot["players"].extend(
@@ -308,11 +298,17 @@ def close_and_assign(
                     "id": player["id"],
                     "name": player["name"],
                     "choices": player["choices"],
-                    "weight": weights.get(player["id"], 1.0),
+                    "weight": weights.get(player["id"], 5.0),
                     "is_test": True,
                 }
                 for player in test_population["players"]
             )
+        with Session(engine) as db:
+            manager_event = db.get(Event, event_id)
+            if manager_event is not None:
+                snapshot["players"] = apply_manager_players(
+                    db, manager_event, snapshot["players"], weights
+                )
         snapshot["automatic_weight_adjustment"] = adjust_weights
         result = assign(with_guarantees(snapshot), seed)
         with Session(engine) as db:
@@ -363,12 +359,12 @@ def close_and_assign(
                             guild_id=event.guild_id,
                             discord_id=player["id"],
                             discord_name=player["name"],
-                            weighting=1.0,
+                            weighting=5.0,
                             is_test=bool(player.get("is_test")),
                         )
                         db.add(profile)
                     delta = Decimal(
-                        "-0.1" if player["id"] in result["assignments"] else "0.1"
+                        "-0.5" if player["id"] in result["assignments"] else "0.5"
                     )
                     profile.weighting = float(
                         min(
@@ -416,6 +412,9 @@ def close_and_assign(
             return False
         if isinstance(failure, HTTPException):
             raise
+        logging.getLogger(__name__).exception(
+            "Unexpected signup closing failure for event %s", event_id
+        )
         raise HTTPException(
             502,
             "Could not confirm placement completion. "

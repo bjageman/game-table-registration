@@ -277,7 +277,7 @@ def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
         assert len(result["assignments"]) == 2
         assert len(result["waitlist"]) == 1
         for player in snapshot["players"]:
-            expected = 0.9 if player["id"] in result["assignments"] else 1.1
+            expected = 4.5 if player["id"] in result["assignments"] else 5.5
             assert db.get(PlayerProfile, ("guild", player["id"])).weighting == expected
     assert client.post(path + "/close", headers=headers).status_code == 200
     with Session(client.app.state.engine) as db:
@@ -289,7 +289,7 @@ def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
     dispatch_due(
         client.app.state.engine, lambda guild, channel: client.app.state.discord
     )
-    assert client.app.state.discord.send_announcement.call_count == 4
+    assert client.app.state.discord.send_announcement.call_count == 2
     assert (
         "Signups are closed"
         in dispatch(custom_client, interaction(event, "select")).json()["data"][
@@ -414,8 +414,6 @@ def test_closing_claim_rejects_late_choices_before_snapshot(custom_client, monke
 
 
 def test_custom_signups_share_test_players_and_assignment_settings(custom_client):
-    from app.models import GuildSettings
-
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
     dispatch(custom_client, interaction(event, "select"))
@@ -425,9 +423,17 @@ def test_custom_signups_share_test_players_and_assignment_settings(custom_client
         ).status_code
         == 200
     )
-    with Session(client.app.state.engine) as db:
-        db.add(GuildSettings(guild_id="guild", automatic_weight_adjustment=False))
-        db.commit()
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={
+                "automatic_weight_adjustment": False,
+                "announce_table_changes": False,
+            },
+        ).status_code
+        == 200
+    )
     rows = client.get(path + "/signups", headers=headers).json()
     assert "1" in {p["id"] for row in rows for p in row["players"]}
     assert any(p["id"].startswith("test-") for row in rows for p in row["players"])

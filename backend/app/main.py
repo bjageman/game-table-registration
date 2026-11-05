@@ -13,6 +13,7 @@ from threading import Event as StopEvent
 from threading import Thread
 from typing import Any
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -30,6 +31,7 @@ from app.announcements import (
 from app.announcements import (
     status as announcement_status,
 )
+from app.assignment_preferences import scope_key as assignment_scope_key
 from app.branding import load_branding
 from app.closing import close_and_assign
 from app.config import Settings
@@ -39,20 +41,23 @@ from app.connection_settings import (
     register_settings,
 )
 from app.discord_api import DiscordAPI, DiscordRequestError
+from app.event_description import POLL_DESCRIPTION, signup_description, signup_location
 from app.gateway import SignupGateway
 from app.models import (
     Announcement,
+    AssignmentPreference,
+    CanceledOccurrence,
     Event,
     EventManagerSignup,
     EventPlayerSetting,
     EventTemplate,
-    GuildSettings,
     LoginState,
     LotteryRun,
     Organization,
     OrganizationMember,
     OrganizationSelection,
     PlayerProfile,
+    RecurringSeries,
     Session,
     SignupInteraction,
     TableSignup,
@@ -61,6 +66,8 @@ from app.models import (
 )
 from app.reactions import EMOJIS
 from app.reactions import publication as reaction_publication
+from app.recurrence import fill_schedule
+from app.signup_exports import event_csv, event_pdf, summary_csv
 from app.signups import apply_manager_signups, table_rows
 from app.test_signups import (
     add_to_rows,
@@ -71,7 +78,7 @@ from app.test_signups import (
 from app.test_signups import (
     generate as generate_test_users,
 )
-from app.withdrawals import current_result, manager_remove
+from app.withdrawals import current_result, manager_add, manager_remove
 
 
 def digest(token: str) -> str:
@@ -92,8 +99,12 @@ class TableInput(BaseModel):
 
 class EventInput(BaseModel):
     title: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=300)
+    location: str = Field(default="", max_length=200)
     starts_at: datetime
     duration_hours: int = Field(ge=1, le=768)
+    opens_before_hours: int | None = Field(default=None, ge=2, le=768)
+    closes_before_hours: int | None = Field(default=None, ge=1, le=767)
     tables: list[TableInput] = Field(min_length=1, max_length=10)
 
     @model_validator(mode="after")
@@ -104,13 +115,51 @@ class EventInput(BaseModel):
             raise ValueError("Event time must include a timezone")
         if self.starts_at.timestamp() <= time.time() + self.duration_hours * 3600:
             raise ValueError("Event must start after the signup window ends")
+        if self.opens_before_hours is not None and (
+            self.closes_before_hours is None
+            or self.opens_before_hours <= self.closes_before_hours
+        ):
+            raise ValueError("Signups must open before they close")
         if len({table.name.casefold() for table in self.tables}) != len(self.tables):
             raise ValueError("Table names must be unique")
         return self
 
 
+class RecurringInput(EventInput):
+    frequency: str
+    time_zone: str = Field(max_length=100)
+    opens_before_hours: int = Field(ge=2, le=768)
+    closes_before_hours: int = Field(ge=1, le=767)
+
+    @model_validator(mode="after")
+    def validate_recurrence(self) -> "RecurringInput":
+        if self.frequency not in {"daily", "weekly", "monthly"}:
+            raise ValueError("Choose a daily, weekly, or monthly schedule")
+        try:
+            zone = ZoneInfo(self.time_zone)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError("Choose a valid time zone") from error
+        local = self.starts_at.astimezone(zone).replace(tzinfo=None)
+        if local.replace(tzinfo=zone).timestamp() != self.starts_at.timestamp():
+            raise ValueError("Event time must match the selected time zone")
+        if self.closes_before_hours >= self.opens_before_hours:
+            raise ValueError("Signups must open before they close")
+        opening = datetime.fromtimestamp(
+            self.starts_at.timestamp() - self.opens_before_hours * 3600, zone
+        )
+        now = datetime.now(zone)
+        if opening <= now:
+            raise ValueError(
+                f"Open signup of {opening:%b %d, %Y, %I:%M:%S %p %Z} needs to "
+                f"start after the current time {now:%b %d, %Y, %I:%M:%S %p %Z}."
+            )
+        return self
+
+
 class EventTemplateInput(BaseModel):
     title: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=300)
+    location: str = Field(default="", max_length=200)
     duration_hours: int = Field(ge=1, le=768)
     tables: list[TableInput] = Field(min_length=1, max_length=10)
 
@@ -126,6 +175,7 @@ class EventTemplateInput(BaseModel):
 class AssignmentSettingsInput(BaseModel):
     model_config = {"extra": "forbid"}
     automatic_weight_adjustment: bool
+    announce_table_changes: bool
 
 
 class PlayerProfileInput(BaseModel):
@@ -150,6 +200,11 @@ class ManagerSignupInput(BaseModel):
     model_config = {"extra": "forbid"}
     table: str = Field(min_length=1, max_length=35)
     name: str = Field(min_length=1, max_length=100)
+
+
+class AssignedAddInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    table: str = Field(min_length=1, max_length=35)
 
 
 class OrganizationInput(BaseModel):
@@ -199,6 +254,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         def work() -> None:
             while not stop.is_set():
                 try:
+                    with DBSession(engine) as db:
+                        for series in db.scalars(
+                            select(RecurringSeries).where(RecurringSeries.active)
+                        ):
+                            fill_schedule(db, series, time.time())
+                        db.commit()
+                        scheduled = [
+                            (event.id, event.guild_id, event.channel_id)
+                            for event in db.scalars(
+                                select(Event)
+                                .where(
+                                    Event.status == "scheduled",
+                                    Event.scheduled_publish_at <= time.time(),
+                                )
+                                .limit(50)
+                            )
+                        ]
+                    for event_id, guild, channel in scheduled:
+                        try:
+                            if (
+                                config.discord_signup_mode == "custom"
+                                and config.discord_gateway_enabled
+                            ):
+                                if gateway is None or not gateway.is_ready():
+                                    continue
+                            target = config.model_copy(
+                                update={
+                                    "discord_guild_id": guild,
+                                    "discord_channel_id": channel,
+                                }
+                            )
+                            publish_event(event_id, client_for(target), "scheduled")
+                            with DBSession(engine) as archive_db:
+                                current = archive_db.get(Event, event_id)
+                                if current and current.series_id:
+                                    archive_db.execute(
+                                        update(Event)
+                                        .where(
+                                            Event.series_id == current.series_id,
+                                            Event.starts_at < current.starts_at,
+                                            Event.status == "assigned",
+                                            Event.archived_at.is_(None),
+                                        )
+                                        .values(archived_at=time.time())
+                                    )
+                                    archive_db.commit()
+                        except HTTPException as error:
+                            logging.getLogger(__name__).warning(
+                                "Scheduled publication for %s: %s",
+                                event_id,
+                                error.detail,
+                            )
+                        except Exception:
+                            logging.getLogger(__name__).exception(
+                                "Scheduled publication failed for %s", event_id
+                            )
                     # Close expired signups from durable event state. This also
                     # retries events left in `closing` after Discord was still
                     # finalizing a poll or reaction synchronization.
@@ -443,13 +554,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "id": event.id,
             "title": event.title,
+            "description": event.description,
+            "location": event.location,
             "starts_at": event.starts_at,
             "duration_hours": event.duration_hours,
             "tables": event.tables,
             "status": event.status,
             "signup_mode": event.signup_mode,
-            "closes_at": event.closes_at,
+            "closes_at": event.closes_at
+            if event.closes_at is not None
+            else event.scheduled_publish_at + event.duration_hours * 3600
+            if event.series_id and event.scheduled_publish_at is not None
+            else None,
             "published_at": event.published_at,
+            "series_id": event.series_id,
+            "scheduled_publish_at": event.scheduled_publish_at,
             "archived_at": event.archived_at,
             "signup_deleted_at": event.signup_deleted_at,
             "close_error": event.close_error or event.reaction_error,
@@ -906,6 +1025,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
         return Response(status_code=204)
 
+    @app.delete("/api/organizations/{org_id}/members/{user_id}", status_code=204)
+    def remove_organization_member(
+        org_id: str, user_id: str, request: Request
+    ) -> Response:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            org = require_org_admin(db, org_id, session.user_id)
+            if user_id == org.created_by:
+                raise HTTPException(403, "The creator cannot be removed")
+            if user_id == session.user_id:
+                raise HTTPException(409, "Use Leave organization to remove yourself")
+            member = db.get(OrganizationMember, (org_id, user_id))
+            if member is None:
+                raise HTTPException(404, "Organization member not found")
+            db.execute(
+                delete(OrganizationSelection).where(
+                    OrganizationSelection.user_id == user_id,
+                    OrganizationSelection.organization_id == org_id,
+                )
+            )
+            db.delete(member)
+            db.commit()
+        return Response(status_code=204)
+
     @app.delete("/api/organizations/{org_id}", status_code=204)
     def delete_organization(org_id: str, request: Request) -> Response:
         session = authenticated(request, True, require_destination=False)
@@ -948,30 +1091,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/settings/assignment")
     def assignment_settings(request: Request) -> dict[str, Any]:
-        authenticated(request, require_channel=False)
-        guild_id = destination(request).discord_guild_id
+        session = authenticated(request, require_channel=False)
+        key = assignment_scope_key(request.state.organization_id, session.user_id)
         with DBSession(engine) as db:
-            saved = db.get(GuildSettings, guild_id)
+            saved = db.get(AssignmentPreference, key)
             return {
                 "automatic_weight_adjustment": saved.automatic_weight_adjustment
                 if saved
-                else True
+                else True,
+                "announce_table_changes": saved.announce_table_changes
+                if saved
+                else False,
             }
 
     @app.put("/api/settings/assignment")
     def save_assignment_settings(
         body: AssignmentSettingsInput, request: Request
     ) -> dict[str, Any]:
-        authenticated(request, True, require_channel=False)
+        session = authenticated(request, True, require_channel=False)
+        if request.state.organization_id and request.state.organization_role != "admin":
+            raise HTTPException(
+                403, "Only organization admins can save assignment settings"
+            )
         with DBSession(engine) as db:
             db.merge(
-                GuildSettings(
-                    guild_id=destination(request).discord_guild_id,
+                AssignmentPreference(
+                    scope_key=assignment_scope_key(
+                        request.state.organization_id, session.user_id
+                    ),
                     automatic_weight_adjustment=body.automatic_weight_adjustment,
+                    announce_table_changes=body.announce_table_changes,
                 )
             )
             db.commit()
-        return {"automatic_weight_adjustment": body.automatic_weight_adjustment}
+        return body.model_dump()
 
     def discord_name(player_id: str) -> str:
         discord: DiscordAPI = app.state.discord
@@ -990,7 +1143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if profile
             else signup_name or discord_name(player_id),
             "real_name": profile.real_name if profile else "",
-            "weighting": profile.weighting if profile else 1.0,
+            "weighting": profile.weighting if profile else 5.0,
             "is_test": profile.is_test if profile else False,
             "guaranteed_seat": profile.guaranteed_seat if profile else False,
         }
@@ -1078,7 +1231,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     discord_id=player_id,
                     discord_name=discord_name(player_id),
                     real_name=body.real_name or "",
-                    weighting=body.weighting if body.weighting is not None else 1.0,
+                    weighting=body.weighting if body.weighting is not None else 5.0,
                 )
                 db.add(profile)
             else:
@@ -1125,6 +1278,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "id": template.id,
             "title": template.title,
+            "description": template.description,
+            "location": template.location,
             "duration_hours": template.duration_hours,
             "tables": template.tables,
         }
@@ -1150,6 +1305,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 id=str(uuid.uuid4()),
                 user_id=session.user_id,
                 title=body.title.strip(),
+                description=body.description.strip(),
+                location=body.location.strip(),
                 duration_hours=body.duration_hours,
                 tables=[table.model_dump() for table in body.tables],
                 created_at=time.time(),
@@ -1197,7 +1354,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         if setting and setting.weighting is not None
                         else profile.weighting
                         if profile
-                        else 1.0
+                        else 5.0
                     ),
                     guaranteed_table=setting.guaranteed_table if setting else None,
                     guaranteed_seat=profile.guaranteed_seat if profile else False,
@@ -1257,6 +1414,73 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.rollback()
         return list_names(rows, guild_id, event_id)
 
+    @app.get("/api/events/{event_id}/signups.csv")
+    def download_event_csv(event_id: str, request: Request) -> Response:
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            authenticated(request)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned":
+                raise HTTPException(409, "Signups must be assigned before export")
+        rows = event_signups(event_id, request)
+        return Response(
+            event_csv(rows),
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="signups-{event_id}.csv"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @app.get("/api/events/{event_id}/signups.pdf")
+    def download_event_pdf(
+        event_id: str, request: Request, timezone: str = "UTC"
+    ) -> Response:
+        authenticated(request)
+        try:
+            time_zone = ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise HTTPException(400, "Invalid timezone") from None
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned":
+                raise HTTPException(409, "Signups must be assigned before export")
+            rows = event_signups(event_id, request)
+            content = event_pdf(event, rows, time_zone)
+        return Response(
+            content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="signups-{event_id}.pdf"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @app.get("/api/exports/signups.csv")
+    def download_summary_csv(request: Request) -> Response:
+        authenticated(request)
+        with DBSession(engine) as db:
+            selected = list(
+                db.scalars(
+                    select(Event)
+                    .where(*event_scope(request))
+                    .order_by(Event.starts_at, Event.id)
+                )
+            )
+            data = [(event, event_signups(event.id, request)) for event in selected]
+            content = summary_csv(data)
+        return Response(
+            content,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="all-event-signups.csv"',
+                "Cache-Control": "no-store",
+            },
+        )
+
     @app.put("/api/events/{event_id}/manager-players/{player_id}")
     def add_manager_player(
         event_id: str, player_id: str, body: ManagerSignupInput, request: Request
@@ -1269,7 +1493,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open"]),
                 )
                 .values(status=Event.status)
                 .returning(Event.id)
@@ -1302,6 +1526,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             return {"ok": True}
 
+    @app.post("/api/events/{event_id}/assigned-players/{player_id}")
+    def add_assigned_player(
+        event_id: str, player_id: str, body: AssignedAddInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            guild_id = event.guild_id
+        if not manager_add(engine, guild_id, event_id, player_id, body.table):
+            raise HTTPException(409, "Player is not available on this table's waitlist")
+        return {"ok": True}
+
     @app.delete("/api/events/{event_id}/manager-players/{player_id}")
     def remove_manager_player(
         event_id: str, player_id: str, request: Request
@@ -1323,7 +1562,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open"]),
                 )
                 .values(status=Event.status)
                 .returning(Event.id)
@@ -1414,7 +1653,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if setting.weighting is not None
                 else profile.weighting
                 if profile
-                else 1.0,
+                else 5.0,
                 "guaranteed_table": setting.guaranteed_table,
                 "guaranteed_seat": profile.guaranteed_seat if profile else False,
             }
@@ -1500,7 +1739,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open"]),
                 )
                 .values(test_signups=population)
                 .returning(Event.id)
@@ -1534,14 +1773,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                 else:
                     player["name"] = f"Test Player {index + 1:03d}"
-                    player["weight"] = 1.0
+                    player["weight"] = 5.0
                     db.add(
                         PlayerProfile(
                             guild_id=event.guild_id,
                             discord_id=player["id"],
                             discord_name=player["name"],
                             real_name="",
-                            weighting=1.0,
+                            weighting=5.0,
                             is_test=True,
                         )
                     )
@@ -1647,6 +1886,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         deliver_event(engine, scoped_discord(request), event_id)
         return announcement_status(engine, event_id, guild_id)
 
+    @app.post("/api/events/{event_id}/share")
+    def share_event(event_id: str, request: Request) -> dict[str, str]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if event is None or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "assigned":
+                raise HTTPException(409, "Only assigned events can be shared")
+            token = secrets.token_urlsafe(32)
+            db.execute(
+                update(Event)
+                .where(Event.id == event_id, Event.public_share_token.is_(None))
+                .values(public_share_token=token)
+            )
+            db.commit()
+            db.refresh(event)
+            return {"path": f"/#/shared/{event.public_share_token}"}
+
+    @app.get("/api/public/events/{token}")
+    def public_event(token: str, response: Response) -> dict[str, Any]:
+        response.headers["Cache-Control"] = "no-store"
+        with DBSession(engine) as db:
+            event = db.scalar(select(Event).where(Event.public_share_token == token))
+            if event is None or event.status != "assigned":
+                raise HTTPException(404, "Shared event not found")
+            run = db.get(LotteryRun, event.id)
+            if run is None:
+                raise HTTPException(404, "Shared event not found")
+            rows = list_names(current_result(db, run)["tables"], event.guild_id)
+            return {
+                "title": event.title,
+                "description": event.description,
+                "location": event.location,
+                "starts_at": event.starts_at,
+                "archived": event.archived_at is not None,
+                "tables": [
+                    {
+                        "name": row["name"],
+                        "capacity": next(
+                            t["capacity"]
+                            for t in event.tables
+                            if t["name"] == row["name"]
+                        ),
+                        **{
+                            key: [
+                                {"name": player.get("display_name") or player["name"]}
+                                for player in row.get(key, [])
+                            ]
+                            for key in ("players", "waitlist")
+                        },
+                    }
+                    for row in rows
+                ],
+            }
+
     @app.get("/api/events/{event_id}/assignments")
     def assignments(event_id: str, request: Request) -> dict[str, Any]:
         authenticated(request)
@@ -1675,7 +1970,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 guild_id=destination(request).discord_guild_id,
                 channel_id=destination(request).discord_channel_id,
                 title=body.title.strip(),
+                description=body.description.strip(),
+                location=body.location.strip(),
                 starts_at=body.starts_at.timestamp(),
+                scheduled_publish_at=body.starts_at.timestamp()
+                - body.opens_before_hours * 3600
+                if body.opens_before_hours is not None
+                else None,
+                closes_at=body.starts_at.timestamp() - body.closes_before_hours * 3600
+                if body.closes_before_hours is not None
+                else None,
                 duration_hours=body.duration_hours,
                 tables=[table.model_dump() for table in body.tables],
                 created_by=session.user_id,
@@ -1686,6 +1990,121 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
             return serialize(event)
 
+    @app.get("/api/recurring-series")
+    def recurring_series(request: Request) -> list[dict[str, Any]]:
+        authenticated(request)
+        with DBSession(engine) as db:
+            target = destination(request)
+            rows = db.scalars(
+                select(RecurringSeries).where(
+                    RecurringSeries.organization_id == request.state.organization_id
+                    if request.state.organization_id
+                    else RecurringSeries.organization_id.is_(None)
+                    & (RecurringSeries.created_by == request.state.user_id),
+                    RecurringSeries.guild_id == target.discord_guild_id,
+                    RecurringSeries.channel_id == target.discord_channel_id,
+                    RecurringSeries.active,
+                )
+            )
+            return [
+                {
+                    "id": row.id,
+                    "title": row.title,
+                    "frequency": row.frequency,
+                    "time_zone": row.time_zone,
+                    "opens_before_hours": row.opens_before_hours,
+                    "closes_before_hours": row.closes_before_hours,
+                }
+                for row in rows
+            ]
+
+    @app.post("/api/recurring-series", status_code=201)
+    def create_recurring_series(
+        body: RecurringInput, request: Request
+    ) -> dict[str, Any]:
+        session = authenticated(request, True)
+        target = destination(request)
+        with DBSession(engine) as db:
+            series = RecurringSeries(
+                id=str(uuid.uuid4()),
+                created_by=session.user_id,
+                organization_id=request.state.organization_id,
+                guild_id=target.discord_guild_id,
+                channel_id=target.discord_channel_id,
+                title=body.title.strip(),
+                description=body.description.strip(),
+                location=body.location.strip(),
+                tables=[table.model_dump() for table in body.tables],
+                first_local=body.starts_at.astimezone(
+                    ZoneInfo(body.time_zone)
+                ).strftime("%Y-%m-%dT%H:%M"),
+                time_zone=body.time_zone,
+                frequency=body.frequency,
+                opens_before_hours=body.opens_before_hours,
+                closes_before_hours=body.closes_before_hours,
+                active=True,
+            )
+            db.add(series)
+            fill_schedule(db, series, time.time())
+            db.commit()
+            return {"id": series.id, "title": series.title}
+
+    @app.post("/api/recurring-series/{series_id}/stop")
+    def stop_recurring_series(series_id: str, request: Request) -> Response:
+        authenticated(request, True)
+        target = destination(request)
+        with DBSession(engine) as db:
+            series = db.get(RecurringSeries, series_id)
+            if (
+                not series
+                or series.organization_id != request.state.organization_id
+                or (
+                    series.organization_id is None
+                    and series.created_by != request.state.user_id
+                )
+                or series.guild_id != target.discord_guild_id
+                or series.channel_id != target.discord_channel_id
+            ):
+                raise HTTPException(404, "Schedule not found")
+            series.active = False
+            db.execute(
+                delete(Event).where(
+                    Event.series_id == series_id, Event.status == "scheduled"
+                )
+            )
+            db.commit()
+        return Response(status_code=204)
+
+    @app.post("/api/events/{event_id}/cancel-scheduled")
+    def cancel_scheduled(event_id: str, request: Request) -> Response:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if not event or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            if event.status != "scheduled" or not event.series_id:
+                raise HTTPException(
+                    409, "Only unposted scheduled events can be canceled"
+                )
+            removed = db.execute(
+                delete(Event)
+                .where(Event.id == event_id, Event.status == "scheduled")
+                .returning(Event.series_id, Event.starts_at)
+            ).first()
+            if not removed or not removed.series_id:
+                raise HTTPException(409, "This event has already started publishing")
+            db.add(
+                CanceledOccurrence(
+                    series_id=removed.series_id, starts_at=removed.starts_at
+                )
+            )
+            series = db.get(RecurringSeries, removed.series_id)
+            db.flush()
+            if series:
+                fill_schedule(db, series, time.time())
+            db.commit()
+        return Response(status_code=204)
+
     @app.put("/api/events/{event_id}")
     def edit_event(event_id: str, body: EventInput, request: Request) -> dict[str, Any]:
         authenticated(request, True)
@@ -1695,11 +2114,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status == "draft",
+                    Event.status.in_(["draft", "scheduled"]),
                 )
                 .values(
                     title=body.title.strip(),
+                    description=body.description.strip(),
+                    location=body.location.strip(),
                     starts_at=body.starts_at.timestamp(),
+                    scheduled_publish_at=body.starts_at.timestamp()
+                    - body.opens_before_hours * 3600
+                    if body.opens_before_hours is not None
+                    else None,
+                    closes_at=body.starts_at.timestamp()
+                    - body.closes_before_hours * 3600
+                    if body.closes_before_hours is not None
+                    else None,
                     duration_hours=body.duration_hours,
                     tables=[table.model_dump() for table in body.tables],
                 )
@@ -1743,7 +2172,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     409, "Archive the event before deleting its messages"
                 )
-            query = select(Announcement).where(Announcement.event_id == event_id)
+            query = select(Announcement).where(
+                Announcement.event_id == event_id,
+                Announcement.kind != "refresh",
+            )
             if promotions_only:
                 query = query.where(Announcement.kind == "promotion")
             rows = list(db.scalars(query.order_by(Announcement.part)))
@@ -1896,7 +2328,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open"]),
                 )
                 .returning(Event.message_id)
             ).first()
@@ -1911,28 +2343,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.commit()
         return Response(status_code=204)
 
-    @app.post("/api/events/{event_id}/publish")
-    def publish(event_id: str, request: Request) -> dict[str, Any]:
-        authenticated(request, True)
-        if config.discord_signup_mode == "custom" and config.discord_gateway_enabled:
-            gateway = getattr(app.state, "gateway", None)
-            if gateway is None or not gateway.is_ready():
-                raise HTTPException(
-                    503,
-                    "Discord signup listener is not connected. Check the API logs, "
-                    "bot token, and that Discord's Interactions Endpoint URL is blank.",
-                )
+    def publish_event(
+        event_id: str, discord: DiscordAPI, expected_status: str, force: bool = False
+    ) -> dict[str, Any]:
         with DBSession(engine) as db:
             event = db.get(Event, event_id)
-            if not event or not matches_destination(event, request):
+            if not event:
                 raise HTTPException(404, "Event not found")
-            if event.starts_at <= time.time() + event.duration_hours * 3600:
+            if (
+                not force
+                and expected_status == "scheduled"
+                and event.scheduled_publish_at is not None
+            ):
+                if event.scheduled_publish_at > time.time():
+                    raise HTTPException(409, "Publication is not due yet")
+                if (
+                    event.scheduled_publish_at + event.duration_hours * 3600
+                    <= time.time()
+                ):
+                    event.status = "needs_review"
+                    event.close_error = "The signup window passed before publication."
+                    db.commit()
+                    raise HTTPException(409, event.close_error)
+            if (event.closes_at is not None and event.closes_at <= time.time()) or (
+                event.closes_at is None
+                and event.starts_at <= time.time() + event.duration_hours * 3600
+            ):
+                if expected_status == "scheduled":
+                    event.status = "needs_review"
+                    event.close_error = "Too late to publish the signup window."
+                    db.commit()
+                    raise HTTPException(409, event.close_error)
                 raise HTTPException(
                     400, "Signup window would end after the event starts"
                 )
             claimed = db.execute(
                 update(Event)
-                .where(Event.id == event_id, Event.status == "draft")
+                .where(Event.id == event_id, Event.status == expected_status)
                 .values(
                     status="publishing",
                     signup_mode=(
@@ -1948,8 +2395,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(409, "Already published or awaiting publish review")
             db.refresh(event)
             try:
-                closes_at = time.time() + event.duration_hours * 3600
-                message = scoped_discord(request).publish(
+                closes_at = event.closes_at or (
+                    event.scheduled_publish_at + event.duration_hours * 3600
+                    if event.scheduled_publish_at
+                    else time.time() + event.duration_hours * 3600
+                )
+                message = discord.publish(
                     reaction_publication(event, closes_at)
                     if event.signup_mode == "reactions"
                     else {
@@ -1957,9 +2408,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             f"**{'[TEST] ' if event.test_signups else ''}"
                             f"{event.title}**\n"
                             f"Event: <t:{int(event.starts_at)}:F>\n"
+                            f"{signup_location(event.location)}"
                             f"Signups open for {event.duration_hours} hours. "
-                            "Select every table you would attend. "
-                            "This is a lottery entry, not a guaranteed seat."
+                            f"{signup_description(event.description, POLL_DESCRIPTION)}"
                         ),
                         "allowed_mentions": {"parse": []},
                         "poll": {
@@ -1988,14 +2439,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     # Save the message identity before seeding: an uncertain PUT
                     # must never cause a second publication on retry.
                     db.commit()
-                    scoped_discord(request).seed_reactions(
+                    discord.seed_reactions(
                         event.message_id, list(EMOJIS[: len(event.tables)])
                     )
                 else:
                     event.answers = message["poll"]["answers"]
-                    event.closes_at = datetime.fromisoformat(
-                        message["poll"]["expiry"]
-                    ).timestamp()
+                    event.closes_at = (
+                        event.closes_at
+                        or datetime.fromisoformat(message["poll"]["expiry"]).timestamp()
+                    )
                 event.status = "open"
                 db.commit()
             except Exception:
@@ -2012,6 +2464,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "before retrying; this event is held for review.",
                 ) from None
             return serialize(event)
+
+    @app.post("/api/events/{event_id}/publish")
+    def publish(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        if config.discord_signup_mode == "custom" and config.discord_gateway_enabled:
+            gateway = getattr(app.state, "gateway", None)
+            if gateway is None or not gateway.is_ready():
+                raise HTTPException(
+                    503,
+                    "Discord signup listener is not connected. Check the API logs, "
+                    "bot token, and that Discord's Interactions Endpoint URL is blank.",
+                )
+        with DBSession(engine) as db:
+            event = db.get(Event, event_id)
+            if not event or not matches_destination(event, request):
+                raise HTTPException(404, "Event not found")
+            status = event.status
+            if status not in ("draft", "scheduled"):
+                raise HTTPException(409, "Already published or awaiting publish review")
+        return publish_event(event_id, scoped_discord(request), status, force=True)
 
     return app
 

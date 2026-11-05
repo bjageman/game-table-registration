@@ -9,6 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.announcements import clean
 from app.config import Settings
+from app.event_description import (
+    CUSTOM_DESCRIPTION,
+    signup_description,
+    signup_location,
+)
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
@@ -20,11 +25,10 @@ def publication(event: Event, closes_at: float) -> dict[str, Any]:
         "content": (
             f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
             f"Event: <t:{int(event.starts_at)}:F>\n"
+            f"{signup_location(event.location)}"
             f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)\n\n"
             f"{tables}\n\n"
-            "Choose every specific table you would attend. "
-            "This is a lottery entry, not a guaranteed seat. "
-            "View, change, or withdraw your choices below, directly in Discord."
+            f"{signup_description(event.description, CUSTOM_DESCRIPTION)}"
         ),
         "allowed_mentions": {"parse": []},
         "components": [
@@ -51,7 +55,7 @@ def players(
             "id": row.discord_id,
             "name": row.discord_name,
             "choices": list(row.choices),
-            "weight": weights.get(row.discord_id, 1.0),
+            "weight": weights.get(row.discord_id, 5.0),
         }
         for row in db.scalars(
             select(TableSignup)
@@ -130,7 +134,7 @@ def apply_manager_players(
                     "id": override.discord_id,
                     "name": override.discord_name,
                     "choices": [],
-                    "weight": (weights or {}).get(override.discord_id, 1.0),
+                    "weight": (weights or {}).get(override.discord_id, 5.0),
                 },
             )
             player["name"] = override.discord_name

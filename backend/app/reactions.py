@@ -7,6 +7,11 @@ from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
 from app.announcements import clean
+from app.event_description import (
+    REACTION_DESCRIPTION,
+    signup_description,
+    signup_location,
+)
 from app.models import Event, TableSignup
 
 EMOJIS = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟")
@@ -24,12 +29,10 @@ def publication(event: Event, closes_at: float) -> dict[str, Any]:
         "content": (
             f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
             f"Event: <t:{int(event.starts_at)}:F>\n"
+            f"{signup_location(event.location)}"
             f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)\n\n"
             f"{tables}\n\n"
-            "React with the number for every table you would attend. "
-            "Remove your reaction to withdraw from that table. "
-            "This is a lottery entry, not a guaranteed seat. "
-            "Only reactions received before signups close count."
+            f"{signup_description(event.description, REACTION_DESCRIPTION)}"
         ),
         "allowed_mentions": {"parse": []},
     }
