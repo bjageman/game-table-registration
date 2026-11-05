@@ -54,7 +54,7 @@ function fill() {
     target: { value: "Clocktower" },
   });
 }
-it("creates a draft with an offset, capacities, and CSRF protection", async () => {
+it.each([24, null])("creates a draft with closing offset %s, capacities, and CSRF protection", async (offset) => {
   const result = { id: "saved", title: "Friday games" };
   const fetchMock = vi.fn(
     async (path: string) => path === "/api/templates"
@@ -63,6 +63,8 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
   vi.stubGlobal("fetch", fetchMock);
   renderForm();
   fill();
+  expect(screen.getByLabelText("Signups Close Before Event (hours)")).toHaveValue(24);
+  if (offset === null) fireEvent.change(screen.getByLabelText("Signups Close Before Event (hours)"), { target: { value: "" } });
   fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
   await screen.findByRole("button", { name: "Save draft" });
   expect(props.onCreated).toHaveBeenCalledWith(result);
@@ -74,9 +76,25 @@ it("creates a draft with an offset, capacities, and CSRF protection", async () =
     description: "",
     location: "",
     starts_at: new Date("2090-06-14T19:00").toISOString(),
-    duration_hours: 24,
+    duration_hours: 0,
+    closes_before_hours: offset,
     tables: [{ name: "Clocktower", capacity: 15 }],
   });
+});
+
+it.each([null, 24])("edits a zero-duration event with closing offset %s", async (offset) => {
+  const starts_at = new Date("2090-06-14T19:00").getTime() / 1000;
+  const draft = { id: "existing", title: "Friday games", starts_at, duration_hours: 0,
+    closes_at: offset === null ? null : starts_at - offset * 3600,
+    tables: [{ name: "Clocktower", capacity: 15 }], status: "draft", discord_url: null };
+  const fetchMock = vi.fn(async (path: string) => path === "/api/templates" ? new Response("[]") : new Response(JSON.stringify(draft)));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<LocalizationProvider dateAdapter={AdapterDayjs}><EventForm {...props} event={draft} /></LocalizationProvider>);
+  fireEvent.submit(screen.getByRole("form", { name: "Edit event" }));
+  await waitFor(() => expect(props.onCreated).toHaveBeenCalledWith(draft));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  const request = fetchMock.mock.calls.find(([path]) => path === "/api/events/existing") as unknown as [string, RequestInit];
+  expect(JSON.parse(request[1].body as string)).toMatchObject({ duration_hours: 0, closes_before_hours: offset });
 });
 
 it("creates a weekly schedule with signup offsets", async () => {

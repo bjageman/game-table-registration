@@ -63,6 +63,7 @@ export default function EventForm({
       : initialTime(),
   );
   const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
+  const [manualClosesBefore, setManualClosesBefore] = useState(draft?.closes_at != null ? String(Math.round((draft.starts_at - draft.closes_at) / 3600)) : draft ? "" : "24");
   const [scheduled, setScheduled] = useState(Boolean(draft?.scheduled_publish_at));
   const [frequency, setFrequency] = useState("once");
   const [opensBefore, setOpensBefore] = useState("72");
@@ -216,6 +217,7 @@ export default function EventForm({
       startsAt: startsAtLocal,
       duration: scheduled ? String(Number(opensBefore) - Number(closesBefore)) : duration,
       tables,
+      explicitClosing: !scheduled,
     });
     setFieldErrors(errors);
     if (Object.keys(errors).length) {
@@ -226,7 +228,14 @@ export default function EventForm({
       return;
     }
     const start = new Date(startsAtLocal);
-    const hours = scheduled ? Number(opensBefore) - Number(closesBefore) : Number(duration);
+    const hours = scheduled ? Number(opensBefore) - Number(closesBefore) : 0;
+    if (!scheduled && manualClosesBefore.trim()) {
+      const close = Number(manualClosesBefore);
+      if (!Number.isInteger(close) || close < 1 || close > 767 || start.getTime() - close * 3600000 <= Date.now()) {
+        setError("Choose whole hours before the event so the signup closing time is still in the future.");
+        return;
+      }
+    }
     if (scheduled) {
       const open = Number(opensBefore);
       const close = Number(closesBefore);
@@ -254,7 +263,7 @@ export default function EventForm({
             location: location.trim(),
             starts_at: start.toISOString(),
             duration_hours: hours,
-            ...(scheduled ? { opens_before_hours: Number(opensBefore), closes_before_hours: Number(closesBefore) } : {}),
+            ...(scheduled ? { opens_before_hours: Number(opensBefore), closes_before_hours: Number(closesBefore) } : { closes_before_hours: manualClosesBefore.trim() ? Number(manualClosesBefore) : null }),
             ...(frequency !== "once" ? {
               frequency,
               time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -409,7 +418,10 @@ export default function EventForm({
               )}
             </div>
           </div>
+          <div className="event-scheduling-options">
           <label className="scheduled-event-checkbox"><input type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
+          <div className={`event-scheduling-inputs ${!scheduled ? "single" : ""}`}>
+          {!scheduled && <TextField label="Signups Close Before Event (hours)" type="number" value={manualClosesBefore} onChange={(event) => setManualClosesBefore(event.target.value)} fullWidth slotProps={{ htmlInput: { min: 1, max: 767, step: 1 } }} />}
           {scheduled && <div className="form-grid event-schedule-fields">
             <Tooltip title="Open before event (hours)" arrow>
             <TextField
@@ -446,6 +458,8 @@ export default function EventForm({
               <MenuItem value="monthly">Monthly</MenuItem>
             </TextField>}
           </div>}
+          </div>
+          </div>
           <TextField
             id={`${prefix}-description`}
             label="Description"
@@ -455,7 +469,7 @@ export default function EventForm({
             multiline
             minRows={3}
             fullWidth
-            sx={{ mt: 3, mb: 3 }}
+            sx={{ mt: 1, mb: 3 }}
             slotProps={{ inputLabel: { shrink: true }, htmlInput: { maxLength: 300 } }}
           />
           <TextField
@@ -465,7 +479,7 @@ export default function EventForm({
             value={location}
             onChange={(event) => setLocation(event.target.value)}
             fullWidth
-            sx={{ mb: 3 }}
+            sx={{ mb: 1 }}
             slotProps={{ inputLabel: { shrink: true }, htmlInput: { maxLength: 200 } }}
           />
           <div className="section-heading tables-heading">

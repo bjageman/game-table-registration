@@ -122,7 +122,10 @@ class SignupGateway(discord.Client):
         async with self.reaction_lock:
             for event in await asyncio.to_thread(reactions.pending, self.engine):
                 if event["sync"]:
-                    if not event["deadline"] or time.time() >= event["deadline"]:
+                    if (
+                        event["deadline"] is not None
+                        and time.time() >= event["deadline"]
+                    ):
                         continue
                     try:
                         started = time.time()

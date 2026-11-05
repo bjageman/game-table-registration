@@ -190,6 +190,43 @@ def event_body():
     }
 
 
+@pytest.mark.parametrize("offset", [24, None])
+def test_signup_deadline_is_relative_to_event_or_open_ended(client, offset):
+    from app import reactions
+
+    headers = login(client)
+    body = {**event_body(), "duration_hours": 0, "closes_before_hours": offset}
+    created = client.post("/api/events", headers=headers, json=body)
+    assert created.status_code == 201
+    event = created.json()
+    expected = event["starts_at"] - offset * 3600 if offset is not None else None
+    assert event["closes_at"] == expected
+    path = f"/api/events/{event['id']}"
+    published = client.post(path + "/publish", headers=headers)
+    assert published.status_code == 200
+    assert published.json()["closes_at"] == expected
+    assert published.json()["signup_mode"] == "reactions"
+    payload = client.app.state.discord.publish.call_args.args[0]
+    if offset is None:
+        assert "stay open until closed manually" in payload["content"]
+    now = time.time()
+    assert reactions.replace(client.app.state.engine, event["id"], [], now)
+    reactions.change(client.app.state.engine, event["id"], "1️⃣", "1", "Mary", True, now)
+    assert client.get(path + "/signups").json()[0]["players"][0]["name"] == "Mary"
+    reactions.mark_gap(client.app.state.engine)
+    assert any(
+        row["id"] == event["id"] and row["sync"]
+        for row in reactions.pending(client.app.state.engine)
+    )
+    assert reactions.replace(
+        client.app.state.engine,
+        event["id"],
+        [{"id": "1", "name": "Mary", "choices": ["Clocktower"]}],
+        time.time(),
+    )
+    assert client.post(path + "/close", headers=headers).status_code == 200
+
+
 def test_recurring_events_schedule_cancel_and_stop(client):
     headers = login(client)
     body = {
