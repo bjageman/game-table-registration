@@ -140,3 +140,10 @@ A new brand project starts with an empty database. Moving an existing installati
 requires a deliberate PostgreSQL backup/restore into the new project's database
 and a hostname cutover after stopping the old instance. Renaming a brand does not
 move its data. Do not run old and new instances with the same bot token or hostname.
+
+To serve additional hostnames on one instance, set `SIGNUPS_HOSTS` to a
+comma-separated list including the primary hostname, for example
+`SIGNUPS_HOSTS=signups.phillybotc.com,tablesignup.com`. Point every hostname at
+the server. The proxy requests certificates for all listed names. Keep
+`SIGNUPS_HOST` set to one primary hostname; it determines OAuth callbacks and
+application links. Redeploy after changing the hostname list.
