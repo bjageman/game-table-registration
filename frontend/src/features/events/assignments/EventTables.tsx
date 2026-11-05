@@ -287,7 +287,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               {canRemoveSignups && <button type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from ${event.status === "assigned" ? "table" : "signups"}`} title={event.status === "assigned" ? "Remove from table" : "Remove from signups"} onClick={() => onRemovePlayer?.(player, event.status === "assigned" && Boolean(row?.waitlist?.length) && (players?.length ?? 0) <= table.capacity)}>✕</button>}
             </li>)}
           </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}
-          {canEditSignups && <button type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}
+          {canEditSignups && event.status !== "scheduled" && !(event.status === "draft" && event.scheduled_publish_at != null) && <button type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}
           {event.status === "assigned" && row && <div className="table-waitlist">
             <h4>Waitlist</h4>
             {row.waitlist?.length ? <ul aria-label={`Waitlist for ${table.name}`}>{row.waitlist.map((player) => <li key={player.id}>
