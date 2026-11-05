@@ -97,6 +97,22 @@ it.each([null, 24])("edits a zero-duration event with closing offset %s", async 
   expect(JSON.parse(request[1].body as string)).toMatchObject({ duration_hours: 0, closes_before_hours: offset });
 });
 
+it("can save a zero-duration event as a template", async () => {
+  const starts_at = new Date("2090-06-14T19:00").getTime() / 1000;
+  const draft = { id: "existing", title: "Friday games", starts_at, duration_hours: 0,
+    closes_at: null, tables: [{ name: "Clocktower", capacity: 15 }], status: "draft", discord_url: null };
+  const fetchMock = vi.fn(async (_path: string, init?: RequestInit) => init?.method === "POST"
+    ? new Response(JSON.stringify({ id: "template", title: "Friday games", duration_hours: 24, tables: draft.tables }), { status: 201 })
+    : new Response("[]"));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<LocalizationProvider dateAdapter={AdapterDayjs}><EventForm {...props} event={draft} /></LocalizationProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "Save as Template" }));
+  await screen.findByRole("status");
+  const request = fetchMock.mock.calls.find(([, init]) => init?.method === "POST") as unknown as [string, RequestInit];
+  expect(request).toBeDefined();
+  expect(JSON.parse(request[1].body as string)).toMatchObject({ duration_hours: 24 });
+});
+
 it("creates a weekly schedule with signup offsets", async () => {
   const scheduled = vi.fn();
   const fetchMock = vi.fn(async (path: string) => path === "/api/templates"

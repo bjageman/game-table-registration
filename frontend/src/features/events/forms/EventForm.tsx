@@ -62,12 +62,14 @@ export default function EventForm({
           .minute(dayjs.unix(draft.starts_at).minute())
       : initialTime(),
   );
-  const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
+  // Zero means an event has no fixed signup duration. Templates still require
+  // a positive duration, so use the regular default when editing one of these.
+  const [duration, setDuration] = useState(String(draft?.duration_hours || 24));
   const [manualClosesBefore, setManualClosesBefore] = useState(draft?.closes_at != null ? String(Math.round((draft.starts_at - draft.closes_at) / 3600)) : draft ? "" : "24");
   const [scheduled, setScheduled] = useState(Boolean(draft?.scheduled_publish_at));
   const [frequency, setFrequency] = useState("once");
   const [opensBefore, setOpensBefore] = useState("72");
-  const [closesBefore, setClosesBefore] = useState(String(draft?.duration_hours ?? 24));
+  const [closesBefore, setClosesBefore] = useState(String(draft?.duration_hours || 24));
   const [tables, setTables] = useState(
     draft
       ? draft.tables.map((table, id) => ({
