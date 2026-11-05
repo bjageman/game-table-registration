@@ -45,7 +45,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     api<Setup>("/settings", { signal: controller.signal })
       .then((value) => {
         if (!controller.signal.aborted) {
-          setSetup(value); setChannels(undefined); setGuildId(value.selection?.guild_id ?? "");
+          setSetup(value); setGuilds([]); setChannels(undefined); setGuildId(value.selection?.guild_id ?? "");
           setChannelId(value.selection?.channel_id ?? ""); setError("");
         }
       })
@@ -76,7 +76,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     finally { setRefreshingServers(false); }
   }
   useEffect(() => {
-    if (!setup?.selection) { setGuilds([]); return; }
+    if (!setup?.selection) return;
     const controller = new AbortController();
     api<{ guilds: Choice[] }>("/settings/guilds", { signal: controller.signal })
       .then((result) => { if (!controller.signal.aborted) setGuilds(result.guilds); })
