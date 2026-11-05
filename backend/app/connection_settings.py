@@ -97,7 +97,9 @@ def register_settings(
             "organization_role": membership.role
             if organization and membership
             else None,
-            "disconnected": bool(saved and saved.disconnected),
+            "disconnected": not bool(organization.channel_id)
+            if organization and membership
+            else bool(saved and saved.disconnected),
             "guilds": guilds,
             "connect_url": "/api/auth/connect",
         }
@@ -191,12 +193,22 @@ def register_settings(
         session = authenticated(request, True, require_destination=False)
         with DBSession(engine) as db:
             selected = db.get(OrganizationSelection, session.user_id)
-            if selected and db.get(
-                OrganizationMember, (selected.organization_id, session.user_id)
-            ):
-                raise HTTPException(
-                    409, "Switch to Personal events before disconnecting Discord"
-                )
+            membership = (
+                db.get(OrganizationMember, (selected.organization_id, session.user_id))
+                if selected
+                else None
+            )
+            if selected and membership:
+                if membership.role != "admin":
+                    raise HTTPException(
+                        403, "Only organization admins can disconnect Discord"
+                    )
+                organization = db.get(Organization, selected.organization_id)
+                if organization is None:
+                    raise HTTPException(404, "Organization not found")
+                organization.channel_id = ""
+                db.commit()
+                return Response(status_code=204)
             db.merge(
                 UserSettings(
                     user_id=session.user_id,

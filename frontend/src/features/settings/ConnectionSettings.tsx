@@ -85,12 +85,6 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     {setup && <>
       <div className="form-actions settings-connections">
         {!setup.selection && <a className="button" href={connectUrl}>Connect</a>}
-        {setup.selection && !setup.organization_role && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
-          onDisconnected={async () => {
-            await onSaved();
-            setSetup((current) => current ? { ...current, selection: null, disconnected: true } : current);
-            setGuildId(""); setChannelId(""); setChannels(undefined); setChannelError(""); setError("");
-          }} />}
       </div>
       {setup.selection && <form onSubmit={(event) => void save(event)} aria-label="Discord settings">
         <div className="form-grid">
@@ -117,12 +111,20 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
           <p className="help">If channels are missing, disconnect from Discord and reconnect.</p>
         </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
-        <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button className="primary" type="submit" disabled={restricted || saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></span></div>
+        <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button className="primary" type="submit" disabled={restricted || saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></span>
+        {setup.selection && !setup.disconnected && !restricted && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
+          onDisconnected={async () => {
+            await onSaved();
+            if (setup.organization_role) { setAttempt((n) => n + 1); return; }
+            setSetup((current) => current ? { ...current, selection: null, disconnected: true } : current);
+            setGuildId(""); setChannelId(""); setChannels(undefined); setChannelError(""); setError("");
+          }} />}
+        </div>
       </form>}
     </>}
     </div>
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
-      {setup?.selection ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} />
+      {setup?.selection && !setup.disconnected ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} />
         : setup ? <a className="button" href={connectUrl}>Connect Discord</a>
         : <p><LoadingIndicator label="Loading settings…" /></p>}
     </div>
