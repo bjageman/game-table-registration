@@ -617,7 +617,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def setup() -> dict[str, bool]:
         return {"configured": config.configured}
 
-    def begin_login(return_to: str = "", user_id: str | None = None) -> Response:
+    def begin_login(
+        return_to: str = "",
+        user_id: str | None = None,
+        organization_id: str | None = None,
+    ) -> Response:
         if not config.configured:
             raise HTTPException(
                 503, "Complete Discord configuration before signing in."
@@ -632,6 +636,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     expires=time.time() + 600,
                     purpose="connect" if user_id else "login",
                     user_id=user_id,
+                    organization_id=organization_id,
                 )
             )
             db.commit()
@@ -668,7 +673,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/auth/connect")
     def connect(request: Request) -> Response:
         session = authenticated(request, require_destination=False)
-        return begin_login("settings", session.user_id)
+        if request.state.organization_id and request.state.organization_role != "admin":
+            raise HTTPException(403, "Only organization admins can connect Discord")
+        return begin_login("settings", session.user_id, request.state.organization_id)
 
     @app.get("/api/auth/callback")
     def callback(
@@ -685,7 +692,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     LoginState.token_hash == digest(state),
                     LoginState.expires > time.time(),
                 )
-                .returning(LoginState.purpose, LoginState.user_id)
+                .returning(
+                    LoginState.purpose, LoginState.user_id, LoginState.organization_id
+                )
             ).first()
             db.commit()
             if not consumed or not code:
@@ -697,6 +706,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         403,
                         "Connection was started by another account. "
                         "Start Connect again.",
+                    )
+                if request.state.organization_id != consumed.organization_id:
+                    raise HTTPException(
+                        409, "Organization selection changed. Start Connect again."
+                    )
+                if (
+                    consumed.organization_id
+                    and request.state.organization_role != "admin"
+                ):
+                    raise HTTPException(
+                        403, "Only organization admins can connect Discord"
                     )
             user = app.state.discord.identity(code)
             if consumed.purpose == "connect":
@@ -720,26 +740,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 guild, _, _ = app.state.discord.manager_context(user["id"], chosen_id)
                 if str(guild.get("id")) != chosen_id:
                     raise HTTPException(502, "Could not verify the authorized server.")
-                previous = db.get(UserSettings, user["id"])
-                keep_channel = (
-                    previous is not None
-                    and not previous.disconnected
-                    and previous.guild_id == chosen_id
-                )
-                db.merge(
-                    UserSettings(
-                        user_id=user["id"],
-                        disconnected=False,
-                        guild_id=chosen_id,
-                        guild_name=str(guild["name"]),
-                        channel_id=previous.channel_id
-                        if keep_channel and previous
-                        else "",
-                        channel_name=previous.channel_name
-                        if keep_channel and previous
-                        else "",
+                if consumed.organization_id:
+                    organization = db.get(Organization, consumed.organization_id)
+                    if organization is None:
+                        raise HTTPException(404, "Organization not found")
+                    if organization.guild_id != chosen_id:
+                        organization.channel_id = ""
+                    organization.guild_id = chosen_id
+                else:
+                    previous = db.get(UserSettings, user["id"])
+                    keep_channel = (
+                        previous is not None
+                        and not previous.disconnected
+                        and previous.guild_id == chosen_id
                     )
-                )
+                    db.merge(
+                        UserSettings(
+                            user_id=user["id"],
+                            disconnected=False,
+                            guild_id=chosen_id,
+                            guild_name=str(guild["name"]),
+                            channel_id=previous.channel_id
+                            if keep_channel and previous
+                            else "",
+                            channel_name=previous.channel_name
+                            if keep_channel and previous
+                            else "",
+                        )
+                    )
             token = secrets.token_urlsafe(32)
             db.execute(
                 delete(Session).where(
@@ -791,15 +819,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             if organization and membership is None:
                 organization = None
-            selection = (
-                (
+            if organization:
+                selection = (
+                    f"{organization.guild_id}:{organization.channel_id}"
+                    if organization.guild_id
+                    else "disconnected"
+                )
+            elif saved:
+                selection = (
                     "disconnected"
                     if saved.disconnected
                     else f"{saved.guild_id}:{saved.channel_id}"
                 )
-                if saved
-                else "legacy"
-            )
+            else:
+                selection = "legacy"
         needs_setup = (
             not bool(organization.channel_id)
             if organization

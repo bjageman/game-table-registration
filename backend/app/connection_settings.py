@@ -60,6 +60,8 @@ def register_settings(
             )
         guilds = [dict(g) for g in session.guilds]
         if organization and membership:
+            selection = None
+        if organization and membership and organization.guild_id:
             discord: DiscordAPI = app.state.discord
             guild_name = next(
                 (g["name"] for g in guilds if g["id"] == organization.guild_id),
@@ -70,9 +72,12 @@ def register_settings(
                 guild_name = str(
                     discord.bot("GET", f"/guilds/{organization.guild_id}")["name"]
                 )
-                channel_name = str(
-                    discord.bot("GET", f"/channels/{organization.channel_id}")["name"]
-                )
+                if organization.channel_id:
+                    channel_name = str(
+                        discord.bot("GET", f"/channels/{organization.channel_id}")[
+                            "name"
+                        ]
+                    )
             except Exception:
                 pass
             selection = {
@@ -97,7 +102,7 @@ def register_settings(
             "organization_role": membership.role
             if organization and membership
             else None,
-            "disconnected": not bool(organization.channel_id)
+            "disconnected": not bool(organization.guild_id)
             if organization and membership
             else bool(saved and saved.disconnected),
             "guilds": guilds,
@@ -206,6 +211,7 @@ def register_settings(
                 organization = db.get(Organization, selected.organization_id)
                 if organization is None:
                     raise HTTPException(404, "Organization not found")
+                organization.guild_id = ""
                 organization.channel_id = ""
                 db.commit()
                 return Response(status_code=204)

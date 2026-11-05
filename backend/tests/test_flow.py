@@ -879,6 +879,17 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
     assert client.get("/api/settings").json()["selection"]["channel_id"] == "102"
     assert client.delete("/api/settings", headers=owner).status_code == 204
     assert client.get("/api/settings").json()["disconnected"] is True
+    response = client.get("/api/auth/connect", follow_redirects=False)
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    discord.manager_context.return_value = ({"id": "100", "name": "Server A"}, {}, [])
+    assert (
+        client.get(
+            f"/api/auth/callback?state={state}&code=reconnected&guild_id=100",
+            follow_redirects=False,
+        ).status_code
+        == 307
+    )
+    owner = {**owner, "X-CSRF-Token": client.get("/api/me").json()["csrf"]}
     assert (
         client.put(
             "/api/settings",
@@ -2843,11 +2854,12 @@ def test_organization_admin_disconnect_preserves_personal_connection(client):
     assert client.delete("/api/settings", headers=headers).status_code == 204
     settings = client.get("/api/settings").json()
     assert settings["disconnected"] is True
-    assert settings["selection"]["channel_id"] == ""
+    assert settings["selection"] is None
     assert client.get("/api/me").json()["needs_setup"] is True
     assert client.get("/api/events").status_code == 409
     with DBSession(client.app.state.engine) as db:
         assert db.get(Organization, org_id).channel_id == ""
+        assert db.get(Organization, org_id).guild_id == ""
         personal = db.get(UserSettings, "owner")
         assert personal.channel_id == "saved"
         assert personal.disconnected is False
@@ -2925,6 +2937,146 @@ def test_disconnect_blocks_legacy_fallback_preserves_data_and_allows_reconnect(
     with DBSession(client.app.state.engine) as db:
         assert db.get(UserSettings, "owner").disconnected is False
     client.app.state.discord.delete_poll.assert_not_called()
+
+
+@pytest.mark.parametrize("chosen_id", ["100", "200"])
+def test_organization_disconnect_reconnect_uses_authorized_server(client, chosen_id):
+    from app.models import Event, Organization, UserSettings
+
+    headers = login(client)
+    org_id = client.post(
+        "/api/organizations", headers=headers, json={"name": "Reconnect Crew"}
+    ).json()["id"]
+    client.put(
+        "/api/organizations/selection",
+        headers=headers,
+        json={"organization_id": org_id},
+    )
+    with DBSession(client.app.state.engine) as db:
+        organization = db.get(Organization, org_id)
+        organization.guild_id = "100"
+        organization.channel_id = "101"
+        db.add(
+            UserSettings(
+                user_id="owner",
+                guild_id="300",
+                guild_name="Personal",
+                channel_id="301",
+                channel_name="personal",
+                disconnected=False,
+            )
+        )
+        db.commit()
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    assert client.delete("/api/settings", headers=headers).status_code == 204
+    assert client.delete("/api/settings", headers=headers).status_code == 204
+    discord = client.app.state.discord
+    discord.bot.reset_mock()
+    assert client.get("/api/settings").json()["selection"] is None
+    discord.bot.assert_not_called()
+    assert client.get("/api/me").json()["destination"] == "disconnected"
+    assert client.get("/api/settings/channels?guild_id=100").status_code == 403
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": "100", "channel_id": "101"},
+        ).status_code
+        == 409
+    )
+    response = client.get("/api/auth/connect", follow_redirects=False)
+    params = parse_qs(urlparse(response.headers["location"]).query)
+    assert "guild_id" not in params
+    state = params["state"][0]
+    discord.identity.return_value = {
+        "id": "owner",
+        "username": "organizer",
+        "authorized_guild": {"id": chosen_id},
+    }
+    discord.manager_context.return_value = (
+        {"id": chosen_id, "name": "Chosen Server"},
+        {},
+        [],
+    )
+    discord.bot.return_value = {"name": "Chosen Server"}
+    response = client.get(
+        f"/api/auth/callback?state={state}&code=connected&guild_id={chosen_id}",
+        follow_redirects=False,
+    )
+    assert response.status_code == 307
+    setup = client.get("/api/settings").json()
+    assert setup["selection"]["guild_id"] == chosen_id
+    assert setup["selection"]["channel_id"] == ""
+    assert setup["disconnected"] is False
+    assert client.get("/api/me").json()["needs_setup"] is True
+    headers = login(client)
+    assert client.get("/api/settings").json()["selection"]["guild_id"] == chosen_id
+    discord.organization_channels.return_value = (
+        "Chosen Server",
+        [{"id": "201", "name": "games"}],
+    )
+    assert client.get(f"/api/settings/channels?guild_id={chosen_id}").json()[
+        "channels"
+    ] == [{"id": "201", "name": "games"}]
+    assert (
+        client.put(
+            "/api/settings",
+            headers=headers,
+            json={"guild_id": chosen_id, "channel_id": "201"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/me").json()["needs_setup"] is False
+    assert client.get("/api/me").json()["destination"] == f"{chosen_id}:201"
+    with DBSession(client.app.state.engine) as db:
+        organization = db.get(Organization, org_id)
+        assert (organization.guild_id, organization.channel_id) == (chosen_id, "201")
+        personal = db.get(UserSettings, "owner")
+        assert (personal.guild_id, personal.channel_id) == ("300", "301")
+        assert personal.disconnected is False
+        assert db.get(Event, event["id"]).guild_id == "100"
+    discord.destination_channels.assert_not_called()
+    discord.delete_poll.assert_not_called()
+
+
+@pytest.mark.parametrize("change", ["personal", "other-org", "editor", "user"])
+def test_organization_connect_rechecks_context_and_admin_role(client, change):
+    from app.models import OrganizationMember
+
+    headers = login(client)
+    org_id = client.post(
+        "/api/organizations", headers=headers, json={"name": "Original Crew"}
+    ).json()["id"]
+    other_id = client.post(
+        "/api/organizations", headers=headers, json={"name": "Other Crew"}
+    ).json()["id"]
+    client.put(
+        "/api/organizations/selection",
+        headers=headers,
+        json={"organization_id": org_id},
+    )
+    response = client.get("/api/auth/connect", follow_redirects=False)
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    if change in ("personal", "other-org"):
+        client.put(
+            "/api/organizations/selection",
+            headers=headers,
+            json={"organization_id": other_id if change == "other-org" else None},
+        )
+    else:
+        with DBSession(client.app.state.engine) as db:
+            db.get(OrganizationMember, (org_id, "owner")).role = change
+            db.commit()
+        assert (
+            client.get("/api/auth/connect", follow_redirects=False).status_code == 403
+        )
+    client.app.state.discord.identity.reset_mock()
+    response = client.get(
+        f"/api/auth/callback?state={state}&code=connected&guild_id=100",
+        follow_redirects=False,
+    )
+    assert response.status_code == (403 if change in ("editor", "user") else 409)
+    client.app.state.discord.identity.assert_not_called()
 
 
 def test_connect_callback_saves_authorized_server_before_channel_selection(client):

@@ -14,6 +14,7 @@ class LoginState(Base):
     expires: Mapped[float] = mapped_column(Float)
     purpose: Mapped[str] = mapped_column(String(16), default="login")
     user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class Session(Base):

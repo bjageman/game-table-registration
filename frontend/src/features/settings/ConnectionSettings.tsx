@@ -84,7 +84,8 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     {error && <p role="alert" className="error">{error}{!setup && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry settings</button>}</p>}
     {setup && <>
       <div className="form-actions settings-connections">
-        {!setup.selection && <a className="button" href={connectUrl}>Connect</a>}
+        {!setup.selection && !restricted && <a className="button" href={connectUrl}>Connect</a>}
+        {!setup.selection && restricted && <p className="help">An organization admin must connect Discord.</p>}
       </div>
       {setup.selection && <form onSubmit={(event) => void save(event)} aria-label="Discord settings">
         <div className="form-grid">
@@ -112,10 +113,9 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
         </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
         <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button className="primary" type="submit" disabled={restricted || saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></span>
-        {setup.selection && !setup.disconnected && !restricted && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
+        {setup.selection && !restricted && <DisconnectDiscord csrf={csrf} disabled={saving} onAccessError={onAccessError} onBusyChange={setSaving}
           onDisconnected={async () => {
             await onSaved();
-            if (setup.organization_role) { setAttempt((n) => n + 1); return; }
             setSetup((current) => current ? { ...current, selection: null, disconnected: true } : current);
             setGuildId(""); setChannelId(""); setChannels(undefined); setChannelError(""); setError("");
           }} />}
