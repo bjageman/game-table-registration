@@ -1313,7 +1313,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             event_csv(rows),
             media_type="text/csv; charset=utf-8",
             headers={
-                "Content-Disposition": f'attachment; filename="signups-{event_id}.csv"'
+                "Content-Disposition": f'attachment; filename="signups-{event_id}.csv"',
+                "Cache-Control": "no-store",
             },
         )
 
@@ -1338,7 +1339,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="signups-{event_id}.pdf"'
+                "Content-Disposition": f'attachment; filename="signups-{event_id}.pdf"',
+                "Cache-Control": "no-store",
             },
         )
 
@@ -1359,7 +1361,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content,
             media_type="text/csv; charset=utf-8",
             headers={
-                "Content-Disposition": 'attachment; filename="all-event-signups.csv"'
+                "Content-Disposition": 'attachment; filename="all-event-signups.csv"',
+                "Cache-Control": "no-store",
             },
         )
 

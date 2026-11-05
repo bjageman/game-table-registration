@@ -1,7 +1,7 @@
 import { ApiError } from "./api";
 
 export async function download(path: string, filename: string): Promise<void> {
-  const response = await fetch(`/api${path}`, { credentials: "same-origin" });
+  const response = await fetch(`/api${path}`, { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new ApiError(response.status, typeof body?.detail === "string" ? body.detail : `Download failed (HTTP ${response.status}).`);

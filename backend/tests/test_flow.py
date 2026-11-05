@@ -1064,6 +1064,55 @@ def test_signup_exports_use_saved_placements_and_scope(client):
     assert client.get("/api/events/missing/signups.pdf").status_code == 404
 
 
+def test_assigned_exports_reflect_current_roster_and_display_names(client):
+    import csv
+    import io
+    from unittest.mock import patch
+
+    headers, _, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    initial = client.get(path + "/signups").json()
+    table = next(row for row in initial if row["waitlist"])
+    removed = table["players"][0]["id"]
+    promoted = table["waitlist"][0]["id"]
+    assert (
+        client.delete(path + f"/manager-players/{removed}", headers=headers).status_code
+        == 200
+    )
+    current = client.get(path + "/signups").json()
+    assert any(p["id"] == promoted for row in current for p in row["players"])
+    assert all(p["id"] != removed for row in current for p in row["players"])
+    assert (
+        client.put(
+            f"/api/players/{promoted}",
+            headers=headers,
+            json={"real_name": "Current display name"},
+        ).status_code
+        == 200
+    )
+    current = client.get(path + "/signups").json()
+    csv_response = client.get(path + "/signups.csv")
+    assert csv_response.headers["cache-control"] == "no-store"
+    csv_rows = list(
+        csv.DictReader(io.StringIO(csv_response.content.decode("utf-8-sig")))
+    )
+    assert any(
+        row["Discord ID"] == promoted
+        and row["Player"] == "Current display name"
+        and row["Status"] == "Seated"
+        for row in csv_rows
+    )
+    assert not any(
+        row["Discord ID"] == removed and row["Status"] == "Seated" for row in csv_rows
+    )
+    with patch("app.main.event_pdf", return_value=b"%PDF-current") as render:
+        pdf_response = client.get(path + "/signups.pdf")
+    assert pdf_response.headers["cache-control"] == "no-store"
+    assert render.call_args.args[1] == current
+    assert client.get("/api/exports/signups.csv").headers["cache-control"] == "no-store"
+
+
 def test_signup_csv_quotes_spreadsheet_formulas():
     import csv
     import io
