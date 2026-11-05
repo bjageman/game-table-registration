@@ -1081,6 +1081,41 @@ def test_signup_csv_quotes_spreadsheet_formulas():
     assert row["Discord username"] == "'+discord"
 
 
+def test_pdf_fits_six_full_tables_on_one_portrait_page():
+    import re
+    from types import SimpleNamespace
+
+    from app.signup_exports import event_pdf
+
+    tables = [{"name": f"Table {index}", "capacity": 15} for index in range(6)]
+    rows = [
+        {
+            "name": table["name"],
+            "players": [
+                {
+                    "name": f"player-{table_index}-{number}",
+                    "display_name": f"Player {number}",
+                }
+                for number in range(15)
+            ],
+            "waitlist": [
+                {"name": f"waiting-{table_index}-{number}"} for number in range(5)
+            ],
+        }
+        for table_index, table in enumerate(tables)
+    ]
+    event = SimpleNamespace(
+        title="Monday Tables",
+        starts_at=1794265200,
+        tables=tables,
+        status="assigned",
+    )
+    pdf = event_pdf(event, rows)
+    assert pdf.startswith(b"%PDF-")
+    assert len(re.findall(rb"/Type\s*/Page\b", pdf)) == 1
+    assert b"/MediaBox [ 0 0 612 792 ]" in pdf
+
+
 def test_summary_export_respects_selected_organization(client):
     import csv
     import io

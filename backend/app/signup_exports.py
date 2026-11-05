@@ -8,12 +8,15 @@ from pathlib import Path
 from typing import Any
 
 import reportlab
+from reportlab.graphics.shapes import Drawing, Rect
+from reportlab.graphics.shapes import Path as CheckPath
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -81,32 +84,55 @@ def summary_csv(events: list[tuple[Any, list[dict[str, Any]]]]) -> bytes:
 
 def event_pdf(event: Any, rows: list[dict[str, Any]]) -> bytes:
     output = io.BytesIO()
+    page_width = 8.5 * inch
+    page_height = 11 * inch
+    margin = 0.36 * inch
     document = SimpleDocTemplate(
         output,
-        pagesize=(8.5 * inch, 11 * inch),
-        leftMargin=0.65 * inch,
-        rightMargin=0.65 * inch,
-        topMargin=0.65 * inch,
-        bottomMargin=0.65 * inch,
+        pagesize=(page_width, page_height),
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=0.72 * inch,
+        bottomMargin=margin,
         title=f"{event.title} signups",
     )
-    styles = getSampleStyleSheet()
     fonts = Path(reportlab.__file__).parent / "fonts"
     pdfmetrics.registerFont(TTFont("SignupVera", str(fonts / "Vera.ttf")))
     pdfmetrics.registerFont(TTFont("SignupVeraBold", str(fonts / "VeraBd.ttf")))
-    styles["Normal"].fontName = "SignupVera"
-    styles["Title"].fontName = "SignupVeraBold"
-    styles["Heading2"].fontName = "SignupVeraBold"
-    starts_at = datetime.fromtimestamp(event.starts_at, UTC)
-    story: list[Any] = [
-        Paragraph(escape(event.title), styles["Title"]),
-        Paragraph(
-            f"{starts_at.strftime('%B %d, %Y %H:%M')} UTC"
-            f" · {escape(event.status.title())}",
-            styles["Normal"],
-        ),
-        Spacer(1, 0.25 * inch),
-    ]
+    name_style = ParagraphStyle(
+        "SignupName",
+        fontName="SignupVera",
+        fontSize=7,
+        leading=8.2,
+    )
+    header_style = ParagraphStyle(
+        "SignupHeader",
+        fontName="SignupVeraBold",
+        fontSize=7,
+        leading=8.2,
+    )
+    title_style = ParagraphStyle(
+        "SignupTableTitle",
+        fontName="SignupVeraBold",
+        fontSize=8.2,
+        leading=10,
+    )
+    card_width = (page_width - 2 * margin) / 2 - 8
+    cards: list[list[Any]] = []
+
+    def check_icon() -> Drawing:
+        icon = Drawing(9, 9)
+        square = Rect(0, 0, 9, 9, rx=2, ry=2)
+        square.fillColor = colors.HexColor("#238b45")
+        square.strokeColor = None
+        icon.add(square)
+        mark = CheckPath(fillColor=None, strokeColor=colors.white, strokeWidth=1.6)
+        mark.moveTo(1.8, 4.4)
+        mark.lineTo(3.8, 2.3)
+        mark.lineTo(7.4, 6.8)
+        icon.add(mark)
+        return icon
+
     for table in rows:
         seated = table.get("players", [])
         waiting = table.get("waitlist", [])
@@ -119,45 +145,126 @@ def event_pdf(event: Any, rows: list[dict[str, Any]]) -> bytes:
             None,
         )
         count = f"{len(seated)} / {capacity}" if capacity else str(len(seated))
-        heading = Paragraph(f"{escape(table['name'])} ({count})", styles["Heading2"])
-        values: list[list[Any]] = [["#", "Seated players"]]
-        values.extend(
-            [
-                str(i),
-                Paragraph(
-                    escape(player.get("display_name") or player["name"]),
-                    styles["Normal"],
-                ),
-            ]
-            for i, player in enumerate(seated, 1)
-        )
-        if waiting:
-            values.append(["", "Waitlisted"])
-            values.extend(
-                [
-                    str(i),
-                    Paragraph(
-                        escape(player.get("display_name") or player["name"]),
-                        styles["Normal"],
-                    ),
-                ]
-                for i, player in enumerate(waiting, 1)
+        players = [("Seated", player) for player in seated] + [
+            ("Waitlisted", player) for player in waiting
+        ]
+        chunks = [players[i : i + 20] for i in range(0, len(players), 20)] or [[]]
+        for part, chunk in enumerate(chunks):
+            heading = Paragraph(
+                f"{escape(table['name'])} ({count})" + (" continued" if part else ""),
+                title_style,
             )
-        if len(values) == 1:
-            values.append(["", "No signups"])
-        listing = Table(
-            values, colWidths=[0.45 * inch, 6.6 * inch], repeatRows=1, hAlign="LEFT"
+            values: list[list[Any]] = [
+                [
+                    check_icon(),
+                    Paragraph("Username", header_style),
+                    Paragraph("Display Name", header_style),
+                ]
+            ]
+            sections: list[int] = []
+            last_status = ""
+            for status, player in chunk:
+                if status != last_status:
+                    sections.append(len(values))
+                    values.append(
+                        [
+                            Paragraph(status, header_style),
+                            Spacer(0, 0),
+                            Spacer(0, 0),
+                        ]
+                    )
+                    last_status = status
+                values.append(
+                    [
+                        Spacer(0, 0),
+                        Paragraph(escape(player["name"]), name_style),
+                        Paragraph(escape(player.get("display_name") or ""), name_style),
+                    ]
+                )
+            if not chunk:
+                values.append(
+                    [
+                        Spacer(0, 0),
+                        Paragraph("No signups", name_style),
+                        Spacer(0, 0),
+                    ]
+                )
+            listing = Table(
+                values,
+                colWidths=[17, 104, card_width - 121],
+                hAlign="LEFT",
+            )
+            styling: list[tuple[Any, ...]] = [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf2")),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.35, colors.HexColor("#aab7c4")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 0.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
+            ]
+            for section in sections:
+                styling.extend(
+                    [
+                        ("SPAN", (0, section), (-1, section)),
+                        (
+                            "BACKGROUND",
+                            (0, section),
+                            (-1, section),
+                            colors.HexColor("#f3f5f7"),
+                        ),
+                    ]
+                )
+            listing.setStyle(TableStyle(styling))
+            cards.append([heading, listing])
+
+    def page_header(canvas: Any, doc: Any) -> None:
+        canvas.saveState()
+        canvas.setFont("SignupVeraBold", 11)
+        canvas.drawString(margin, page_height - 0.31 * inch, event.title)
+        canvas.setFont("SignupVera", 8)
+        date = datetime.fromtimestamp(event.starts_at, UTC).strftime("%B %d, %Y")
+        signup_count = sum(
+            len(row.get("players", [])) + len(row.get("waitlist", [])) for row in rows
         )
-        listing.setStyle(
+        canvas.drawString(
+            margin,
+            page_height - 0.47 * inch,
+            f"{date}  ·  {len(rows)} tables  ·  "
+            f"{signup_count} signups (including waitlist)",
+        )
+        canvas.setFont("SignupVera", 7)
+        canvas.drawRightString(page_width - margin, 0.22 * inch, str(doc.page))
+        canvas.restoreState()
+
+    story: list[Any] = []
+    for start in range(0, len(cards), 6):
+        group = cards[start : start + 6]
+        grid_rows: list[list[Any]] = [group[i : i + 2] for i in range(0, len(group), 2)]
+        for grid_row in grid_rows:
+            if len(grid_row) == 1:
+                grid_row.append("")
+        grid = Table(
+            grid_rows,
+            colWidths=[(page_width - 2 * margin) / 2] * 2,
+            hAlign="LEFT",
+            splitByRow=1,
+        )
+        grid.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf2")),
-                    ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#aab7c4")),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
                 ]
             )
         )
-        story.extend([heading, listing, Spacer(1, 0.2 * inch)])
-    document.build(story)
+        if story:
+            story.append(PageBreak())
+        story.append(grid)
+    if not story:
+        story.append(Paragraph("No tables", name_style))
+    document.build(story, onFirstPage=page_header, onLaterPages=page_header)
     return output.getvalue()
