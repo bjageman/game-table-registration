@@ -1,5 +1,12 @@
 # TableSignup
 
+## License
+
+The community edition is licensed under [Apache 2.0](LICENSE), allowing
+self-hosting, modification, and commercial use. Future premium features may be
+offered separately under proprietary commercial terms. See
+[licensing](docs/licensing.md) for the scope and details.
+
 Run the API and frontend in one terminal from the repository root:
 
 ```bash

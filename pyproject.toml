@@ -1,6 +1,7 @@
 [project]
 name = "game-table-registration"
 version = "0.1.0"
+license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
