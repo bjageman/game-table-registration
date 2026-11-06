@@ -1,9 +1,9 @@
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import MetaData, Table, create_engine, text
 from sqlalchemy.orm import Session
 
-from app.models import Event, EventPlayerSetting, PlayerProfile
+from app.models import EventPlayerSetting, PlayerProfile
 
 
 def test_weight_reset_migration_runs_once_and_preserves_profile_fields(
@@ -50,15 +50,19 @@ def test_five_point_scale_migration_preserves_history_and_runs_once(
     config = Config("alembic.ini")
     command.upgrade(config, "20261105_public_event_sharing")
     engine = create_engine(url)
+    # Seed the historical schema without using today's Event model, which may
+    # contain columns introduced after the revision being tested.
+    events = Table("events", MetaData(), autoload_with=engine)
     with Session(engine) as db:
-        db.add(
-            Event(
+        db.execute(
+            events.insert().values(
                 id="event",
                 guild_id="guild",
                 title="Event",
                 starts_at=2000000000,
                 duration_hours=24,
                 tables=[],
+                status="draft",
                 created_by="owner",
             )
         )
