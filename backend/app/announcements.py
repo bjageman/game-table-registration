@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.assignment_preferences import announce_changes
 from app.discord_api import DiscordAPI, DiscordRequestError
+from app.event_threads import update_channel
 from app.models import Announcement, Event, LotteryRun
 
 
@@ -379,7 +380,20 @@ def deliver_event(
                 row.attempts,
             )
             row_kind = row.kind
+        sending_message = False
         try:
+            if row_kind == "promotion" and not unknown:
+                channel_id = update_channel(engine, discord, event_id, channel_id)
+                with Session(engine) as db:
+                    db.execute(
+                        update(Announcement)
+                        .where(
+                            Announcement.id == row_id,
+                            Announcement.token == token,
+                        )
+                        .values(channel_id=channel_id)
+                    )
+                    db.commit()
             if row_kind == "refresh":
                 message_id = refresh_assignment_posts(engine, discord, event_id)
             elif unknown:
@@ -392,6 +406,7 @@ def deliver_event(
                         "Check Discord before retrying."
                     )
             else:
+                sending_message = True
                 message_id = str(discord.send_announcement(channel_id, payload)["id"])
             if row_kind == "instructions":
                 assert message_id is not None
@@ -404,7 +419,9 @@ def deliver_event(
                     archived = bool(event and event.archived_at)
                 if archived:
                     try:
-                        discord.delete_poll(message_id)
+                        discord.bot(
+                            "DELETE", f"/channels/{channel_id}/messages/{message_id}"
+                        )
                         deleted_at = time.time()
                     except Exception:
                         # Keep the message ID so archived-event cleanup can retry.
@@ -453,10 +470,9 @@ def deliver_event(
                     )
                     db.commit()
                 return
-            uncertain = (
-                unknown
-                or not isinstance(failure, DiscordRequestError)
-                or failure.ambiguous
+            uncertain = unknown or (
+                sending_message
+                and (not isinstance(failure, DiscordRequestError) or failure.ambiguous)
             )
             # A transport timeout may have happened after Discord accepted the send.
             # Reconcile on the next pass, never blindly repost an ambiguous result.

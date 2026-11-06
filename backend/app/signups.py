@@ -14,6 +14,7 @@ from app.event_description import (
     signup_description,
     signup_location,
 )
+from app.event_threads import queue_member
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
@@ -303,6 +304,8 @@ def handle(engine: Engine, config: Settings, payload: dict[str, Any]) -> dict[st
             manager_override = db.get(EventManagerSignup, (event_id, user_id))
             if manager_override is not None and manager_override.removed:
                 manager_override.removed = False
+            if choices:
+                queue_member(db, event, user_id)
             notice = "Your table signup has been saved."
         elif action == "withdraw":
             if signup is not None:

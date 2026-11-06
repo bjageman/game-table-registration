@@ -374,6 +374,32 @@ class DiscordAPI:
                 403, "You no longer have access to the configured channel."
             )
 
+    def event_thread(self, channel_id: str, message_id: str, name: str) -> str:
+        # A thread started from a message has the same ID as that message.
+        # Retrying cannot create another thread for the same signup post.
+        try:
+            thread = self.bot(
+                "POST",
+                f"/channels/{channel_id}/messages/{message_id}/threads",
+                json={"name": name[:100], "auto_archive_duration": 1440},
+            )
+        except DiscordRequestError as error:
+            if error.discord_status != 400 and not error.ambiguous:
+                raise
+            thread = self.bot("GET", f"/channels/{message_id}")
+            if str(thread.get("parent_id")) != channel_id or thread.get("type") != 11:
+                raise error
+        return str(thread["id"])
+
+    def add_thread_member(self, thread_id: str, user_id: str) -> None:
+        try:
+            self.bot("PUT", f"/channels/{thread_id}/thread-members/{user_id}")
+        except DiscordRequestError as error:
+            if error.discord_status != 400:
+                raise
+            self.bot("PATCH", f"/channels/{thread_id}", json={"archived": False})
+            self.bot("PUT", f"/channels/{thread_id}/thread-members/{user_id}")
+
     def send_announcement(
         self, channel_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:

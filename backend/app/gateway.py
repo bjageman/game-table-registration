@@ -6,12 +6,15 @@ import time
 from typing import Any
 
 import discord
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import Session
 
 from app import reactions, withdrawals
 from app.announcements import deliver_event
 from app.config import Settings
 from app.discord_api import DiscordAPI
+from app.event_threads import queue_member
+from app.models import Event
 from app.signups import handle
 
 logger = logging.getLogger("uvicorn.error")
@@ -86,6 +89,7 @@ class SignupGateway(discord.Client):
         intents = discord.Intents.none()
         intents.guilds = True
         intents.guild_reactions = True
+        intents.guild_polls = True
         super().__init__(intents=intents, max_messages=None)
         self.engine = engine
         self.config = config
@@ -235,6 +239,34 @@ class SignupGateway(discord.Client):
             except Exception:
                 await asyncio.to_thread(reactions.mark_gap, self.engine)
                 logger.exception("Could not record a table reaction")
+
+    async def on_raw_poll_vote_add(
+        self, payload: discord.RawPollVoteActionEvent
+    ) -> None:
+        if payload.guild_id is None or (self.user and payload.user_id == self.user.id):
+            return
+
+        def record() -> None:
+            with Session(self.engine) as db:
+                event = db.scalar(
+                    select(Event)
+                    .where(
+                        Event.guild_id == str(payload.guild_id),
+                        Event.channel_id == str(payload.channel_id),
+                        Event.message_id == str(payload.message_id),
+                        Event.status == "open",
+                        Event.signup_mode == "poll",
+                    )
+                    .with_for_update()
+                )
+                if event and (event.closes_at is None or event.closes_at > time.time()):
+                    queue_member(db, event, str(payload.user_id))
+                    db.commit()
+
+        try:
+            await asyncio.to_thread(record)
+        except Exception:
+            logger.exception("Could not record poll RSVP for event thread")
 
     async def on_raw_reaction_add(self, event: discord.RawReactionActionEvent) -> None:
         await self.reaction_change(event, True)

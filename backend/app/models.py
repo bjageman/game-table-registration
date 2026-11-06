@@ -63,6 +63,8 @@ class Event(Base):
     signup_mode: Mapped[str] = mapped_column(String(16), default="poll")
     reaction_checkpoint: Mapped[float | None] = mapped_column(Float, nullable=True)
     reaction_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    update_thread_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    thread_sync_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     series_id: Mapped[str | None] = mapped_column(
         ForeignKey("recurring_series.id", ondelete="SET NULL"),
         nullable=True,
@@ -276,3 +278,13 @@ class AssignmentPreference(Base):
     scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
     announce_table_changes: Mapped[bool] = mapped_column(default=False)
+    post_discord_updates_to_thread: Mapped[bool] = mapped_column(default=False)
+
+
+class EventThreadMember(Base):
+    __tablename__ = "event_thread_members"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    added_at: Mapped[float | None] = mapped_column(Float, nullable=True)

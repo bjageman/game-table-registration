@@ -1429,7 +1429,11 @@ def test_manager_can_overfill_from_waitlist_without_auto_promotion_on_remove(cli
         client.put(
             "/api/settings/assignment",
             headers=headers,
-            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+            json={
+                "automatic_weight_adjustment": True,
+                "announce_table_changes": True,
+                "post_discord_updates_to_thread": False,
+            },
         ).status_code
         == 200
     )
@@ -1511,7 +1515,11 @@ def test_manager_remove_from_full_table_promotes_next_waitlisted_player(client):
         client.put(
             "/api/settings/assignment",
             headers=headers,
-            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+            json={
+                "automatic_weight_adjustment": True,
+                "announce_table_changes": True,
+                "post_discord_updates_to_thread": False,
+            },
         ).status_code
         == 200
     )
@@ -1553,7 +1561,11 @@ def test_reaction_promotion_notice_has_no_table_update_heading(client):
         client.put(
             "/api/settings/assignment",
             headers=headers,
-            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+            json={
+                "automatic_weight_adjustment": True,
+                "announce_table_changes": True,
+                "post_discord_updates_to_thread": False,
+            },
         ).status_code
         == 200
     )
@@ -1608,7 +1620,11 @@ def test_table_change_notices_are_off_until_enabled(client):
         client.put(
             "/api/settings/assignment",
             headers=headers,
-            json={"automatic_weight_adjustment": True, "announce_table_changes": True},
+            json={
+                "automatic_weight_adjustment": True,
+                "announce_table_changes": True,
+                "post_discord_updates_to_thread": False,
+            },
         ).status_code
         == 200
     )
@@ -1635,7 +1651,11 @@ def test_table_change_notices_are_off_until_enabled(client):
         client.put(
             "/api/settings/assignment",
             headers=headers,
-            json={"automatic_weight_adjustment": True, "announce_table_changes": False},
+            json={
+                "automatic_weight_adjustment": True,
+                "announce_table_changes": False,
+                "post_discord_updates_to_thread": False,
+            },
         ).status_code
         == 200
     )
@@ -1656,7 +1676,11 @@ def test_table_change_notices_are_off_until_enabled(client):
 
 def test_assignment_settings_follow_selected_organization_and_admin_role(client):
     owner_headers = login(client)
-    personal = {"automatic_weight_adjustment": False, "announce_table_changes": True}
+    personal = {
+        "automatic_weight_adjustment": False,
+        "announce_table_changes": True,
+        "post_discord_updates_to_thread": False,
+    }
     assert (
         client.put(
             "/api/settings/assignment", headers=owner_headers, json=personal
@@ -1674,9 +1698,17 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
         ).status_code
         == 200
     )
-    defaults = {"automatic_weight_adjustment": True, "announce_table_changes": False}
+    defaults = {
+        "automatic_weight_adjustment": True,
+        "announce_table_changes": False,
+        "post_discord_updates_to_thread": False,
+    }
     assert client.get("/api/settings/assignment").json() == defaults
-    shared = {"automatic_weight_adjustment": False, "announce_table_changes": False}
+    shared = {
+        "automatic_weight_adjustment": False,
+        "announce_table_changes": False,
+        "post_discord_updates_to_thread": True,
+    }
     assert (
         client.put(
             "/api/settings/assignment", headers=owner_headers, json=shared
@@ -2680,6 +2712,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
     assert client.get("/api/settings/assignment").json() == {
         "automatic_weight_adjustment": True,
         "announce_table_changes": False,
+        "post_discord_updates_to_thread": False,
     }
     assert (
         client.put(
@@ -2687,6 +2720,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
             json={
                 "automatic_weight_adjustment": enabled,
                 "announce_table_changes": False,
+                "post_discord_updates_to_thread": False,
             },
         ).status_code
         == 403
@@ -2698,6 +2732,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
             json={
                 "automatic_weight_adjustment": enabled,
                 "announce_table_changes": False,
+                "post_discord_updates_to_thread": False,
             },
         ).status_code
         == 200
@@ -2741,6 +2776,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
         json={
             "automatic_weight_adjustment": not enabled,
             "announce_table_changes": False,
+            "post_discord_updates_to_thread": False,
         },
     )
     discord.poll_message.return_value = closing_message()
@@ -3099,7 +3135,11 @@ def test_organization_connection_is_independent_of_personal_and_other_orgs(clien
         "/api/organizations/selection", headers=headers, json={"organization_id": first}
     )
     assert client.get("/api/settings").json()["selection"] is None
-    preferences = {"automatic_weight_adjustment": False, "announce_table_changes": True}
+    preferences = {
+        "automatic_weight_adjustment": False,
+        "announce_table_changes": True,
+        "post_discord_updates_to_thread": False,
+    }
     assert (
         client.put("/api/settings/assignment", headers=headers, json=preferences).json()
         == preferences

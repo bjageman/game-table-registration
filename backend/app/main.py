@@ -42,6 +42,8 @@ from app.connection_settings import (
 )
 from app.discord_api import DiscordAPI, DiscordRequestError
 from app.event_description import POLL_DESCRIPTION, signup_description, signup_location
+from app.event_threads import queue_member
+from app.event_threads import synchronize_due as synchronize_threads
 from app.gateway import SignupGateway
 from app.models import (
     Announcement,
@@ -186,6 +188,7 @@ class AssignmentSettingsInput(BaseModel):
     model_config = {"extra": "forbid"}
     automatic_weight_adjustment: bool
     announce_table_changes: bool
+    post_discord_updates_to_thread: bool = False
 
 
 class PlayerProfileInput(BaseModel):
@@ -371,6 +374,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                 "Automatic signup closing failed for event %s",
                                 event["id"],
                             )
+                    synchronize_threads(
+                        engine,
+                        lambda guild, channel: client_for(
+                            config.model_copy(
+                                update={
+                                    "discord_guild_id": guild,
+                                    "discord_channel_id": channel,
+                                }
+                            )
+                        ),
+                    )
                     dispatch_due(
                         engine,
                         lambda guild, channel: client_for(
@@ -1112,6 +1126,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "announce_table_changes": saved.announce_table_changes
                 if saved
                 else False,
+                "post_discord_updates_to_thread": saved.post_discord_updates_to_thread
+                if saved
+                else False,
             }
 
     @app.put("/api/settings/assignment")
@@ -1131,6 +1148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                     automatic_weight_adjustment=body.automatic_weight_adjustment,
                     announce_table_changes=body.announce_table_changes,
+                    post_discord_updates_to_thread=body.post_discord_updates_to_thread,
                 )
             )
             db.commit()
@@ -1533,6 +1551,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 override.discord_name = body.name.strip()
                 override.choices = sorted(set(override.choices) | {body.table})
                 override.removed = False
+            queue_member(db, event, player_id)
             db.commit()
             return {"ok": True}
 
