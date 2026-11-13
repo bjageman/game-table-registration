@@ -7,8 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import clean
 from app.config import Settings
+from app.discord_format import clean
 from app.event_description import (
     CUSTOM_DESCRIPTION,
     signup_content,

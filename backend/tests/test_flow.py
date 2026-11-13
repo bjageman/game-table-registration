@@ -1937,7 +1937,9 @@ def test_close_immediately_announces_assignments_without_duplicate_delivery(clie
     assert delivery["url"].endswith("/channel/announcement")
     channel, payload = discord.send_announcement.call_args_list[0].args
     assert channel == "channel"
-    assert "Table Assignments" in payload["content"]
+    assert payload["embeds"][0]["title"] == "Friday games"
+    assert "Table assignments are ready." in payload["embeds"][0]["description"]
+    assert "[Signup message]" in payload["embeds"][0]["description"]
     assert payload["enforce_nonce"] is True
     assert payload["allowed_mentions"]["parse"] == []
     assert client.post(path + "/close", headers=headers).status_code == 200

@@ -10,9 +10,9 @@ from typing import Any
 from sqlalchemy import Engine, case, exists, literal, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import clean
 from app.assignment_preferences import for_event
 from app.discord_api import DiscordAPI, DiscordRequestError
+from app.discord_format import clean
 from app.event_description import (
     CUSTOM_DESCRIPTION,
     POLL_DESCRIPTION,

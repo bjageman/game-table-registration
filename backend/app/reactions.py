@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import clean
+from app.discord_format import clean
 from app.event_description import (
     REACTION_DESCRIPTION,
     signup_content,

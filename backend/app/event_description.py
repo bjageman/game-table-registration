@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from app.announcements import clean
+from app.discord_format import clean, event_embed, table_field
 from app.models import Event
 
 REACTION_DESCRIPTION = (
@@ -52,22 +52,19 @@ def signup_content(
 def signup_embed(
     event: Event, default: str, deadline: str, labels: list[str] | None = None
 ) -> dict[str, Any]:
-    embed: dict[str, Any] = {
-        "title": f"{'[TEST] ' if event.test_signups else ''}{clean(event.title)}",
-        "description": (
-            f"{signup_description(event.description, default)}\n\n"
-            f"Event: <t:{int(event.starts_at)}:F>\n"
-            f"{signup_location(event.location)}{deadline}"
-        ),
-        "color": 0x2F6B4F,
-    }
-    if labels is not None:
-        embed["fields"] = [
-            {
-                "name": label,
-                "value": f"{table['capacity']} seats\n\u200b",
-                "inline": True,
-            }
+    details = [f"Event: <t:{int(event.starts_at)}:F>"]
+    location = signup_location(event.location).rstrip()
+    if location:
+        details.append(location)
+    details.append(deadline)
+    fields = (
+        [
+            table_field(label, f"{table['capacity']} seats\n\u200b")
             for label, table in zip(labels, event.tables, strict=True)
         ]
-    return embed
+        if labels is not None
+        else None
+    )
+    return event_embed(
+        event, signup_description(event.description, default), details, fields
+    )

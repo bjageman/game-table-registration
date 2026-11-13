@@ -1,7 +1,6 @@
 """Durable assignment announcements; never rerun the lottery for delivery."""
 
 import hashlib
-import re
 import secrets
 import time
 import uuid
@@ -14,12 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.assignment_preferences import announce_changes
 from app.discord_api import DiscordAPI, DiscordRequestError
+from app.discord_format import clean, event_embed, table_field
+from app.event_description import signup_description, signup_location
 from app.event_threads import update_channel
 from app.models import Announcement, Event, LotteryRun
-
-
-def clean(text: str) -> str:
-    return re.sub(r"([\\`*_{}\[\]()#+.!|>~\-])", r"\\\1", " ".join(text.split()))
 
 
 def payloads(
@@ -63,18 +60,13 @@ def payloads(
     poll_url = (
         f"https://discord.com/channels/{event.guild_id}/{channel_id}/{event.message_id}"
     )
-    introduction = (
-        f"**{'[TEST] ' if is_test else ''}{clean(event.title)} — Table Assignments**"
-        + (
-            "\n\n" + "\n".join(clean(line) for line in event.description.splitlines())
-            if event.description and event.description.strip()
-            else ""
-        )
-        + (f"\nEvent: <t:{int(event.starts_at)}:F>" if event.starts_at else "")
-        + (f"\nLocation: {clean(event.location)}" if event.location else "")
-        + f"\n[Signup message]({poll_url})"
-    )
-    max_ping_length = min(1500, 1900 - len(introduction) - 1)
+    details = [f"Event: <t:{int(event.starts_at)}:F>"] if event.starts_at else []
+    location = signup_location(event.location).rstrip()
+    if location:
+        details.append(location)
+    details.append(f"[Signup message]({poll_url})")
+    introduction = signup_description(event.description, "Table assignments are ready.")
+    max_ping_length = 1500
     field_parts: list[tuple[dict[str, Any], list[str]]] = []
     for header, entries, spaced in sections:
         lines: list[str] = []
@@ -97,9 +89,11 @@ def payloads(
                 field_parts.append(
                     (
                         {
-                            "name": header if part == 0 else f"{header} (continued)",
-                            "value": "\n".join(lines) + ("\n\u200b" if spaced else ""),
-                            "inline": spaced,
+                            **table_field(
+                                header if part == 0 else f"{header} (continued)",
+                                "\n".join(lines) + ("\n\u200b" if spaced else ""),
+                                spaced,
+                            ),
                         },
                         ids,
                     )
@@ -112,9 +106,11 @@ def payloads(
         field_parts.append(
             (
                 {
-                    "name": header if part == 0 else f"{header} (continued)",
-                    "value": "\n".join(lines) + ("\n\u200b" if spaced else ""),
-                    "inline": spaced,
+                    **table_field(
+                        header if part == 0 else f"{header} (continued)",
+                        "\n".join(lines) + ("\n\u200b" if spaced else ""),
+                        spaced,
+                    ),
                 },
                 ids,
             )
@@ -126,10 +122,9 @@ def payloads(
     field_length = 0
     for field, ids in field_parts:
         next_length = len(field["name"]) + len(field["value"])
-        intro = introduction if not chunks else "Assignments continued (999)"
         ping_length = sum(len(user_id) + 4 for user_id in mentions + ids)
         mentions_full = notify and (
-            len(mentions) + len(ids) > 100 or len(intro) + ping_length > 1900
+            len(mentions) + len(ids) > 100 or ping_length > max_ping_length
         )
         if fields and (
             len(fields) >= 25 or field_length + next_length > 5800 or mentions_full
@@ -141,23 +136,34 @@ def payloads(
         field_length += next_length
     if fields:
         chunks.append((fields, mentions))
-    return [
-        {
-            "content": (introduction if i == 0 else f"Assignments continued ({i + 1})")
-            + (
-                "\n" + " ".join(f"<@{user_id}>" for user_id in mentions)
-                if notify and mentions
-                else ""
-            ),
-            "embeds": [{"color": 0x2F6B4F, "fields": fields}],
-            "allowed_mentions": {"parse": [], "users": mentions if notify else []},
-            "nonce": hashlib.sha256(f"{event.id}:assignments:{i}".encode()).hexdigest()[
-                :24
-            ],
-            "enforce_nonce": True,
-        }
-        for i, (fields, mentions) in enumerate(chunks)
-    ]
+    payloads: list[dict[str, Any]] = []
+    for i, (fields, mentions) in enumerate(chunks):
+        page_details = list(details)
+        if i:
+            page_details.append(f"Assignments continued ({i + 1})")
+        payloads.append(
+            {
+                "content": (
+                    " ".join(f"<@{user_id}>" for user_id in mentions)
+                    if notify and mentions
+                    else ""
+                ),
+                "embeds": [
+                    event_embed(
+                        event, introduction, page_details, fields, is_test=is_test
+                    )
+                ],
+                "allowed_mentions": {
+                    "parse": [],
+                    "users": mentions if notify else [],
+                },
+                "nonce": hashlib.sha256(
+                    f"{event.id}:assignments:{i}".encode()
+                ).hexdigest()[:24],
+                "enforce_nonce": True,
+            }
+        )
+    return payloads
 
 
 def enqueue(
