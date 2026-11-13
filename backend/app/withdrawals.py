@@ -190,6 +190,19 @@ def withdraw(
         return changed
 
 
+def next_waitlisted(
+    event: Event, current: dict[str, Any], table_name: str
+) -> str | None:
+    """An overfilled table has no replacement seat until enough players leave."""
+    table = next(row for row in current["tables"] if row["name"] == table_name)
+    capacity = next(
+        row["capacity"] for row in event.tables if row["name"] == table_name
+    )
+    if len(table["players"]) <= capacity and table["waitlist"]:
+        return str(table["waitlist"][0]["id"])
+    return None
+
+
 def withdraw_seat(
     db: Session, event: Event, run: LotteryRun, player_id: str, channel_id: str
 ) -> bool:
@@ -200,23 +213,7 @@ def withdraw_seat(
     if table_name is None:
         return False
 
-    table = next(table for table in run.result["tables"] if table["name"] == table_name)
-    active_ids = set(current["assignments"])
-    withdrawn_ids = set(
-        db.scalars(
-            select(EventWithdrawal.discord_id).where(
-                EventWithdrawal.event_id == event_id
-            )
-        )
-    )
-    promoted_id = next(
-        (
-            player["id"]
-            for player in table.get("waitlist", [])
-            if player["id"] not in active_ids and player["id"] not in withdrawn_ids
-        ),
-        None,
-    )
+    promoted_id = next_waitlisted(event, current, table_name)
     withdrawn_at = time.time()
     db.add(
         EventWithdrawal(
@@ -306,15 +303,7 @@ def manager_remove(
         table_name = current["assignments"].get(player_id)
         if table_name is None:
             return False
-        table = next(row for row in current["tables"] if row["name"] == table_name)
-        capacity = next(
-            row["capacity"] for row in event.tables if row["name"] == table_name
-        )
-        promoted_id = (
-            table["waitlist"][0]["id"]
-            if len(table["players"]) <= capacity and table["waitlist"]
-            else None
-        )
+        promoted_id = next_waitlisted(event, current, table_name)
         removed_at = time.time()
         db.add(
             EventWithdrawal(

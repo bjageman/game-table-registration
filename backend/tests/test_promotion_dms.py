@@ -367,3 +367,21 @@ def test_expired_worker_lease_recovers_delivery_after_restart(promotion_db):
     with Session(promotion_db) as db:
         assert db.get(PromotionDM, notice_id).state == "sent"
         assert db.get(PromotionDM, notice_id).message_id == "recovered-message"
+
+
+def test_dm_withdrawal_from_an_overfilled_table_does_not_promote_another_player(
+    promotion_db,
+):
+    assert withdrawals.manager_add(promotion_db, "guild", "event", "2", "Table A")
+    with Session(promotion_db) as db:
+        notice_id = db.scalar(select(PromotionDM.id))
+    promotion_dms.dispatch_due(promotion_db, discord_client())
+    assert "You have withdrawn" in promotion_dms.withdraw(
+        promotion_db, notice_id, "2", "private-channel", "private-message"
+    )
+    with Session(promotion_db) as db:
+        current = withdrawals.current_result(db, db.get(LotteryRun, "event"))
+        assert current["assignments"] == {"1": "Table A"}
+        assert current["waitlist"] == ["3"]
+        assert db.get(EventWithdrawal, ("event", "2")).promoted_id is None
+        assert len(list(db.scalars(select(PromotionDM)))) == 1
