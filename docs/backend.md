@@ -52,3 +52,18 @@ GET `/api/auth/connect` starts account-bound, single-use OAuth with identify/gui
 
 
 Discord signup messages use a rich embed ordered as title, description, then dates/location and tables. Table fields span the embed width and include spacing below each table; assignment rosters also use full-width fields with spacing. Discord controls the final card width. Signup authorization requests Embed Links along with existing signup permissions. Closing a reaction signup adds an embed footer and retains its title, description, and tables; legacy text messages remain supported.
+
+## Code organization
+
+`app/main.py` composes the application. API paths and request schemas remain stable as features move into smaller modules:
+
+- `app/routes/` groups HTTP endpoints by authentication, organizations, preferences, players, events, signups, assignments, and cleanup.
+- `app/context.py` supplies shared request authorization, destination scoping, database access, and serialization. Read endpoints use `scoped_event`; mutations retain their atomic SQL guards.
+- `app/schemas.py` contains validated request bodies; `app/security.py` contains token hashing.
+- `app/lifecycle.py` owns startup and the synchronization worker. `app/publication.py` and `app/message_cleanup.py` hold shared publication and cleanup operations.
+- `app/signup_messages.py` renders signup posts consistently for initial publication and roster refreshes. `app/discord_format.py` packs signup and assignment fields using the complete embed size and notification limits.
+- `app/lottery.py` contains the weighted assignment algorithm. `app/closing.py` freezes its inputs, generates and saves the seed, and commits the draw exactly once.
+
+API integration tests live in `backend/tests/test_api_*.py`, with the shared client fixture in `conftest.py` and workflow setup in `flow_helpers.py`. Run individual feature files or the full suite with `uv run pytest`.
+
+Keep source and test files below 1,000 total lines. Run `python3 scripts/check_file_lengths.py` from the repository root; Repository basics CI enforces the same rule.

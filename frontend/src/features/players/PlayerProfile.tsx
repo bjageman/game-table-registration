@@ -1,3 +1,4 @@
+import useDialog from "../../hooks/useDialog";
 import ModalHeader from "../../components/ModalHeader";
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
@@ -20,7 +21,6 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
 }) {
   const heading = `player-profile-heading-${player.id}`;
   const nameField = `player-display-name-${player.id}`;
-  const dialog = useRef<HTMLDialogElement>(null);
   const profileRef = useRef<Profile | undefined>(undefined);
   const submitted = useRef({ real_name: "", weighting: 5, guaranteed_seat: false });
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -36,12 +36,7 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const modal = dialog.current;
-    const trigger = document.activeElement;
-    modal?.showModal();
-    return () => { modal?.close(); if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus(); };
-  }, []);
+  const dialog = useDialog();
   useEffect(() => {
     const controller = new AbortController();
     api<Profile>(`/players/${encodeURIComponent(player.id)}?signup_name=${encodeURIComponent(player.name)}`, { signal: controller.signal })

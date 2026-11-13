@@ -12,17 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.assignment_preferences import for_event
 from app.discord_api import DiscordAPI, DiscordRequestError
-from app.discord_format import TABLE_FIELD_CONTENT_LIMIT, clean, table_field
-from app.event_description import (
-    CUSTOM_DESCRIPTION,
-    POLL_DESCRIPTION,
-    REACTION_DESCRIPTION,
-    signup_content,
-    signup_description,
-    signup_embed,
-)
+from app.discord_format import clean, paginate_fields, split_field_lines, table_field
 from app.models import AssignmentPreference, Event
-from app.reactions import EMOJIS
+from app.signup_messages import signup_body
 from app.signups import apply_manager_signups, table_rows
 from app.test_signups import add_to_rows
 
@@ -38,61 +30,13 @@ def digest(value: Any) -> str:
 
 
 def base_embed(event: Event) -> dict[str, Any]:
-    if event.signup_mode == "poll":
-        return signup_embed(
-            event, POLL_DESCRIPTION, f"Signups open for {event.duration_hours} hours."
-        )
-    deadline = (
-        f"Signups close: <t:{int(event.closes_at)}:F> (<t:{int(event.closes_at)}:R>)"
-        if event.closes_at is not None
-        else "Signups stay open until closed manually."
-    )
-    labels = [
-        f"{EMOJIS[index]} {clean(table['name'])}"
-        if event.signup_mode == "reactions"
-        else clean(table["name"])
-        for index, table in enumerate(event.tables)
-    ]
-    return signup_embed(
-        event,
-        REACTION_DESCRIPTION
-        if event.signup_mode == "reactions"
-        else CUSTOM_DESCRIPTION,
-        deadline,
-        labels,
+    return dict(
+        signup_body(event, event.signup_mode, event.closes_at, True)["embeds"][0]
     )
 
 
 def base_content(event: Event) -> str:
-    if event.signup_mode == "poll":
-        location = f"Location: {clean(event.location)}\n" if event.location else ""
-        return (
-            f"**{'[TEST] ' if event.test_signups else ''}{event.title}**\n"
-            f"Event: <t:{int(event.starts_at)}:F>\n"
-            f"{location}"
-            f"Signups open for {event.duration_hours} hours. "
-            f"{signup_description(event.description, POLL_DESCRIPTION)}"
-        )
-    deadline = (
-        f"Signups close: <t:{int(event.closes_at)}:F> (<t:{int(event.closes_at)}:R>)"
-        if event.closes_at is not None
-        else "Signups stay open until closed manually."
-    )
-    reaction = event.signup_mode == "reactions"
-    rows = [
-        (
-            f"{EMOJIS[index]} {clean(table['name'])} · {table['capacity']} seats"
-            if reaction
-            else f"- {clean(table['name'])} · {table['capacity']} seats"
-        )
-        for index, table in enumerate(event.tables)
-    ]
-    return signup_content(
-        event,
-        REACTION_DESCRIPTION if reaction else CUSTOM_DESCRIPTION,
-        deadline,
-        rows,
-    )
+    return str(signup_body(event, event.signup_mode, event.closes_at, False)["content"])
 
 
 def roster_pages(
@@ -113,7 +57,6 @@ def roster_pages(
         + f"\n\n**Total users signed up: {len(unique)}**",
         "fields": [],
     }
-    pages = [first]
     fields: list[dict[str, Any]] = []
     labels = [field["name"] for field in base.get("fields", [])]
     for index, table in enumerate(event.tables):
@@ -124,39 +67,25 @@ def roster_pages(
             clean(players[pid]["name"]) if pid.startswith("test-") else f"<@{pid}>"
             for pid in sorted(players)
         ]
-        chunks: list[str] = []
-        current: list[str] = []
-        for line in lines or ["No players signed up yet."]:
-            if current and len("\n".join([*current, line])) > TABLE_FIELD_CONTENT_LIMIT:
-                chunks.append("\n".join(current))
-                current = []
-            current.append(line)
-        if current:
-            chunks.append("\n".join(current))
+        chunks = split_field_lines(lines or ["No players signed up yet."])
         fields.extend(
             table_field(heading if part == 0 else f"{heading} (continued)", value)
             for part, value in enumerate(chunks)
         )
-    for field in fields:
-        page = pages[-1]
-        length = (
-            len(page["title"])
-            + len(page["description"])
-            + sum(len(item["name"]) + len(item["value"]) for item in page["fields"])
-        )
-        if page["fields"] and (
-            len(page["fields"]) >= 25
-            or length + len(field["name"]) + len(field["value"]) > 5800
-        ):
-            page = {
-                "title": f"{base['title']} — Signups continued ({len(pages) + 1})",
-                "description": f"[Signup post](https://discord.com/channels/{event.guild_id}/{event.channel_id}/{event.message_id})",
-                "color": base["color"],
-                "fields": [],
-            }
-            pages.append(page)
-        page["fields"].append(field)
-    return pages
+
+    def make_embed(page: int) -> dict[str, Any]:
+        if page == 0:
+            return dict(first)
+        return {
+            "title": f"{base['title']} — Signups continued ({page + 1})",
+            "description": f"[Signup post](https://discord.com/channels/{event.guild_id}/{event.channel_id}/{event.message_id})",
+            "color": base["color"],
+        }
+
+    return [
+        page
+        for page, _ in paginate_fields([(field, []) for field in fields], make_embed)
+    ]
 
 
 def with_initial_roster(

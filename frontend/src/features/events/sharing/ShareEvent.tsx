@@ -1,5 +1,6 @@
+import useDialog from "../../../hooks/useDialog";
 import ModalHeader from "../../../components/ModalHeader";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Share2, X } from "lucide-react";
 import { api, errorMessage, mutationOptions } from "../../../lib/api";
 import { isBackdropClick } from "../../../lib/dialogBackdrop";
@@ -11,21 +12,18 @@ export default function ShareEvent({ eventId, csrf, onAccessError }: {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useDialog(open);
   async function copyLink() {
     try { await navigator.clipboard.writeText(url); setCopied(true); }
     catch { setError("Could not copy. Select and copy the link above."); }
   }
   useEffect(() => {
     if (!open) return;
-    const modal = dialog.current;
-    const trigger = document.activeElement;
-    modal?.showModal();
     let active = true;
     api<{ path: string }>(`/events/${eventId}/share`, mutationOptions(csrf))
       .then((result) => { if (active) setUrl(new URL(result.path, window.location.origin).href); })
       .catch((failure) => { if (active && !onAccessError(failure)) setError(errorMessage(failure)); });
-    return () => { active = false; modal?.close(); if (trigger instanceof HTMLElement) trigger.focus(); };
+    return () => { active = false; };
   }, [open, eventId, csrf, onAccessError]);
   return <>
     <button id={`event-share-${eventId}`} type="button" className="event-icon-action" aria-label="Share event" title="Share event"

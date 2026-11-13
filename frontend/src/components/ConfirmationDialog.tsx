@@ -1,6 +1,7 @@
+import useDialog from "../hooks/useDialog";
 import ModalHeader from "./ModalHeader";
 import { isBackdropClick } from "../lib/dialogBackdrop";
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import LoadingIndicator from "./LoadingIndicator";
 import { X } from "lucide-react";
 
@@ -19,18 +20,8 @@ export default function ConfirmationDialog({
 }) {
   const heading = useId();
   const dialogId = id ?? `confirmation-dialog-${heading}`;
-  const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const modal = dialog.current;
-    const trigger = document.activeElement;
-    modal?.showModal();
-    cancel.current?.focus();
-    return () => {
-      modal?.close();
-      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
-    };
-  }, []);
+  const dialog = useDialog(true, cancel);
   return (
     <dialog id={dialogId} onClick={(event) => { if (!busy && isBackdropClick(event)) onCancel(); }} ref={dialog} aria-labelledby={heading} aria-busy={busy}
       onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>

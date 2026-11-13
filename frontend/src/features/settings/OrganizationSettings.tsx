@@ -1,5 +1,6 @@
+import useDialog from "../../hooks/useDialog";
 import ModalHeader from "../../components/ModalHeader";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Trash2, X } from "lucide-react";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
 import LoadingIndicator from "../../components/LoadingIndicator";
@@ -19,7 +20,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
-  const createDialog = useRef<HTMLDialogElement>(null);
+  const createDialog = useDialog(creating);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
   const [newUser, setNewUser] = useState<User>();
@@ -29,7 +30,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [removeError, setRemoveError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const addUserDialog = useRef<HTMLDialogElement>(null);
+  const addUserDialog = useDialog(addingUser);
   const [role, setRole] = useState<Organization["role"]>("user");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -37,32 +38,12 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [revision, setRevision] = useState(0);
   const selected = organizations.find((org) => org.id === selectedId);
 
-  useEffect(() => {
-    if (!creating) return;
-    const dialog = createDialog.current;
-    const trigger = document.activeElement;
-    dialog?.showModal();
-    return () => {
-      dialog?.close();
-      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
-    };
-  }, [creating]);
 
   function closeCreate() {
     if (busy) return;
     setCreating(false); setName(""); setCreateError("");
   }
 
-  useEffect(() => {
-    if (!addingUser) return;
-    const dialog = addUserDialog.current;
-    const trigger = document.activeElement;
-    dialog?.showModal();
-    return () => {
-      dialog?.close();
-      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
-    };
-  }, [addingUser]);
 
   function closeAddUser() {
     if (busy) return;

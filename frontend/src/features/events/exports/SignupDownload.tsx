@@ -1,6 +1,7 @@
+import useDialog from "../../../hooks/useDialog";
 import { useTimezone } from "../../../lib/timezone";
 import ModalHeader from "../../../components/ModalHeader";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Download, X } from "lucide-react";
 import { isBackdropClick } from "../../../lib/dialogBackdrop";
 import { download } from "../../../lib/download";
@@ -14,13 +15,7 @@ export default function SignupDownload({ event, onAccessError }: {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const modal = dialog.current;
-    modal?.showModal();
-    return () => modal?.close();
-  }, [open]);
+  const dialog = useDialog(open);
 
   async function save(format: "pdf" | "csv") {
     setBusy(true);

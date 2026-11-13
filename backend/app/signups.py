@@ -9,38 +9,16 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.discord_format import clean
-from app.event_description import (
-    CUSTOM_DESCRIPTION,
-    signup_content,
-    signup_embed,
-)
 from app.event_threads import queue_member
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
+from app.signup_messages import signup_body
 
 
 def publication(
     event: Event, closes_at: float, include_roster: bool = True
 ) -> dict[str, Any]:
-    deadline = f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
-    if include_roster:
-        payload: dict[str, Any] = {
-            "embeds": [
-                signup_embed(
-                    event,
-                    CUSTOM_DESCRIPTION,
-                    deadline,
-                    [clean(table["name"]) for table in event.tables],
-                )
-            ]
-        }
-    else:
-        rows = [
-            f"- {clean(table['name'])} · {table['capacity']} seats"
-            for table in event.tables
-        ]
-        payload = {"content": signup_content(event, CUSTOM_DESCRIPTION, deadline, rows)}
     return {
-        **payload,
+        **signup_body(event, "custom", closes_at, include_roster),
         "allowed_mentions": {"parse": []},
         "components": [
             {

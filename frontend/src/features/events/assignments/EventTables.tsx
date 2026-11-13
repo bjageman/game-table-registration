@@ -1,7 +1,8 @@
+import useDialog from "../../../hooks/useDialog";
 import ModalHeader from "../../../components/ModalHeader";
 import TableTitle from "../TableTitle";
 import PlayerProfile from "../../players/PlayerProfile";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, errorMessage, mutationOptions, type EventRecord } from "../../../lib/api";
 import LoadingIndicator from "../../../components/LoadingIndicator";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
@@ -45,7 +46,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [playersLoading, setPlayersLoading] = useState(false);
   const [removing, setRemoving] = useState<{ player: SignupPlayer; willPromote: boolean }>();
   const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
-  const addDialog = useRef<HTMLDialogElement>(null);
+  const addDialog = useDialog(Boolean(addingTable));
   const hasSignups = event.status === "open" || event.status === "closing" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
   const canEditSignups = !readOnly && !event.archived_at && (event.status === "draft" || event.status === "scheduled" || event.status === "open" || event.status === "assigned");
   const canRemoveSignups = !readOnly && (canEditSignups || event.status === "assigned");
@@ -59,11 +60,6 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     setAddingTable(undefined);
     setPlayerQuery("");
   }
-  useEffect(() => {
-    const dialog = addDialog.current;
-    if (addingTable) dialog?.showModal();
-    return () => { if (dialog?.open) dialog.close(); };
-  }, [addingTable]);
   useEffect(() => {
     if (!addingTable) return;
     let active = true;

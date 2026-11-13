@@ -354,3 +354,31 @@ def test_closing_poll_signup_converts_it_and_removes_controls():
     assert payload["embeds"][0]["title"] == "Game Night"
     assert "Event: <t:2000000000:F>" in payload["embeds"][0]["description"]
     assert payload["embeds"][0]["footer"]["text"] == "Signups closed."
+
+
+@pytest.mark.parametrize("content", ["", "<@123>"])
+def test_delivery_recovery_rejects_unrelated_embeds_and_mismatched_nonces(content):
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(return_value={"id": "bot"})
+    payload = {
+        "content": content,
+        "nonce": "expected",
+        "embeds": [{"title": "Expected event", "fields": []}],
+    }
+    unrelated = {
+        "id": "100",
+        "author": {"id": "bot"},
+        "content": content,
+        "nonce": "other",
+        "embeds": [{"title": "Other event"}],
+        "timestamp": "2026-11-13T00:00:00+00:00",
+    }
+    api.bot_items = Mock(return_value=[unrelated])
+    assert api.find_announcement("channel", payload, 0) is None
+    # Discord may omit older nonces; content alone must still not identify an embed.
+    unrelated.pop("nonce")
+    assert api.find_announcement("channel", payload, 0) is None
+    unrelated["embeds"] = payload["embeds"]
+    assert api.find_announcement("channel", payload, 0) == ("100" if content else None)
+    unrelated["nonce"] = "expected"
+    assert api.find_announcement("channel", payload, 0) == "100"

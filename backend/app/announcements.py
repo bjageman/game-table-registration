@@ -17,6 +17,7 @@ from app.discord_format import (
     TABLE_FIELD_CONTENT_LIMIT,
     clean,
     event_embed,
+    paginate_fields,
     table_field,
 )
 from app.event_description import signup_description, signup_location
@@ -121,31 +122,15 @@ def payloads(
             )
         )
 
-    chunks: list[tuple[list[dict[str, Any]], list[str]]] = []
-    fields: list[dict[str, Any]] = []
-    mentions: list[str] = []
-    field_length = 0
-    for field, ids in field_parts:
-        next_length = len(field["name"]) + len(field["value"])
-        ping_length = sum(len(user_id) + 4 for user_id in mentions + ids)
-        mentions_full = notify and (
-            len(mentions) + len(ids) > 100 or ping_length > max_ping_length
-        )
-        if fields and (
-            len(fields) >= 25 or field_length + next_length > 5800 or mentions_full
-        ):
-            chunks.append((fields, mentions))
-            fields, mentions, field_length = [], [], 0
-        fields.append(field)
-        mentions.extend(ids)
-        field_length += next_length
-    if fields:
-        chunks.append((fields, mentions))
-    payloads: list[dict[str, Any]] = []
-    for i, (fields, mentions) in enumerate(chunks):
+    def make_embed(page: int) -> dict[str, Any]:
         page_details = list(details)
-        if i:
-            page_details.append(f"Assignments continued ({i + 1})")
+        if page:
+            page_details.append(f"Assignments continued ({page + 1})")
+        return event_embed(event, introduction, page_details, is_test=is_test)
+
+    chunks = paginate_fields(field_parts, make_embed, notify=notify)
+    payloads: list[dict[str, Any]] = []
+    for i, (embed, mentions) in enumerate(chunks):
         payloads.append(
             {
                 "content": (
@@ -153,11 +138,7 @@ def payloads(
                     if notify and mentions
                     else ""
                 ),
-                "embeds": [
-                    event_embed(
-                        event, introduction, page_details, fields, is_test=is_test
-                    )
-                ],
+                "embeds": [embed],
                 "allowed_mentions": {
                     "parse": [],
                     "users": mentions if notify else [],

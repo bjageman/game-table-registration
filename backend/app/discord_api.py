@@ -272,7 +272,7 @@ class DiscordAPI:
     def reaction_players(
         self, message_id: str, tables: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        from app.reactions import EMOJIS
+        from app.signup_messages import EMOJIS
 
         players: dict[str, dict[str, Any]] = {}
         for index, table in enumerate(tables):
@@ -462,7 +462,24 @@ class DiscordAPI:
             for message in messages:
                 if str(message.get("author", {}).get("id")) == author and (
                     str(message.get("nonce")) == str(payload["nonce"])
-                    or message.get("content") == payload["content"]
+                    or (
+                        message.get("nonce") is None
+                        and bool(payload.get("content"))
+                        and message.get("content") == payload["content"]
+                        and len(message.get("embeds", []))
+                        == len(payload.get("embeds", []))
+                        and all(
+                            all(
+                                actual.get(key) == value
+                                for key, value in expected.items()
+                            )
+                            for actual, expected in zip(
+                                message.get("embeds", []),
+                                payload.get("embeds", []),
+                                strict=True,
+                            )
+                        )
+                    )
                 ):
                     return str(message["id"])
             try:
