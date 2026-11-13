@@ -40,6 +40,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [editingWeight, setEditingWeight] = useState<string>();
   const [weight, setWeight] = useState("");
   const [saving, setSaving] = useState(false);
+  const [addingToWaitlist, setAddingToWaitlist] = useState(false);
   const [addingTable, setAddingTable] = useState<string>();
   const [playerQuery, setPlayerQuery] = useState("");
   const [availablePlayers, setAvailablePlayers] = useState<{ discord_id: string; discord_name: string; real_name: string }[]>([]);
@@ -53,7 +54,8 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
   const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
     `${player.discord_name} ${player.real_name} ${player.discord_id}`.toLocaleLowerCase().includes(normalizedQuery)
-      && (event.status !== "assigned" || !rows?.some((row) => row.players.some((seated) => seated.id === player.discord_id))),
+      && (event.status !== "assigned" || !rows?.some((row) => row.players.some((seated) => seated.id === player.discord_id)))
+      && (!addingToWaitlist || !rows?.find((row) => row.name === addingTable)?.waitlist?.some((entry) => entry.id === player.discord_id)),
   ).slice(0, 30) : [];
   function closeAddPlayer() {
     if (saving) return;
@@ -73,13 +75,17 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     if (!addingTable || saving) return;
     setSaving(true); setActionError("");
     try {
-      await api(`/events/${encodeURIComponent(event.id)}/manager-players/${encodeURIComponent(player.discord_id)}`,
-        { ...mutationOptions(csrf, { table: addingTable, name: player.discord_name }), method: "PUT" });
+      await api(`/events/${encodeURIComponent(event.id)}/${addingToWaitlist ? "waitlisted-players" : "manager-players"}/${encodeURIComponent(player.discord_id)}`,
+        { ...mutationOptions(csrf, { table: addingTable, ...(addingToWaitlist ? {} : { name: player.discord_name }) }), method: addingToWaitlist ? "POST" : "PUT" });
       const signupPlayer = { id: player.discord_id, name: player.discord_name };
       setRows((current) => {
-        const value = current ?? event.tables.map((table) => ({ name: table.name, players: [] }));
-        return value.map((row) => row.name === addingTable && !row.players.some((entry) => entry.id === signupPlayer.id)
-          ? { ...row, players: [...row.players, signupPlayer] } : row);
+        const value: TableSignups[] = current ?? event.tables.map((table) => ({ name: table.name, players: [] }));
+        return value.map((row) => {
+          if (row.name !== addingTable) return row;
+          if (addingToWaitlist) return { ...row, waitlist: [...(row.waitlist ?? []), signupPlayer] };
+          return !row.players.some((entry) => entry.id === signupPlayer.id)
+            ? { ...row, players: [...row.players, signupPlayer] } : row;
+        });
       });
       setAddingTable(undefined); setPlayerQuery("");
       setAttempt((value) => value + 1);
@@ -153,7 +159,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       onCancel={(event) => { event.preventDefault(); closeAddPlayer(); }}
       onClick={(event) => { if (isBackdropClick(event)) closeAddPlayer(); }}>
       <ModalHeader>
-        <h2 id="add-player-heading">Add a player to {addingTable}</h2>
+        <h2 id="add-player-heading">Add a player to {addingTable}{addingToWaitlist ? " waitlist" : ""}</h2>
       </ModalHeader>
       {actionError && <p role="alert" className="error">{actionError}</p>}
       <div className="add-player-search">
@@ -188,7 +194,8 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     {weightNotice && <p role="status" className="notice">{weightNotice}</p>}
     {actionError && !assigning && !addingTable && <p role="alert" className="error">{actionError}</p>}
     <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
-      canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingTable(table); }} onRemovePlayer={(player, willPromote) => setRemoving({ player, willPromote })}
+      canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingToWaitlist(false); setAddingTable(table); }}
+      onAddToWaitlist={(table) => { setPlayersLoading(true); setActionError(""); setAddingToWaitlist(true); setAddingTable(table); }} onRemovePlayer={(player, willPromote) => setRemoving({ player, willPromote })}
       onAssignWaitlisted={!readOnly && event.status === "assigned" ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}
       editingWeight={editingWeight} weight={weight} saving={saving} readOnly={readOnly} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 5)); }}
@@ -207,7 +214,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   </>;
 }
 
-export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, readOnly = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onRemovePlayer, onAssignWaitlisted }: {
+export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, readOnly = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onAddToWaitlist, onRemovePlayer, onAssignWaitlisted }: {
   event: Pick<EventRecord, "id" | "tables" | "status" | "scheduled_publish_at">;
   rows?: TableSignups[];
   error?: string;
@@ -224,6 +231,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
   canEditSignups?: boolean;
   canRemoveSignups?: boolean;
   onAddPlayer?: (table: string) => void;
+  onAddToWaitlist?: (table: string) => void;
   onRemovePlayer?: (player: SignupPlayer, willPromote: boolean) => void;
   onAssignWaitlisted?: (player: SignupPlayer, table: string) => void;
 }) {
@@ -295,6 +303,8 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
                 onClick={() => onAssignWaitlisted(player, table.name)}><Plus size={16} aria-hidden="true" /></button>}
               {onSelect ? <button id={`${tableId}-waitlist-profile-${player.id}`} type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
             </li>)}</ul> : <p className="help">No players waiting.</p>}
+            {canEditSignups && <button id={`${tableId}-add-waitlist-player`} type="button" className="add-signup-player" disabled={saving}
+              onClick={() => onAddToWaitlist?.(table.name)}>Add Player to Waitlist</button>}
           </div>}
         </li>;
       })}

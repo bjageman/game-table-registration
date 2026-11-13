@@ -17,6 +17,7 @@ from app.models import (
     Event,
     EventManagerSignup,
     EventManualAssignment,
+    EventWaitlistAddition,
     EventWithdrawal,
     LotteryRun,
     PlayerProfile,
@@ -54,6 +55,15 @@ def result_players(db: Session, run: LotteryRun) -> dict[str, Any]:
             signup.discord_id,
             {"id": signup.discord_id, "name": signup.discord_name},
         )
+    for addition in db.scalars(
+        select(EventWaitlistAddition).where(
+            EventWaitlistAddition.event_id == run.event_id
+        )
+    ):
+        players.setdefault(
+            addition.discord_id,
+            {"id": addition.discord_id, "name": addition.discord_name},
+        )
     return players
 
 
@@ -88,6 +98,17 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
         if manual_row.discord_id not in withdrawn:
             assignments[manual_row.discord_id] = manual_row.table_name
 
+    additions = list(
+        db.scalars(
+            select(EventWaitlistAddition)
+            .where(EventWaitlistAddition.event_id == run.event_id)
+            .order_by(
+                EventWaitlistAddition.added_at,
+                EventWaitlistAddition.discord_id,
+                EventWaitlistAddition.table_name,
+            )
+        )
+    )
     by_id = result_players(db, run)
     tables = []
     for table in result["tables"]:
@@ -118,13 +139,19 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
                 player = by_id[manual_row.discord_id]
                 players.append({"id": manual_row.discord_id, "name": player["name"]})
                 included.add(manual_row.discord_id)
+        waitlist = [*table.get("waitlist", [])]
+        waitlist.extend(
+            {"id": addition.discord_id, "name": addition.discord_name}
+            for addition in additions
+            if addition.table_name == name
+        )
         tables.append(
             {
                 **table,
                 "players": players,
                 "waitlist": [
                     dict(player)
-                    for player in table.get("waitlist", [])
+                    for player in waitlist
                     if player["id"] not in assignments and player["id"] not in withdrawn
                 ],
             }
@@ -134,7 +161,9 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
         "assignments": assignments,
         "waitlist": [
             player_id
-            for player_id in result["waitlist"]
+            for player_id in dict.fromkeys(
+                [*result["waitlist"], *[addition.discord_id for addition in additions]]
+            )
             if player_id not in assignments and player_id not in withdrawn
         ],
         "tables": tables,
@@ -226,9 +255,7 @@ def withdraw_seat(
     )
     if promoted_id and announce_changes(db, event):
         left = result_players(db, run)[player_id]
-        promoted = next(
-            player for player in run.snapshot["players"] if player["id"] == promoted_id
-        )
+        promoted = result_players(db, run)[promoted_id]
         promoted_name = (
             clean(promoted["name"])
             if promoted_id.startswith("test-")
@@ -320,13 +347,7 @@ def manager_remove(
         )
         if promoted_id:
             promoted_name = (
-                clean(
-                    next(
-                        player["name"]
-                        for player in run.snapshot["players"]
-                        if player["id"] == promoted_id
-                    )
-                )
+                clean(result_players(db, run)[promoted_id]["name"])
                 if promoted_id.startswith("test-")
                 else f"<@{promoted_id}>"
             )

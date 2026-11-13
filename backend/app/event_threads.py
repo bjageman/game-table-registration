@@ -15,6 +15,7 @@ from app.models import (
     Event,
     EventManagerSignup,
     EventThreadMember,
+    EventWaitlistAddition,
     LotteryRun,
     TableSignup,
 )
@@ -98,6 +99,13 @@ def synchronize_event(engine: Engine, discord: DiscordAPI, event_id: str) -> Non
                 select(EventManagerSignup.discord_id).where(
                     EventManagerSignup.event_id == event_id,
                     EventManagerSignup.removed.is_(False),
+                )
+            )
+        )
+        users.update(
+            db.scalars(
+                select(EventWaitlistAddition.discord_id).where(
+                    EventWaitlistAddition.event_id == event_id
                 )
             )
         )

@@ -43,6 +43,7 @@ from app.test_signups import (
 from app.test_signups import (
     generate as generate_test_users,
 )
+from app.waitlists import add_player as add_waitlist_player
 from app.withdrawals import current_result, manager_add, manager_remove
 
 
@@ -227,6 +228,19 @@ def register(context: ApplicationContext) -> None:
             event.signup_roster_checked_at = None
             db.commit()
             return {"ok": True}
+
+    @router.post("/api/events/{event_id}/waitlisted-players/{player_id}")
+    def add_waitlisted_player(
+        event_id: str, player_id: str, body: AssignedAddInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(player_id)
+        with DBSession(engine) as db:
+            event = context.scoped_event(db, event_id, request)
+            guild_id = event.guild_id
+        if not add_waitlist_player(engine, guild_id, event_id, player_id, body.table):
+            raise HTTPException(409, "Player cannot be added to this waitlist")
+        return {"ok": True}
 
     @router.post("/api/events/{event_id}/assigned-players/{player_id}")
     def add_assigned_player(
