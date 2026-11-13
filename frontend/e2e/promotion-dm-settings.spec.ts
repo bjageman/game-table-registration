@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 
-test("private waitlist notifications are opt-in, independent, and persist", async ({ page }) => {
+test("saved private waitlist notification choices are independent and persist", async ({ page }) => {
   let enabled = false;
   await page.route("**/api/me", route => route.fulfill({ json: { username: "organizer", csrf: "csrf" } }));
   await page.route("**/api/settings", route => route.fulfill({ json: { selection: null, connect_url: "/api/auth/connect" } }));

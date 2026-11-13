@@ -12,10 +12,10 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
   csrf: string; restricted?: boolean; onAccessError: (error: unknown) => boolean; onSaved?: () => Promise<void>;
 }) {
   const [enabled, setEnabled] = useState(true);
-  const [announceChanges, setAnnounceChanges] = useState(false);
-  const [threadUpdates, setThreadUpdates] = useState(false);
-  const [showSignupPlayers, setShowSignupPlayers] = useState(false);
-  const [dmPromotions, setDmPromotions] = useState(false);
+  const [announceChanges, setAnnounceChanges] = useState(true);
+  const [threadUpdates, setThreadUpdates] = useState(true);
+  const [showSignupPlayers, setShowSignupPlayers] = useState(true);
+  const [dmPromotions, setDmPromotions] = useState(true);
   const [timezone, setTimezone] = useState("");
   const timezones = [...new Set(["UTC", ...(Intl.supportedValuesOf?.("timeZone") ?? [browserTimezone()]), ...(timezone ? [timezone] : [])])].sort();
   const [loaded, setLoaded] = useState(false);
@@ -27,7 +27,7 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
   useEffect(() => {
     const controller = new AbortController();
     api<Settings>("/settings/assignment", { signal: controller.signal }).then((value) => {
-      if (!controller.signal.aborted) { setEnabled(value.automatic_weight_adjustment); setAnnounceChanges(value.announce_table_changes); setThreadUpdates(value.post_discord_updates_to_thread ?? false); setTimezone(value.timezone ?? ""); setShowSignupPlayers(value.show_open_signup_players ?? false); setDmPromotions(value.dm_waitlist_promotions ?? false); setLoaded(true); setError(""); }
+      if (!controller.signal.aborted) { setEnabled(value.automatic_weight_adjustment); setAnnounceChanges(value.announce_table_changes); setThreadUpdates(value.post_discord_updates_to_thread ?? true); setTimezone(value.timezone ?? ""); setShowSignupPlayers(value.show_open_signup_players ?? true); setDmPromotions(value.dm_waitlist_promotions ?? true); setLoaded(true); setError(""); }
     }).catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
     return () => controller.abort();
   }, [attempt, onAccessError]);
@@ -37,7 +37,7 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
     inFlight.current = true; setBusy(true); setSaved(false); setError("");
     try {
       const result = await api<Settings>("/settings/assignment", { ...mutationOptions(csrf, { automatic_weight_adjustment: enabled, announce_table_changes: announceChanges, post_discord_updates_to_thread: threadUpdates, timezone: timezone || null, show_open_signup_players: showSignupPlayers, dm_waitlist_promotions: dmPromotions }), method: "PUT" });
-      setEnabled(result.automatic_weight_adjustment); setAnnounceChanges(result.announce_table_changes); setThreadUpdates(result.post_discord_updates_to_thread ?? false); setTimezone(result.timezone ?? ""); setShowSignupPlayers(result.show_open_signup_players ?? false); setDmPromotions(result.dm_waitlist_promotions ?? false); await onSaved?.(); setSaved(true);
+      setEnabled(result.automatic_weight_adjustment); setAnnounceChanges(result.announce_table_changes); setThreadUpdates(result.post_discord_updates_to_thread ?? true); setTimezone(result.timezone ?? ""); setShowSignupPlayers(result.show_open_signup_players ?? true); setDmPromotions(result.dm_waitlist_promotions ?? true); await onSaved?.(); setSaved(true);
     } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
     finally { inFlight.current = false; setBusy(false); }
   }

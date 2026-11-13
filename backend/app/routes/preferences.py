@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import update
 from sqlalchemy.orm import Session as DBSession
 
+from app.assignment_preferences import for_scope
 from app.assignment_preferences import scope_key as assignment_scope_key
 from app.context import ApplicationContext
 from app.models import (
@@ -27,24 +28,14 @@ def register(context: ApplicationContext) -> None:
         session = authenticated(request, require_destination=False)
         key = assignment_scope_key(request.state.organization_id, session.user_id)
         with DBSession(engine) as db:
-            saved = db.get(AssignmentPreference, key)
+            saved = for_scope(db, key)
             return {
-                "automatic_weight_adjustment": saved.automatic_weight_adjustment
-                if saved
-                else True,
-                "announce_table_changes": saved.announce_table_changes
-                if saved
-                else False,
-                "post_discord_updates_to_thread": saved.post_discord_updates_to_thread
-                if saved
-                else False,
-                "timezone": saved.timezone if saved else None,
-                "dm_waitlist_promotions": saved.dm_waitlist_promotions
-                if saved
-                else False,
-                "show_open_signup_players": saved.show_open_signup_players
-                if saved
-                else False,
+                "automatic_weight_adjustment": saved.automatic_weight_adjustment,
+                "announce_table_changes": saved.announce_table_changes,
+                "post_discord_updates_to_thread": saved.post_discord_updates_to_thread,
+                "timezone": saved.timezone,
+                "dm_waitlist_promotions": saved.dm_waitlist_promotions,
+                "show_open_signup_players": saved.show_open_signup_players,
             }
 
     @router.put("/api/settings/assignment")
@@ -59,14 +50,16 @@ def register(context: ApplicationContext) -> None:
         with DBSession(engine) as db:
             key = assignment_scope_key(request.state.organization_id, session.user_id)
             previous = db.get(AssignmentPreference, key)
-            if "timezone" not in body.model_fields_set and previous:
-                body.timezone = previous.timezone
-            if "show_open_signup_players" not in body.model_fields_set and previous:
-                body.show_open_signup_players = previous.show_open_signup_players
-            if "dm_waitlist_promotions" not in body.model_fields_set and previous:
-                body.dm_waitlist_promotions = previous.dm_waitlist_promotions
+            for field in (
+                "timezone",
+                "post_discord_updates_to_thread",
+                "show_open_signup_players",
+                "dm_waitlist_promotions",
+            ):
+                if field not in body.model_fields_set and previous:
+                    setattr(body, field, getattr(previous, field))
             roster_changed = (
-                bool(previous and previous.show_open_signup_players)
+                for_scope(db, key).show_open_signup_players
                 != body.show_open_signup_players
             )
             db.merge(

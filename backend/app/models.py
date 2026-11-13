@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import JSON, Float, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import JSON, Float, ForeignKey, Index, String, UniqueConstraint, true
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -292,12 +292,22 @@ class GuildSettings(Base):
 class AssignmentPreference(Base):
     __tablename__ = "assignment_preferences"
     scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
-    announce_table_changes: Mapped[bool] = mapped_column(default=False)
-    post_discord_updates_to_thread: Mapped[bool] = mapped_column(default=False)
+    automatic_weight_adjustment: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    announce_table_changes: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    post_discord_updates_to_thread: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    show_open_signup_players: Mapped[bool] = mapped_column(default=False)
-    dm_waitlist_promotions: Mapped[bool] = mapped_column(default=False)
+    show_open_signup_players: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    dm_waitlist_promotions: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
 
 
 class EventThreadMember(Base):

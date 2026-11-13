@@ -108,10 +108,10 @@ class AssignmentSettingsInput(BaseModel):
     model_config = {"extra": "forbid"}
     automatic_weight_adjustment: bool
     announce_table_changes: bool
-    post_discord_updates_to_thread: bool = False
+    post_discord_updates_to_thread: bool = True
     timezone: str | None = Field(default=None, max_length=64)
-    show_open_signup_players: bool = False
-    dm_waitlist_promotions: bool = False
+    show_open_signup_players: bool = True
+    dm_waitlist_promotions: bool = True
 
     @field_validator("timezone")
     @classmethod

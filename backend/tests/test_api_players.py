@@ -288,12 +288,12 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
 
     headers, event, path, _ = closing_event(client)
     assert client.get("/api/settings/assignment").json() == {
-        "show_open_signup_players": False,
-        "dm_waitlist_promotions": False,
+        "show_open_signup_players": True,
+        "dm_waitlist_promotions": True,
         "timezone": None,
         "automatic_weight_adjustment": True,
-        "announce_table_changes": False,
-        "post_discord_updates_to_thread": False,
+        "announce_table_changes": True,
+        "post_discord_updates_to_thread": True,
     }
     assert (
         client.put(
@@ -409,6 +409,16 @@ def test_add_known_player_after_assignment_updates_discord_without_redrawing(
     headers, event, path, _ = closing_event(client)
     engine = client.app.state.engine
     discord = client.app.state.discord
+    # This test exercises roster edits independently of separate change notices.
+    client.put(
+        "/api/settings/assignment",
+        headers=headers,
+        json={
+            "automatic_weight_adjustment": True,
+            "announce_table_changes": False,
+            "post_discord_updates_to_thread": False,
+        },
+    )
     discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     with DBSession(engine) as db:

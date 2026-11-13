@@ -311,12 +311,12 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
         == 200
     )
     defaults = {
-        "show_open_signup_players": False,
-        "dm_waitlist_promotions": False,
+        "show_open_signup_players": True,
+        "dm_waitlist_promotions": True,
         "timezone": None,
         "automatic_weight_adjustment": True,
-        "announce_table_changes": False,
-        "post_discord_updates_to_thread": False,
+        "announce_table_changes": True,
+        "post_discord_updates_to_thread": True,
     }
     assert client.get("/api/settings/assignment").json() == defaults
     shared = {
