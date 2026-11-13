@@ -17,6 +17,7 @@ from app.models import (
     Event,
     EventManagerSignup,
     EventManualAssignment,
+    EventWaitlistAddition,
     EventWithdrawal,
     LotteryRun,
     PlayerProfile,
@@ -54,6 +55,15 @@ def result_players(db: Session, run: LotteryRun) -> dict[str, Any]:
             signup.discord_id,
             {"id": signup.discord_id, "name": signup.discord_name},
         )
+    for addition in db.scalars(
+        select(EventWaitlistAddition).where(
+            EventWaitlistAddition.event_id == run.event_id
+        )
+    ):
+        players.setdefault(
+            addition.discord_id,
+            {"id": addition.discord_id, "name": addition.discord_name},
+        )
     return players
 
 
@@ -66,15 +76,12 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
             .order_by(EventWithdrawal.withdrawn_at, EventWithdrawal.discord_id)
         )
     )
-    withdrawn = {row.discord_id for row in rows}
+    withdrawn = {row.discord_id: row.withdrawn_at for row in rows}
     assignments = {
         player_id: table
         for player_id, table in result["assignments"].items()
         if player_id not in withdrawn
     }
-    for row in rows:
-        if row.promoted_id and row.promoted_id not in withdrawn:
-            assignments[row.promoted_id] = row.table_name
     manual = list(
         db.scalars(
             select(EventManualAssignment)
@@ -84,10 +91,26 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
             )
         )
     )
-    for manual_row in manual:
-        if manual_row.discord_id not in withdrawn:
-            assignments[manual_row.discord_id] = manual_row.table_name
+    placements = [
+        (row.withdrawn_at, row.promoted_id, row.table_name)
+        for row in rows
+        if row.promoted_id
+    ] + [(row.assigned_at, row.discord_id, row.table_name) for row in manual]
+    for placed_at, player_id, table_name in sorted(placements):
+        if placed_at > withdrawn.get(player_id, float("-inf")):
+            assignments[player_id] = table_name
 
+    additions = list(
+        db.scalars(
+            select(EventWaitlistAddition)
+            .where(EventWaitlistAddition.event_id == run.event_id)
+            .order_by(
+                EventWaitlistAddition.added_at,
+                EventWaitlistAddition.discord_id,
+                EventWaitlistAddition.table_name,
+            )
+        )
+    )
     by_id = result_players(db, run)
     tables = []
     for table in result["tables"]:
@@ -98,47 +121,96 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
             if assignments.get(player["id"]) == name
         ]
         included = {player["id"] for player in players}
-        for row in rows:
-            promoted = row.promoted_id
-            if (
-                row.table_name == name
-                and promoted
-                and assignments.get(promoted) == name
-                and promoted not in included
-            ):
-                player = by_id[promoted]
-                players.append({"id": promoted, "name": player["name"]})
-                included.add(promoted)
-        for manual_row in manual:
-            if (
-                manual_row.table_name == name
-                and assignments.get(manual_row.discord_id) == name
-                and manual_row.discord_id not in included
-            ):
-                player = by_id[manual_row.discord_id]
-                players.append({"id": manual_row.discord_id, "name": player["name"]})
-                included.add(manual_row.discord_id)
+        for player_id, table_name in assignments.items():
+            if table_name == name and player_id not in included:
+                player = by_id[player_id]
+                players.append({"id": player_id, "name": player["name"]})
+        # A rejoining player belongs at the end, never at their original rank.
+        waitlist = [
+            player
+            for player in table.get("waitlist", [])
+            if player["id"] not in withdrawn
+        ]
+        waitlist.extend(
+            {"id": addition.discord_id, "name": addition.discord_name}
+            for addition in additions
+            if addition.table_name == name
+            and addition.added_at > withdrawn.get(addition.discord_id, float("-inf"))
+        )
         tables.append(
             {
                 **table,
                 "players": players,
                 "waitlist": [
                     dict(player)
-                    for player in table.get("waitlist", [])
-                    if player["id"] not in assignments and player["id"] not in withdrawn
+                    for player in waitlist
+                    if player["id"] not in assignments
                 ],
             }
         )
     return {
         **result,
         "assignments": assignments,
-        "waitlist": [
-            player_id
-            for player_id in result["waitlist"]
-            if player_id not in assignments and player_id not in withdrawn
-        ],
+        "waitlist": list(
+            dict.fromkeys(
+                [
+                    *[
+                        player_id
+                        for player_id in result["waitlist"]
+                        if player_id not in withdrawn and player_id not in assignments
+                    ],
+                    *[
+                        addition.discord_id
+                        for addition in additions
+                        if addition.added_at
+                        > withdrawn.get(addition.discord_id, float("-inf"))
+                        and addition.discord_id not in assignments
+                    ],
+                ]
+            )
+        ),
         "tables": tables,
     }
+
+
+def record_withdrawal(
+    db: Session,
+    event_id: str,
+    player_id: str,
+    table_name: str,
+    withdrawn_at: float,
+    promoted_id: str | None,
+) -> None:
+    """Keep prior replacement seats when a rejoined player withdraws again."""
+    previous = db.get(EventWithdrawal, (event_id, player_id))
+    if previous is None:
+        db.add(
+            EventWithdrawal(
+                event_id=event_id,
+                discord_id=player_id,
+                table_name=table_name,
+                withdrawn_at=withdrawn_at,
+                promoted_id=promoted_id,
+            )
+        )
+        return
+    if previous.promoted_id:
+        replacement = db.get(EventManualAssignment, (event_id, previous.promoted_id))
+        if replacement is None:
+            db.add(
+                EventManualAssignment(
+                    event_id=event_id,
+                    discord_id=previous.promoted_id,
+                    table_name=previous.table_name,
+                    assigned_at=previous.withdrawn_at,
+                )
+            )
+        elif replacement.assigned_at < previous.withdrawn_at:
+            replacement.table_name = previous.table_name
+            replacement.assigned_at = previous.withdrawn_at
+    previous.table_name = table_name
+    previous.withdrawn_at = withdrawn_at
+    previous.promoted_id = promoted_id
 
 
 def withdraw(
@@ -215,20 +287,10 @@ def withdraw_seat(
 
     promoted_id = next_waitlisted(event, current, table_name)
     withdrawn_at = time.time()
-    db.add(
-        EventWithdrawal(
-            event_id=event_id,
-            discord_id=player_id,
-            table_name=table_name,
-            withdrawn_at=withdrawn_at,
-            promoted_id=promoted_id,
-        )
-    )
+    record_withdrawal(db, event_id, player_id, table_name, withdrawn_at, promoted_id)
     if promoted_id and announce_changes(db, event):
         left = result_players(db, run)[player_id]
-        promoted = next(
-            player for player in run.snapshot["players"] if player["id"] == promoted_id
-        )
+        promoted = result_players(db, run)[promoted_id]
         promoted_name = (
             clean(promoted["name"])
             if promoted_id.startswith("test-")
@@ -261,7 +323,7 @@ def withdraw_seat(
                     "content": content,
                     "allowed_mentions": {"parse": [], "users": mentions},
                     "nonce": hashlib.sha256(
-                        f"{event_id}:promotion:{player_id}".encode()
+                        f"{event_id}:promotion:{player_id}:{withdrawn_at}".encode()
                     ).hexdigest()[:24],
                     "enforce_nonce": True,
                 },
@@ -305,28 +367,14 @@ def manager_remove(
             return False
         promoted_id = next_waitlisted(event, current, table_name)
         removed_at = time.time()
-        db.add(
-            EventWithdrawal(
-                event_id=event_id,
-                discord_id=player_id,
-                table_name=table_name,
-                withdrawn_at=removed_at,
-                promoted_id=promoted_id,
-            )
-        )
+        record_withdrawal(db, event_id, player_id, table_name, removed_at, promoted_id)
         left = result_players(db, run)[player_id]
         left_name = (
             clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
         )
         if promoted_id:
             promoted_name = (
-                clean(
-                    next(
-                        player["name"]
-                        for player in run.snapshot["players"]
-                        if player["id"] == promoted_id
-                    )
-                )
+                clean(result_players(db, run)[promoted_id]["name"])
                 if promoted_id.startswith("test-")
                 else f"<@{promoted_id}>"
             )
@@ -361,7 +409,7 @@ def manager_remove(
                         "content": content,
                         "allowed_mentions": {"parse": [], "users": mentions},
                         "nonce": hashlib.sha256(
-                            f"{event_id}:manager-removal:{player_id}".encode()
+                            f"{event_id}:manager-removal:{player_id}:{removed_at}".encode()
                         ).hexdigest()[:24],
                         "enforce_nonce": True,
                     },
@@ -415,7 +463,10 @@ def manager_add(
             return False
         if player_id in current["assignments"]:
             return False
-        if db.get(EventWithdrawal, (event_id, player_id)) is not None:
+        if (
+            not waitlisted
+            and db.get(EventWithdrawal, (event_id, player_id)) is not None
+        ):
             return False
         profile = db.get(PlayerProfile, (guild_id, player_id))
         known = result_players(db, run)
@@ -439,14 +490,19 @@ def manager_add(
                 override.choices = [table_name]
                 override.removed = False
             known[player_id] = {"id": player_id, "name": profile.discord_name}
-        db.add(
-            EventManualAssignment(
-                event_id=event_id,
-                discord_id=player_id,
-                table_name=table_name,
-                assigned_at=time.time(),
+        assignment = db.get(EventManualAssignment, (event_id, player_id))
+        if assignment is None:
+            db.add(
+                EventManualAssignment(
+                    event_id=event_id,
+                    discord_id=player_id,
+                    table_name=table_name,
+                    assigned_at=time.time(),
+                )
             )
-        )
+        else:
+            assignment.table_name = table_name
+            assignment.assigned_at = time.time()
         event = db.get(Event, event_id)
         assert event is not None
         queue_member(db, event, player_id)

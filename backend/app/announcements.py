@@ -58,6 +58,9 @@ def payloads(
             (header, table_entries or [("No players assigned.", None)], True)
         )
     by_id = {p["id"]: p for p in snapshot["players"]}
+    for table in result["tables"]:
+        for player in table.get("waitlist", []):
+            by_id.setdefault(player["id"], player)
     waiting: list[tuple[str, str | None]] = []
     for i, pid in enumerate(result["waitlist"], 1):
         waiting.append((f"{i}. {name(by_id[pid])}", None))
