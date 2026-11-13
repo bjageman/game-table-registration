@@ -13,7 +13,7 @@ const sortHeaders: { key: SortKey; label: string }[] = [
   { key: "discord_name", label: "Username" },
   { key: "real_name", label: "Display Name" },
   { key: "weighting", label: "Weight" },
-  { key: "is_test", label: "Test Label" },
+  { key: "is_test", label: "Label" },
 ];
 const nameOrder = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
@@ -71,7 +71,7 @@ export default function PlayerLookup({ session, onAccessError }: {
       <p>{visible.length} {visible.length === 1 ? "player" : "players"}</p>
       {visible.length ? <div className="player-lookup-table">
         <div className="player-lookup-columns">{sortHeaders.map(({ key, label }) => <button id={`player-lookup-sort-${key}`} key={key}
-          type="button" className="player-lookup-sort" aria-pressed={sort.key === key}
+          type="button" className={`player-lookup-sort${key === "weighting" ? " player-lookup-sort-weight" : ""}`} aria-pressed={sort.key === key}
           aria-label={`Sort by ${label}${sort.key === key ? `, currently ${sort.direction === "asc" ? "ascending" : "descending"}` : ""}`}
           onClick={() => changeSort(key)}>
           {label}{sort.key === key && (sort.direction === "asc" ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />)}

@@ -625,7 +625,8 @@ dd {
 .player-lookup-columns { padding: 0 4px 8px; color: #52665a; font-size: 0.875rem; font-weight: 650; }
 .player-lookup-sort { min-width: 0; display: inline-flex; align-items: center; justify-content: flex-start; gap: 3px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; white-space: nowrap; }
 .player-lookup-sort svg { flex: none; }
-.player-lookup-sort:first-child { justify-content: center; }
+.player-lookup-sort:first-child,
+.player-lookup-sort-weight { justify-content: center; }
 .player-lookup-sort:hover { background: transparent; color: #19432f; }
 .player-lookup-list { list-style: none; margin: 0; padding: 0; }
 .player-lookup-list li + li { border-top: 1px solid #dce3d9; }
@@ -633,7 +634,7 @@ dd {
 .player-lookup-star { display: grid; place-items: center; color: #a27618; }
 .player-lookup-username,
 .player-lookup-display-name { min-width: 0; overflow-wrap: anywhere; }
-.player-lookup-weight { text-align: right; font-variant-numeric: tabular-nums; color: #52665a; }
+.player-lookup-weight { text-align: center; font-variant-numeric: tabular-nums; color: #52665a; }
 .player-lookup-test { display: flex; }
 /* Reserve room for floating labels and keep spacing independent of field type. */
 .form-fields {
