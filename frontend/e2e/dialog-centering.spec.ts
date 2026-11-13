@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { mockApiDefaults } from "./apiMocks";
+
+test.beforeEach(async ({ page }) => mockApiDefaults(page));
 
 test("centers the event details modal in the viewport", async ({ page }) => {
   await page.route("**/api/me", (route) => route.fulfill({ json: { username: "organizer", csrf: "csrf" } }));
