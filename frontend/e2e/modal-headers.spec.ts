@@ -46,9 +46,9 @@ for (const title of ["Demo Event Time", "A very long event name that needs to fi
     await expectHeaderFits(confirmation);
     const narrowSize = await confirmation.locator("h2").evaluate((heading) => parseFloat(getComputedStyle(heading).fontSize));
     await page.setViewportSize({ width: 1280, height: 900 });
+    await expect.poll(() => confirmation.locator("h2").evaluate((heading) =>
+      parseFloat(getComputedStyle(heading).fontSize))).toBeGreaterThan(narrowSize);
     await expectHeaderFits(confirmation);
-    const wideSize = await confirmation.locator("h2").evaluate((heading) => parseFloat(getComputedStyle(heading).fontSize));
-    expect(wideSize).toBeGreaterThan(narrowSize);
     await confirmation.getByRole("button", { name: "Cancel" }).click();
     await expect(confirmation).not.toBeVisible();
     expect(errors).toEqual([]);
