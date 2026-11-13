@@ -1,5 +1,6 @@
 """Assignments API routes."""
 
+import logging
 import secrets
 import time
 from typing import Any
@@ -17,6 +18,7 @@ from app.announcements import (
 from app.announcements import (
     status as announcement_status,
 )
+from app.assignment_finalization import approve
 from app.assignment_preferences import for_event as preferences_for_event
 from app.context import ApplicationContext
 from app.models import (
@@ -37,6 +39,22 @@ def register(context: ApplicationContext) -> None:
     engine = context.engine
     list_names = context.list_names
     scoped_discord = context.scoped_discord
+
+    @router.post("/api/events/{event_id}/assignments/approve")
+    def approve_assignments(event_id: str, request: Request) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            context.scoped_event(db, event_id, request)
+        approve(engine, event_id, destination(request).discord_channel_id)
+        try:
+            deliver_event(engine, scoped_discord(request), event_id)
+        except Exception:
+            # The durable queue continues delivery after a transient failure.
+            logging.getLogger(__name__).exception(
+                "Approved assignments remain queued for %s", event_id
+            )
+        with DBSession(engine) as db:
+            return context.serialize(context.scoped_event(db, event_id, request))
 
     @router.get("/api/events/{event_id}/announcement")
     def announcement(event_id: str, request: Request) -> dict[str, Any]:

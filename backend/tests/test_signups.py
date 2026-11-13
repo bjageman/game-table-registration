@@ -10,7 +10,7 @@ from unittest.mock import Mock
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from flow_helpers import event_body, login
+from flow_helpers import event_body, login, set_assignment_review
 from httpx import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -86,9 +86,10 @@ def interaction(event, action="open", user="1", values=None):
     }
 
 
-def publish(custom_client, *, reaction=False):
+def publish(custom_client, *, reaction=False, review=False):
     client, _, _ = custom_client
     headers = login(client)
+    set_assignment_review(client, headers, review)
     body = {
         **event_body(),
         "tables": [{"name": "A", "capacity": 1}, {"name": "B", "capacity": 1}],

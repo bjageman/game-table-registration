@@ -3,7 +3,7 @@
 import time
 from datetime import UTC, datetime, timedelta
 
-from flow_helpers import event_body, login
+from flow_helpers import event_body, login, set_assignment_review
 from sqlalchemy.orm import Session as DBSession
 
 
@@ -11,6 +11,7 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
     from app.models import Announcement, Event, LotteryRun, PlayerProfile
 
     headers = login(client)
+    set_assignment_review(client, headers, False)
     assert client.get("/api/me").json()["can_populate_test_users"] is True
     event = client.post("/api/events", headers=headers, json=event_body()).json()
     path = f"/api/events/{event['id']}"
@@ -119,6 +120,7 @@ def test_reaction_close_merges_test_players_with_manager_overrides(client):
     from app.models import Event, LotteryRun
 
     headers = login(client)
+    set_assignment_review(client, headers, False)
     event = client.post("/api/events", headers=headers, json=event_body()).json()
     path = f"/api/events/{event['id']}"
     assert (
@@ -167,6 +169,7 @@ def test_reaction_close_merges_test_players_with_manager_overrides(client):
 
 def test_test_population_requires_server_allowlist_and_can_be_cleared(client):
     headers = login(client)
+    set_assignment_review(client, headers, False)
     event = client.post("/api/events", headers=headers, json=event_body()).json()
     path = f"/api/events/{event['id']}/test-users"
     assert client.post(path, headers=headers, json={"players": 1001}).status_code == 422
@@ -184,6 +187,7 @@ def test_test_population_requires_server_allowlist_and_can_be_cleared(client):
         "username": "Other",
     }
     headers = login(client)
+    set_assignment_review(client, headers, False)
     assert client.get("/api/me").json()["can_populate_test_users"] is False
     assert client.post(path, headers=headers, json={"players": 5}).status_code == 403
 
@@ -192,6 +196,7 @@ def test_weight_adjustment_clamps_and_updates_test_profiles(client):
     from app.models import PlayerProfile
 
     headers = login(client)
+    set_assignment_review(client, headers, False)
     body = event_body()
     body["tables"][0]["capacity"] = 1
     event = client.post("/api/events", headers=headers, json=body).json()

@@ -15,6 +15,7 @@ import { DiscordIcon } from "../../components/DiscordIcon";
 import PopulateTestUsers from "./actions/PopulateTestUsers";
 import AssignmentAnnouncement from "./assignments/AssignmentAnnouncement";
 import SignupDownload from "./exports/SignupDownload";
+import ReviewAssignments from "./assignments/ReviewAssignments";
 import CloseSignups from "./actions/CloseSignups";
 import EventActions from "./actions/EventActions";
 import type { EventRecord } from "../../lib/api";
@@ -51,7 +52,7 @@ export default function EventList({
               <span className="event-list-top">
                 <span className="event-list-title">{event.title}</span>
                 <span className="event-badges"><span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-                  {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}
+                  {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status === "review" ? "Awaiting review" : event.status.replaceAll("_", " "))}
                 </span>{event.is_test && <span className="badge">Test</span>}</span>
                 <span className="event-table-count">{event.tables.length} {event.tables.length === 1 ? "table" : "tables"}</span>
               </span>
@@ -105,7 +106,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
       <ModalHeader className="event-details-header">
         <h2 id={`event-${event.id}`}>{event.title}</h2>
         <span className="event-badges"><span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
-          {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}
+          {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status === "review" ? "Awaiting review" : event.status.replaceAll("_", " "))}
         </span>{event.is_test && <span className="badge">Test</span>}</span>
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
@@ -142,7 +143,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
             </EventDateDetails>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
-            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly || event.status === "review"} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
             </p>}
@@ -150,6 +151,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
+            {event.status === "review" && <ReviewAssignments event={event} csrf={actions.csrf} readOnly={readOnly} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} onLinkChange={setAnnouncementUrl} />}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||

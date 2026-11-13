@@ -289,6 +289,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
     headers, event, path, _ = closing_event(client)
     assert client.get("/api/settings/assignment").json() == {
         "show_open_signup_players": True,
+        "review_assignments_before_discord": False,
         "dm_waitlist_promotions": True,
         "timezone": None,
         "automatic_weight_adjustment": True,

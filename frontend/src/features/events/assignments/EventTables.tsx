@@ -48,7 +48,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [removing, setRemoving] = useState<{ player: SignupPlayer; willPromote: boolean }>();
   const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
   const addDialog = useDialog(Boolean(addingTable));
-  const hasSignups = event.status === "open" || event.status === "closing" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
+  const hasSignups = event.status === "open" || event.status === "closing" || event.status === "review" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
   const canEditSignups = !readOnly && !event.archived_at && (event.status === "draft" || event.status === "scheduled" || event.status === "open" || event.status === "assigned");
   const canRemoveSignups = !readOnly && (canEditSignups || event.status === "assigned");
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
@@ -269,7 +269,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
         return <li id={tableId} key={table.name} className="event-table">
           <div className="table-heading">
             <TableTitle>{table.name}</TableTitle>
-            <span className="table-player-count" aria-label={`${count ?? "Unknown"} ${event.status === "assigned" ? "assigned players" : "signups"} for ${table.capacity} seats`}>
+            <span className="table-player-count" aria-label={`${count ?? "Unknown"} ${(event.status === "assigned" || event.status === "review") ? "assigned players" : "signups"} for ${table.capacity} seats`}>
               {count ?? "—"}/{table.capacity}
             </span>
           </div>
@@ -293,9 +293,9 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
                 onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 5).toFixed(1)}</button>)}
               {canRemoveSignups && <button id={`${tableId}-player-remove-${player.id}`} type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from ${event.status === "assigned" ? "table" : "signups"}`} title={event.status === "assigned" ? "Remove from table" : "Remove from signups"} onClick={() => onRemovePlayer?.(player, event.status === "assigned" && Boolean(row?.waitlist?.length) && (players?.length ?? 0) <= table.capacity)}>✕</button>}
             </li>)}
-          </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}
+          </ul> : <p className="help">{count === 0 ? (event.status === "assigned" || event.status === "review") ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}
           {canEditSignups && event.status !== "scheduled" && !(event.status === "draft" && event.scheduled_publish_at != null) && <button id={`${tableId}-add-player`} type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}
-          {event.status === "assigned" && row && <div className="table-waitlist">
+          {(event.status === "assigned" || event.status === "review") && row && <div className="table-waitlist">
             <h4>Waitlist</h4>
             {row.waitlist?.length ? <ul aria-label={`Waitlist for ${table.name}`}>{row.waitlist.map((player) => <li key={player.id}>
               {onAssignWaitlisted && <button id={`${tableId}-waitlist-add-${player.id}`} type="button" className="add-waitlisted-player" disabled={saving}

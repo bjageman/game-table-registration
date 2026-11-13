@@ -4,14 +4,13 @@ import logging
 import secrets
 import time
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import enqueue
+from app.assignment_finalization import finalize
 from app.assignment_preferences import for_event as assignment_preferences_for_event
 from app.discord_api import DiscordAPI
 from app.lottery import VERSION, GuaranteeConflict, assign
@@ -120,7 +119,7 @@ def close_and_assign(
         event = db.get(Event, event_id)
         if event is None:
             raise HTTPException(404, "Event not found")
-        if event.status == "assigned":
+        if event.status in ("assigned", "review"):
             if db.get(LotteryRun, event_id) is None:
                 raise HTTPException(503, "Saved placements are unavailable")
             return True
@@ -185,6 +184,11 @@ def close_and_assign(
         if adjust_weights is None:
             settings = assignment_preferences_for_event(db, event)
             adjust_weights = settings.automatic_weight_adjustment if settings else True
+        review_required = event.close_review_assignments
+        if review_required is None:
+            review_required = assignment_preferences_for_event(
+                db, event
+            ).review_assignments_before_discord
         seed = event.close_seed or secrets.token_hex(32)
         claimed = db.execute(
             update(Event)
@@ -204,6 +208,7 @@ def close_and_assign(
                 close_weights=weights,
                 close_guarantees=guarantees,
                 close_adjust_weights=adjust_weights,
+                close_review_assignments=review_required,
                 close_error=None,
             )
             .returning(Event.id)
@@ -310,6 +315,7 @@ def close_and_assign(
                     db, manager_event, snapshot["players"], weights
                 )
         snapshot["automatic_weight_adjustment"] = adjust_weights
+        snapshot["review_assignments_before_discord"] = review_required
         result = assign(with_guarantees(snapshot), seed)
         with Session(engine) as db:
             changed = db.execute(
@@ -320,7 +326,7 @@ def close_and_assign(
                     Event.close_token == token,
                 )
                 .values(
-                    status="assigned",
+                    status="review" if review_required else "assigned",
                     close_token=None,
                     close_error=None,
                     closes_at=ended_at,
@@ -331,50 +337,21 @@ def close_and_assign(
                 raise HTTPException(
                     409, "Closing ownership changed. Refresh to see the saved result."
                 )
-            db.add(
-                LotteryRun(
-                    event_id=event_id,
-                    version=VERSION,
-                    seed=seed,
-                    snapshot=snapshot,
-                    result=result,
-                    created_by=moderator,
-                    created_at=time.time(),
-                )
+            run = LotteryRun(
+                event_id=event_id,
+                version=VERSION,
+                seed=seed,
+                snapshot=snapshot,
+                result=result,
+                created_by=moderator,
+                created_at=time.time(),
             )
-            if adjust_weights:
-                profiles = {
-                    p.discord_id: p
-                    for p in db.scalars(
-                        select(PlayerProfile)
-                        .where(PlayerProfile.guild_id == event.guild_id)
-                        .order_by(PlayerProfile.discord_id)
-                        .with_for_update()
-                    )
-                }
-                for player in snapshot["players"]:
-                    profile = profiles.get(player["id"])
-                    if profile is None:
-                        profile = PlayerProfile(
-                            guild_id=event.guild_id,
-                            discord_id=player["id"],
-                            discord_name=player["name"],
-                            weighting=5.0,
-                            is_test=bool(player.get("is_test")),
-                        )
-                        db.add(profile)
-                    delta = Decimal(
-                        "-0.5" if player["id"] in result["assignments"] else "0.5"
-                    )
-                    profile.weighting = float(
-                        min(
-                            Decimal("10"),
-                            max(
-                                Decimal("0.1"), Decimal(str(profile.weighting)) + delta
-                            ),
-                        )
-                    )
-            enqueue(db, event, event.channel_id or channel_id, result, snapshot)
+            db.add(run)
+            if not review_required:
+                db.flush()
+                current_event = db.get(Event, event_id)
+                assert current_event is not None
+                finalize(db, current_event, run, channel_id)
             db.commit()
         return True
     except Exception as failure:
@@ -390,6 +367,7 @@ def close_and_assign(
                         close_guarantees=None,
                         close_weights=None,
                         close_adjust_weights=None,
+                        close_review_assignments=None,
                         close_error=str(failure)[:500],
                     )
                 )

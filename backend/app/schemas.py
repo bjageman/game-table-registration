@@ -105,6 +105,7 @@ class EventTemplateInput(BaseModel):
 
 
 class AssignmentSettingsInput(BaseModel):
+    review_assignments_before_discord: bool = True
     model_config = {"extra": "forbid"}
     automatic_weight_adjustment: bool
     announce_table_changes: bool

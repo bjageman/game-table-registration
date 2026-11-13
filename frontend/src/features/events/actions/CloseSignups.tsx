@@ -28,7 +28,7 @@ export default function CloseSignups({ event, csrf, onUpdated, onAccessError }: 
         const result = await api<EventRecord>(`/events/${encodeURIComponent(event.id)}/close${deleteMessage ? "?delete_signup_message=true" : ""}`, {
           ...mutationOptions(csrf), signal: operation.signal,
         });
-        if (result.status === "assigned") {
+        if (result.status === "assigned" || result.status === "review") {
           setConfirming(false);
           onUpdated(result);
           return;

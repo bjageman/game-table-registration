@@ -67,7 +67,7 @@ def register(context: ApplicationContext) -> None:
         custom_result: tuple[list[dict[str, Any]], str] | None = None
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
-            if event.status == "assigned":
+            if event.status in ("assigned", "review"):
                 run = db.get(LotteryRun, event_id)
                 if run is None:
                     raise HTTPException(503, "Saved placements are unavailable")

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models import AssignmentPreference, Event
 
 DEFAULTS = {
+    "review_assignments_before_discord": True,
     "automatic_weight_adjustment": True,
     "announce_table_changes": True,
     "post_discord_updates_to_thread": True,

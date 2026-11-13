@@ -12,9 +12,9 @@ function props() {
 }
 afterEach(() => { cleanup(); localStorage.clear(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("requires confirmation and sends the close operation with CSRF", async () => {
+it.each(["assigned", "review"])("requires confirmation and handles a completed %s draw with CSRF", async (status) => {
   const parameters = props();
-  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ...event, status: "assigned" })));
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ...event, status })));
   vi.stubGlobal("fetch", fetchMock);
   render(<CloseSignups {...parameters} />);
   fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
@@ -23,7 +23,7 @@ it("requires confirmation and sends the close operation with CSRF", async () => 
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
-  await waitFor(() => expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: "assigned" })));
+  await waitFor(() => expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status })));
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(fetchMock).toHaveBeenCalledWith("/api/events/event/close", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }) }));
 });
