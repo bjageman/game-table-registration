@@ -37,14 +37,14 @@ it.each(["open", "assigned"])("suggests known players and adds the selected play
   expect(await screen.findByRole("button", { name: "mary" })).toBeVisible();
 });
 
-it("closes the add player dialog with its X and a backdrop click", () => {
+it("closes the add player dialog with Cancel and a backdrop click", () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   vi.stubGlobal("fetch", vi.fn(async () => new Response("[]")));
   render(<EventTables csrf="csrf" event={{ ...event, status: "draft", discord_url: null }} onAccessError={() => false} />);
   const add = screen.getAllByRole("button", { name: "Add Player" })[0];
   fireEvent.click(add);
-  fireEvent.click(screen.getByRole("button", { name: "Close add player" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("dialog", { name: /Add a player/ })).not.toBeInTheDocument();
   fireEvent.click(add);
   const dialog = screen.getByRole("dialog", { name: /Add a player/ });

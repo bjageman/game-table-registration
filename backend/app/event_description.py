@@ -33,6 +33,22 @@ def signup_location(value: str | None) -> str:
     return f"Location: {clean(value)}\n" if value and value.strip() else ""
 
 
+def signup_content(
+    event: Event,
+    default: str,
+    deadline: str,
+    tables: list[str] | None = None,
+) -> str:
+    message = (
+        f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
+        f"Event: <t:{int(event.starts_at)}:F>\n"
+        f"{signup_location(event.location)}{deadline}"
+    )
+    if tables:
+        message += "\n\n" + "\n".join(tables)
+    return f"{message}\n\n{signup_description(event.description, default)}"
+
+
 def signup_embed(
     event: Event, default: str, deadline: str, labels: list[str] | None = None
 ) -> dict[str, Any]:

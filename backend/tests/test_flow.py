@@ -221,7 +221,7 @@ def test_signup_deadline_is_relative_to_event_or_open_ended(client, offset):
     assert published.json()["signup_mode"] == "reactions"
     payload = client.app.state.discord.publish.call_args.args[0]
     if offset is None:
-        assert "stay open until closed manually" in payload["embeds"][0]["description"]
+        assert "stay open until closed manually" in payload["content"]
     now = time.time()
     assert reactions.replace(client.app.state.engine, event["id"], [], now)
     reactions.change(client.app.state.engine, event["id"], "1️⃣", "1", "Mary", True, now)
@@ -398,8 +398,9 @@ def test_login_publish_and_duplicate_protection(client):
     assert published.json()["discord_url"].endswith("/message")
     assert client.post(path, headers=headers).status_code == 409
     payload = client.app.state.discord.publish.call_args.args[0]
-    assert payload["embeds"][0]["description"].startswith("Bring friends\n\nEvent:")
-    assert "This is a lottery entry" not in payload["embeds"][0]["description"]
+    assert "embeds" not in payload
+    assert payload["content"].startswith("**Friday games**\nEvent:")
+    assert "Bring friends" in payload["content"]
     assert payload["poll"]["allow_multiselect"] is True
     assert payload["allowed_mentions"] == {"parse": []}
     assert (
@@ -1678,6 +1679,7 @@ def test_table_change_notices_are_off_until_enabled(client):
 def test_assignment_settings_follow_selected_organization_and_admin_role(client):
     owner_headers = login(client)
     personal = {
+        "show_open_signup_players": False,
         "timezone": "America/Los_Angeles",
         "automatic_weight_adjustment": False,
         "announce_table_changes": True,
@@ -1701,6 +1703,7 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
         == 200
     )
     defaults = {
+        "show_open_signup_players": False,
         "timezone": None,
         "automatic_weight_adjustment": True,
         "announce_table_changes": False,
@@ -1708,6 +1711,7 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
     }
     assert client.get("/api/settings/assignment").json() == defaults
     shared = {
+        "show_open_signup_players": True,
         "timezone": "Europe/London",
         "automatic_weight_adjustment": False,
         "announce_table_changes": False,
@@ -2157,7 +2161,7 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
     discord = client.app.state.discord
     discord.send_announcement.assert_not_called()
     assert client.post(path + "/publish", headers=headers).status_code == 200
-    assert "[TEST]" in discord.publish.call_args.args[0]["embeds"][0]["title"]
+    assert "[TEST]" in discord.publish.call_args.args[0]["content"]
     discord.table_signups.return_value = [
         {"name": "Clocktower", "players": [{"id": "999", "name": "Real Signup"}]}
     ]
@@ -2716,6 +2720,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
 
     headers, event, path, _ = closing_event(client)
     assert client.get("/api/settings/assignment").json() == {
+        "show_open_signup_players": False,
         "timezone": None,
         "automatic_weight_adjustment": True,
         "announce_table_changes": False,
@@ -3143,6 +3148,7 @@ def test_organization_connection_is_independent_of_personal_and_other_orgs(clien
     )
     assert client.get("/api/settings").json()["selection"] is None
     preferences = {
+        "show_open_signup_players": False,
         "timezone": None,
         "automatic_weight_adjustment": False,
         "announce_table_changes": True,
@@ -3358,3 +3364,73 @@ def test_general_timezone_is_validated_persisted_and_available_to_session(client
         == 200
     )
     assert client.get("/api/me").json()["timezone"] is None
+
+
+def test_optional_open_signup_rosters_publish_refresh_and_restore(client):
+    from app.open_signup_rosters import synchronize_due
+
+    headers = login(client)
+    settings = {
+        "automatic_weight_adjustment": True,
+        "announce_table_changes": False,
+        "post_discord_updates_to_thread": False,
+        "show_open_signup_players": True,
+    }
+    assert (
+        client.get("/api/settings/assignment").json()["show_open_signup_players"]
+        is False
+    )
+    assert client.put("/api/settings/assignment", json=settings).status_code == 403
+    assert (
+        client.put("/api/settings/assignment", headers=headers, json=settings).json()[
+            "show_open_signup_players"
+        ]
+        is True
+    )
+    legacy = {
+        key: value
+        for key, value in settings.items()
+        if key != "show_open_signup_players"
+    }
+    assert (
+        client.put("/api/settings/assignment", headers=headers, json=legacy).json()[
+            "show_open_signup_players"
+        ]
+        is True
+    )
+    event = client.post("/api/events", headers=headers, json=event_body()).json()
+    path = f"/api/events/{event['id']}"
+    assert (
+        client.put(
+            path + "/manager-players/1",
+            headers=headers,
+            json={"table": "Clocktower", "name": "One"},
+        ).status_code
+        == 200
+    )
+    assert client.post(path + "/publish", headers=headers).status_code == 200
+    discord = client.app.state.discord
+    payload = discord.publish.call_args.args[0]
+    assert "poll" in payload
+    assert "Total users signed up: 1" in payload["embeds"][0]["description"]
+    assert "<@1>" in payload["embeds"][0]["fields"][0]["value"]
+    discord.table_signups.return_value = [
+        {"name": "Clocktower", "players": [{"id": "2", "name": "Two"}]}
+    ]
+    synchronize_due(client.app.state.engine, lambda guild, channel: discord)
+    edit = discord.edit_announcement.call_args.args[2]
+    assert "Total users signed up: 2" in edit["embeds"][0]["description"]
+    assert "poll" not in edit
+    assert (
+        client.put(
+            "/api/settings/assignment",
+            headers=headers,
+            json={**settings, "show_open_signup_players": False},
+        ).status_code
+        == 200
+    )
+    synchronize_due(client.app.state.engine, lambda guild, channel: discord)
+    restored = discord.edit_announcement.call_args.args[2]
+    assert restored["embeds"] == []
+    assert "Total users signed up" not in restored["content"]
+    assert "Signups open for 24 hours." in restored["content"]

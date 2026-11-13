@@ -57,6 +57,6 @@ test("saves the timezone and keeps all three event timestamps on single lines", 
   await expect(page.locator(".event-date-line").first().locator("time")).toContainText("11:00");
   await page.locator("#event-close-event").click();
   await page.locator("#event-create-button").click();
-  await expect(page.getByText("Event times are in America/Los Angeles.")).toBeVisible();
+  await expect(page.locator("#event-form")).toBeVisible();
   expect(errors).toEqual([]);
 });

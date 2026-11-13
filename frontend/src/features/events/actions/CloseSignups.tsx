@@ -51,7 +51,6 @@ export default function CloseSignups({ event, csrf, onUpdated, onAccessError }: 
     {confirming && <ConfirmationDialog id={`event-close-signups-dialog-${event.id}`} title={`Close signups for ${event.title}?`}
       busy={busy} error={error} status="Closing signups and determining placement…"
       onCancel={() => setConfirming(false)} onConfirm={() => void close()}>
-      <p>This closes signups and assigns players to their selected tables. The saved placements cannot be redrawn.{event.is_test ? " This event includes test users; its Discord announcement will be marked TEST." : ""}</p>
       {event.discord_url && <label className="delete-poll-option"><input type="checkbox" checked={deleteMessage} disabled={busy}
         onChange={(change) => setDeleteMessage(change.target.checked)} /> Also delete the signup message on Discord</label>}
     </ConfirmationDialog>}

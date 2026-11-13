@@ -36,7 +36,6 @@ export default function ShareEvent({ eventId, csrf, onAccessError }: {
       <ModalHeader><h2 id="share-event-heading">Share table assignments</h2>
         <button id={`event-share-close-${eventId}`} type="button" aria-label="Close sharing" onClick={() => setOpen(false)}><X size={18} aria-hidden="true" /></button>
       </ModalHeader>
-      <p>Anyone with this link can view the current table assignments and waitlists without signing in.</p>
       {error && <p role="alert" className="error">{error}</p>}
       {!url && !error && <p role="status">Preparing link…</p>}
       {url && <>

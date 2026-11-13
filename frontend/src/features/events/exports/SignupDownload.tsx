@@ -46,7 +46,6 @@ export default function SignupDownload({ event, onAccessError }: {
         <h2>Download signups</h2>
         <button id={`event-download-close-${event.id}`} type="button" aria-label="Close dialog" title="Close" disabled={busy} onClick={() => setOpen(false)}><X size={18} aria-hidden="true" /></button>
       </ModalHeader>
-      <p>Choose a file for {event.title}.</p>
       {error && <p role="alert" className="error">{error}</p>}
       <div className="form-actions">
         <button id={`event-download-pdf-${event.id}`} type="button" disabled={busy} onClick={() => void save("pdf")}>Download PDF</button>

@@ -11,22 +11,36 @@ from app.announcements import clean
 from app.config import Settings
 from app.event_description import (
     CUSTOM_DESCRIPTION,
+    signup_content,
     signup_embed,
 )
 from app.event_threads import queue_member
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
-def publication(event: Event, closes_at: float) -> dict[str, Any]:
+def publication(
+    event: Event, closes_at: float, include_roster: bool = True
+) -> dict[str, Any]:
+    deadline = f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
+    if include_roster:
+        payload: dict[str, Any] = {
+            "embeds": [
+                signup_embed(
+                    event,
+                    CUSTOM_DESCRIPTION,
+                    deadline,
+                    [clean(table["name"]) for table in event.tables],
+                )
+            ]
+        }
+    else:
+        rows = [
+            f"- {clean(table['name'])} · {table['capacity']} seats"
+            for table in event.tables
+        ]
+        payload = {"content": signup_content(event, CUSTOM_DESCRIPTION, deadline, rows)}
     return {
-        "embeds": [
-            signup_embed(
-                event,
-                CUSTOM_DESCRIPTION,
-                f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)",
-                [clean(table["name"]) for table in event.tables],
-            )
-        ],
+        **payload,
         "allowed_mentions": {"parse": []},
         "components": [
             {
@@ -314,6 +328,8 @@ def handle(engine: Engine, config: Settings, payload: dict[str, Any]) -> dict[st
         }
         if action == "open":
             response["data"]["flags"] = 64
+        else:
+            event.signup_roster_checked_at = None
         db.add(
             SignupInteraction(id=interaction_id, event_id=event_id, response=response)
         )

@@ -49,7 +49,7 @@ export default function ArchiveEvent({ event, csrf, onUpdated, onAccessError }: 
       onClick={() => { setError(""); setConfirming(true); }}><Archive size={18} aria-hidden="true" /></button>
     {confirming && <ConfirmationDialog id={`event-archive-dialog-${event.id}`} title={`Archive ${event.title}?`} busy={busy} error={error} status={status}
       onCancel={() => setConfirming(false)} onConfirm={() => void archive()}>
-      <p>This keeps the event and its saved placements in the archive.</p>
+      {null}
       <label className="delete-poll-option"><input type="checkbox" checked={deleteMessages} disabled={busy}
         onChange={(change) => setDeleteMessages(change.target.checked)} /> Also delete the signup and assignment messages on Discord</label>
     </ConfirmationDialog>}

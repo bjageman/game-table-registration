@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.announcements import clean
 from app.event_description import (
     REACTION_DESCRIPTION,
+    signup_content,
     signup_embed,
 )
 from app.event_threads import queue_member
@@ -20,17 +21,28 @@ GAP = (
 )
 
 
-def publication(event: Event, closes_at: float | None) -> dict[str, Any]:
+def publication(
+    event: Event, closes_at: float | None, include_roster: bool = True
+) -> dict[str, Any]:
     labels = [f"{EMOJIS[i]} {clean(t['name'])}" for i, t in enumerate(event.tables)]
     deadline = (
         f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
         if closes_at is not None
         else "Signups stay open until closed manually."
     )
-    return {
-        "embeds": [signup_embed(event, REACTION_DESCRIPTION, deadline, labels)],
-        "allowed_mentions": {"parse": []},
-    }
+    if include_roster:
+        payload: dict[str, Any] = {
+            "embeds": [signup_embed(event, REACTION_DESCRIPTION, deadline, labels)]
+        }
+    else:
+        rows = [
+            f"{EMOJIS[i]} {clean(table['name'])} · {table['capacity']} seats"
+            for i, table in enumerate(event.tables)
+        ]
+        payload = {
+            "content": signup_content(event, REACTION_DESCRIPTION, deadline, rows)
+        }
+    return {**payload, "allowed_mentions": {"parse": []}}
 
 
 def event_for(engine: Engine, guild: str, channel: str, message: str) -> str | None:
@@ -64,7 +76,7 @@ def change(
                 Event.signup_mode == "reactions",
                 (Event.closes_at.is_(None)) | (Event.closes_at > observed_at),
             )
-            .values(status=Event.status)
+            .values(status=Event.status, signup_roster_checked_at=None)
             .returning(Event.id)
         ).scalar_one_or_none()
         if claimed is None:
@@ -159,7 +171,11 @@ def replace(
                 (Event.closes_at.is_(None)) | (Event.closes_at > time.time()),
                 Event.signup_mode == "reactions",
             )
-            .values(reaction_checkpoint=started, reaction_error=None)
+            .values(
+                reaction_checkpoint=started,
+                reaction_error=None,
+                signup_roster_checked_at=None,
+            )
             .returning(Event.id)
         ).scalar_one_or_none()
         if not changed:

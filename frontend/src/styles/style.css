@@ -581,6 +581,7 @@ dd {
 .event-modal-header > button { margin-left: auto; flex-shrink: 0; width: var(--action-button-height); height: var(--action-button-height); padding: 8px; }
 
 .event-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.event-publish-action { gap: 6px; }
 .event-header-actions > button,
 .event-header-actions > .button { min-height: var(--action-button-height); white-space: nowrap; }
 .event-icon-action { padding: 8px; width: var(--action-button-height); height: var(--action-button-height); min-width: var(--action-button-height); min-height: var(--action-button-height); flex-shrink: 0; }

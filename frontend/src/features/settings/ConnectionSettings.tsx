@@ -134,9 +134,6 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
         </div>
         {!restricted && guildId && !channels && !channelError && <p><LoadingIndicator label="Loading channels…" /></p>}
         {channelError && <p role="alert" className="error">Could not load channels. {channelError}</p>}
-        {!restricted && guildId && <>
-          <p className="help">If channels are missing, disconnect from Discord and reconnect.</p>
-        </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
         <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button id="discord-settings-save-button" className="primary" type="submit" disabled={restricted || saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></span>
         {setup.selection && !setup.disconnected && <DisconnectDiscord csrf={csrf} disabled={saving || restricted} onAccessError={onAccessError} onBusyChange={setSaving}

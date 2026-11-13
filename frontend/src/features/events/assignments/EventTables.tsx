@@ -6,7 +6,7 @@ import { api, errorMessage, mutationOptions, type EventRecord } from "../../../l
 import LoadingIndicator from "../../../components/LoadingIndicator";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import { isBackdropClick } from "../../../lib/dialogBackdrop";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 
 interface SignupPlayer { id: string; name: string; display_name?: string; weighting?: number; guaranteed_table?: string | null; guaranteed_seat?: boolean }
 type SortColumn = "guarantee" | "player" | "weight";
@@ -158,9 +158,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       onClick={(event) => { if (isBackdropClick(event)) closeAddPlayer(); }}>
       <ModalHeader>
         <h2 id="add-player-heading">Add a player to {addingTable}</h2>
-        <button id="event-add-player-close-button" type="button" disabled={saving} aria-label="Close add player" title="Close" onClick={closeAddPlayer}><X size={18} aria-hidden="true" /></button>
       </ModalHeader>
-      {event.status === "assigned" && <p>Add this player directly to the table, even if it is full. Discord assignments will update automatically.</p>}
       {actionError && <p role="alert" className="error">{actionError}</p>}
       <div className="add-player-search">
         <label htmlFor="add-player-query">Search players</label>
@@ -176,7 +174,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
               </button>
             </li>)}
           </ul> : <p className="help">No known players match “{playerQuery}”.</p>
-          : <p className="help">Type a name or Discord ID to see known players.</p>}
+          : null}
       </div>
       <div className="form-actions"><button id="event-add-player-cancel-button" type="button" disabled={saving} onClick={closeAddPlayer}>Cancel</button></div>
     </dialog>}
