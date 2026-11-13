@@ -482,9 +482,7 @@ def manager_add(
                         channel_id=channel_id,
                         payload={
                             "content": (
-                                f"{name} has been "
-                                f"{action} "
-                                f"to **{clean(table_name)}**."
+                                f"{name} has been {action} to **{clean(table_name)}**."
                             ),
                             "allowed_mentions": {
                                 "parse": [],
