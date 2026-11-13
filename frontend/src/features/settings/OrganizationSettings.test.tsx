@@ -1,8 +1,50 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import OrganizationSettings from "./OrganizationSettings";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+it("requires confirmation to delete the organization and allows cancellation and retry", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  let deleted = false;
+  let attempts = 0;
+  const onSaved = vi.fn(async () => {});
+  const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/organizations") return new Response(JSON.stringify({
+      selected_id: deleted ? null : "org",
+      organizations: deleted ? [] : [{ id: "org", name: "Friday Crew", created_by: "owner", role: "admin" }],
+    }));
+    if (url === "/api/organizations/org/members") return new Response("[]");
+    if (url === "/api/organizations/org" && options?.method === "DELETE") {
+      attempts++;
+      if (attempts === 1) return new Response(JSON.stringify({ detail: "Please try again" }), { status: 503 });
+      deleted = true;
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<OrganizationSettings csrf="csrf" userId="owner" onSaved={onSaved} onAccessError={() => false} />);
+  const deleteButton = await screen.findByRole("button", { name: "Delete" });
+  fireEvent.click(deleteButton);
+  let dialog = screen.getByRole("dialog", { name: "Delete organization?" });
+  expect(dialog).toHaveTextContent("Are you sure you want to delete Friday Crew?");
+  expect(attempts).toBe(0);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(dialog).not.toBeInTheDocument();
+  expect(attempts).toBe(0);
+  fireEvent.click(deleteButton);
+  dialog = screen.getByRole("dialog", { name: "Delete organization?" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Please try again");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  expect(onSaved).toHaveBeenCalledOnce();
+  expect(fetchMock).toHaveBeenCalledWith("/api/organizations/org", expect.objectContaining({
+    method: "DELETE", headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }),
+  }));
+});
 
 it("opens the create form in a dialog and selects the new organization", async () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };

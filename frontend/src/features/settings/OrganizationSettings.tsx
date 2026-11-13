@@ -26,6 +26,8 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [addUserError, setAddUserError] = useState("");
   const [removingMember, setRemovingMember] = useState<Member>();
   const [removeError, setRemoveError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const addUserDialog = useRef<HTMLDialogElement>(null);
   const [role, setRole] = useState<Organization["role"]>("user");
   const [loading, setLoading] = useState(true);
@@ -141,14 +143,21 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
     finally { setBusy(false); }
   }
   async function remove() {
-    if (!selected) return;
+    if (!selected || busy) return;
     const creator = selected.created_by === userId;
+    if (creator && !confirmingDelete) return;
     const path = creator ? `/organizations/${selected.id}` : `/organizations/${selected.id}/members/me`;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setDeleteError("");
     try {
       await api(path, { ...mutationOptions(csrf), method: "DELETE" });
+      setConfirmingDelete(false);
       setSelectedId(""); setRevision((value) => value + 1); await onSaved();
-    } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
+    } catch (failure) {
+      if (!onAccessError(failure)) {
+        if (creator) setDeleteError(errorMessage(failure));
+        else setError(errorMessage(failure));
+      }
+    }
     finally { setBusy(false); }
   }
   return <div className="organization-settings">
@@ -158,7 +167,13 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       <option value="">Personal events</option>
       {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
     </select>
-    <button type="button" disabled={busy} onClick={() => { setCreateError(""); setCreating(true); }}>Create</button>
+    <div className="form-actions">
+      <button type="button" disabled={busy} onClick={() => { setCreateError(""); setCreating(true); }}>Create</button>
+      {selected && <button type="button" disabled={busy} onClick={() => {
+        if (selected.created_by === userId) { setDeleteError(""); setConfirmingDelete(true); }
+        else void remove();
+      }}>{selected.created_by === userId ? "Delete" : "Leave organization"}</button>}
+    </div>
     {creating && <dialog ref={createDialog} aria-labelledby="organization-create-heading"
       onCancel={(event) => { event.preventDefault(); closeCreate(); }}
       onClick={(event) => { if (isBackdropClick(event)) closeCreate(); }}>
@@ -216,7 +231,10 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
         <div className="form-actions"><button type="submit" className="primary" disabled={busy || !newUser}>{busy ? "Adding…" : "Add User"}</button></div>
         </form>
       </dialog>}
-      <button type="button" disabled={busy} onClick={() => void remove()}>{selected.created_by === userId ? "Delete organization" : "Leave organization"}</button>
+      {confirmingDelete && <ConfirmationDialog title="Delete organization?" busy={busy} error={deleteError}
+        onCancel={() => { setConfirmingDelete(false); setDeleteError(""); }} onConfirm={() => void remove()}>
+        <p>Are you sure you want to delete {selected.name}? This cannot be undone.</p>
+      </ConfirmationDialog>}
     </>}
   </div>;
 }
