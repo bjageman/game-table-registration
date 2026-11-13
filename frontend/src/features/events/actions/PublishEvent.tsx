@@ -68,7 +68,7 @@ export default function PublishEvent({
 
   return (
     <>
-      <button
+      <button id={`event-publish-${event.id}`}
         className="primary event-icon-action"
         type="button"
         aria-label="Publish to Discord"
@@ -89,7 +89,7 @@ export default function PublishEvent({
         </p>
       )}
       {confirming && (
-        <ConfirmationDialog
+        <ConfirmationDialog id={`event-publish-dialog-${event.id}`}
           title={`Publish ${event.title}?`}
           busy={busy}
           error={error}

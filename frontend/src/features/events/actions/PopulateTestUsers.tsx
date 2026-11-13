@@ -28,8 +28,8 @@ export default function PopulateTestUsers({ event, csrf, onUpdated, onAccessErro
     finally { inFlight.current = false; setBusy(false); }
   }
   return <>
-    <button type="button" onClick={() => { setError(""); setOpen(true); }}>Populate Test Users</button>
-    {open && <ConfirmationDialog title="Populate test users?" busy={busy} error={error}
+    <button id={`event-populate-test-users-${event.id}`} type="button" onClick={() => { setError(""); setOpen(true); }}>Populate Test Users</button>
+    {open && <ConfirmationDialog id={`event-populate-test-users-dialog-${event.id}`} title="Populate test users?" busy={busy} error={error}
       status="Adding test signups…" onCancel={() => setOpen(false)} onConfirm={() => void populate()}>
       <FormFields><FormField label="Test Users" type="number" value={players} disabled={busy} fullWidth
         onChange={(e) => setPlayers(e.target.value)}

@@ -40,10 +40,11 @@ export default function EventList({
   const selected = events.find((event) => event.id === selectedId);
   return (
     <>
-      <ul className="event-list">
+      <ul id="events-list" className="event-list">
         {events.map((event) => (
           <li key={event.id}>
             <button
+              id={`event-open-${event.id}`}
               type="button"
               className="event-list-item"
               aria-haspopup="dialog"
@@ -126,7 +127,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
     };
   }, []);
   return (
-    <dialog onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
+    <dialog id={`event-dialog-${event.id}`} onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <div className="event-modal-header">
         <h2 ref={title} id={`event-${event.id}`}>{event.title}</h2>
@@ -166,7 +167,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
             </>
           )}
         </div>
-        <button type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
+        <button id={`event-close-${event.id}`} type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
           <X size={18} aria-hidden="true" />
         </button>
       </div>

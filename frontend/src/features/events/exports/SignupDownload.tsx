@@ -34,20 +34,20 @@ export default function SignupDownload({ event, onAccessError }: {
   }
 
   return <>
-    <button type="button" className="event-icon-action" aria-label="Download event signups" title="Download Signups"
+    <button id={`event-download-${event.id}`} type="button" className="event-icon-action" aria-label="Download event signups" title="Download Signups"
       onClick={() => { setError(""); setOpen(true); }}><Download size={18} aria-hidden="true" /></button>
-    {open && <dialog ref={dialog} aria-label={`Download signups for ${event.title}`}
+    {open && <dialog id={`event-download-dialog-${event.id}`} ref={dialog} aria-label={`Download signups for ${event.title}`}
       onClick={(click) => { if (!busy && isBackdropClick(click)) setOpen(false); }}
       onCancel={(cancel) => { cancel.preventDefault(); if (!busy) setOpen(false); }}>
       <div className="event-modal-header">
         <h2>Download signups</h2>
-        <button type="button" aria-label="Close dialog" title="Close" disabled={busy} onClick={() => setOpen(false)}><X size={18} aria-hidden="true" /></button>
+        <button id={`event-download-close-${event.id}`} type="button" aria-label="Close dialog" title="Close" disabled={busy} onClick={() => setOpen(false)}><X size={18} aria-hidden="true" /></button>
       </div>
       <p>Choose a file for {event.title}.</p>
       {error && <p role="alert" className="error">{error}</p>}
       <div className="form-actions">
-        <button type="button" disabled={busy} onClick={() => void save("pdf")}>Download PDF</button>
-        <button type="button" disabled={busy} onClick={() => void save("csv")}>Download CSV</button>
+        <button id={`event-download-pdf-${event.id}`} type="button" disabled={busy} onClick={() => void save("pdf")}>Download PDF</button>
+        <button id={`event-download-csv-${event.id}`} type="button" disabled={busy} onClick={() => void save("csv")}>Download CSV</button>
       </div>
     </dialog>}
   </>;

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -17,8 +17,8 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
   onSaved?: () => void;
   onAccessError: (error: unknown) => boolean;
 }) {
-  const heading = useId();
-  const nameField = useId();
+  const heading = `player-profile-heading-${player.id}`;
+  const nameField = `player-display-name-${player.id}`;
   const dialog = useRef<HTMLDialogElement>(null);
   const profileRef = useRef<Profile | undefined>(undefined);
   const submitted = useRef({ real_name: "", weighting: 5, guaranteed_seat: false });
@@ -136,7 +136,7 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
     if (!failed.current) onClose();
     closing.current = false;
   }
-  return <dialog ref={dialog} aria-labelledby={heading} aria-busy={saving}
+  return <dialog id={`player-profile-dialog-${player.id}`} ref={dialog} aria-labelledby={heading} aria-busy={saving}
     onClick={(event) => { if (isBackdropClick(event)) void close(); }}
     onCancel={(event) => { event.preventDefault(); void close(); }}
     onKeyDown={(event) => {
@@ -148,7 +148,7 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
     <div className="event-modal-header player-profile-header">
       <h2 id={heading}>Player Information</h2>
       {profile?.is_test && <span className="badge">Test User</span>}
-      <button type="button" aria-label="Close player information" title="Close" onClick={() => void close()} autoFocus><X size={18} aria-hidden="true" /></button>
+      <button id={`player-profile-close-${player.id}`} type="button" aria-label="Close player information" title="Close" onClick={() => void close()} autoFocus><X size={18} aria-hidden="true" /></button>
     </div>
     <dl className="player-discord-name"><dt>Discord Name</dt><dd>{profile?.discord_name ?? player.name}</dd></dl>
     {!profile && !error && <p><LoadingIndicator label="Loading player information…" /></p>}
@@ -160,12 +160,12 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
         onChange={(event) => { setRealName(event.target.value); setNotice(""); }}
         onBlur={saveName}
         slotProps={{ htmlInput: { maxLength: 100 } }} />
-      <div className="profile-weight-edit"><FormField label="Global Weighting" type="number" value={weighting} fullWidth disabled={savingWeight}
+      <div className="profile-weight-edit"><FormField id={`player-weight-${player.id}`} label="Global Weighting" type="number" value={weighting} fullWidth disabled={savingWeight}
         onChange={(event) => { setWeighting(event.target.value); setNotice(""); }}
         onBlur={() => { saveWeight(); }}
         slotProps={{ htmlInput: { min: 0.1, max: 10, step: 0.1 } }} />
       </div>
-      <FormControlLabel label="Guaranteed Seat" control={<Checkbox checked={guaranteedSeat}
+      <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat}
         onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }, "Guaranteed seat saved."); }} />} />
       {notice && <p role="status">{notice}</p>}
       </FormFields>

@@ -147,20 +147,20 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   });
 
   return (
-    <section aria-label="Events">
-      <div className="section-heading event-toolbar">
+    <section id="events-dashboard" aria-label="Events">
+      <div id="events-toolbar" className="section-heading event-toolbar">
         <div className="event-search-controls">
-          <FormField type="search" placeholder="Search Events" size="small" value={query}
+          <FormField id="events-search" type="search" placeholder="Search Events" size="small" value={query}
             onChange={(event) => setQuery(event.target.value)}
             slotProps={{ htmlInput: { "aria-label": "Search events" }, input: {
               startAdornment: <InputAdornment position="start"><Search size={18} aria-hidden="true" /></InputAdornment>,
             } }} />
-          <button type="button" className="event-icon-action" aria-label="Sort events" title="Sort Events"
+          <button id="events-sort-button" type="button" className="event-icon-action" aria-label="Sort events" title="Sort Events"
             aria-haspopup="menu" aria-expanded={Boolean(sortAnchor)} aria-controls={sortAnchor ? "event-sort-menu" : undefined}
             onClick={(event) => setSortAnchor(event.currentTarget)}>
             <ArrowDownWideNarrow size={18} aria-hidden="true" />
           </button>
-          <button type="button" className="event-icon-action" aria-label="Download all event signups" title="Download All Event Signups"
+          <button id="events-download-all-button" type="button" className="event-icon-action" aria-label="Download all event signups" title="Download All Event Signups"
             disabled={exporting || loading || Boolean(error)} onClick={() => {
               setExporting(true);
               void download("/exports/signups.csv", "all-event-signups.csv")
@@ -169,13 +169,14 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             }}><Download size={18} aria-hidden="true" /></button>
           <Menu id="event-sort-menu" anchorEl={sortAnchor} open={Boolean(sortAnchor)} onClose={() => setSortAnchor(null)}
             slotProps={{ list: { "aria-label": "Sort events" } }}>
-            {sortOptions.map((option) => <MenuItem key={option.value} role="menuitemradio" aria-checked={sort === option.value}
+            {sortOptions.map((option) => <MenuItem id={`events-sort-${option.value}`} key={option.value} role="menuitemradio" aria-checked={sort === option.value}
               selected={sort === option.value} onClick={() => { setSort(option.value); setSortAnchor(null); }}>{option.label}</MenuItem>)}
           </Menu>
         </div>
         <div className="form-actions">
           {session.organization_role !== "user" &&
           <button
+            id="event-create-button"
             ref={createButton}
             className="primary"
             onClick={() => {
@@ -188,6 +189,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             Create event
           </button>}
           <button
+            id="events-refresh-button"
             className="refresh-events-button"
             onClick={refresh}
             disabled={loading || creating}
@@ -199,8 +201,8 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         </div>
       </div>
       <div className="archive-filter-controls">
-        <label className="archive-filter"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Archived</label>
-        {(series.length > 0 || events.some((event) => event.status === "scheduled")) && <label className="archive-filter"><input type="checkbox" checked={showScheduled} onChange={(event) => setShowScheduled(event.target.checked)} /> Scheduled Events</label>}
+        <label className="archive-filter"><input id="events-show-archived" type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Archived</label>
+        {(series.length > 0 || events.some((event) => event.status === "scheduled")) && <label className="archive-filter"><input id="events-show-scheduled" type="checkbox" checked={showScheduled} onChange={(event) => setShowScheduled(event.target.checked)} /> Scheduled Events</label>}
       </div>
       {notice && (
         <p role="status" className="notice" ref={noticeElement} tabIndex={-1}>
@@ -231,12 +233,12 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           <button onClick={refresh}>Try again</button>
         </div>
       )}
-      {!loading && !error && showScheduled && (series.length > 0 || events.some((event) => event.status === "scheduled")) && <section className="panel scheduled-events-panel" aria-label="Scheduled events">
+      {!loading && !error && showScheduled && (series.length > 0 || events.some((event) => event.status === "scheduled")) && <section id="scheduled-events-panel" className="panel scheduled-events-panel" aria-label="Scheduled events">
         <div className="scheduled-events-content">
           <h3>Scheduled Events</h3>
           {series.map((row) => <details className="scheduled-event-group" key={row.id}>
             <summary><span>{row.title} - {row.frequency}</span>
-              {session.organization_role !== "user" && <button type="button" className="delete-schedule-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void stopSchedule(row); }}>Delete</button>}
+              {session.organization_role !== "user" && <button id={`schedule-delete-${row.id}`} type="button" className="delete-schedule-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void stopSchedule(row); }}>Delete</button>}
             </summary>
             <div className="scheduled-event-occurrences">
               {events.filter((event) => event.status === "scheduled" && event.series_id === row.id).sort((a, b) => a.starts_at - b.starts_at).slice(0, 4).map((event) => <div key={event.id} className="scheduled-event-row">
@@ -246,8 +248,8 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
                   <span>SIGNUPS: {scheduleTime.format(new Date((event.scheduled_publish_at ?? 0) * 1000))}</span>
                 </span>
                 <div className="scheduled-event-actions">
-                  <button type="button" className="event-icon-action" aria-label="View scheduled event" title="View scheduled event" onClick={() => setScheduledDetails(event)}><Eye size={18} aria-hidden="true" /></button>
-                  {session.organization_role !== "user" && <button type="button" className="event-icon-action" aria-label="Cancel scheduled event" title="Cancel scheduled event" onClick={() => void cancelScheduled(event)}><Trash2 size={18} aria-hidden="true" /></button>}
+                  <button id={`scheduled-event-view-${event.id}`} type="button" className="event-icon-action" aria-label="View scheduled event" title="View scheduled event" onClick={() => setScheduledDetails(event)}><Eye size={18} aria-hidden="true" /></button>
+                  {session.organization_role !== "user" && <button id={`scheduled-event-cancel-${event.id}`} type="button" className="event-icon-action" aria-label="Cancel scheduled event" title="Cancel scheduled event" onClick={() => void cancelScheduled(event)}><Trash2 size={18} aria-hidden="true" /></button>}
                 </div>
               </div>)}
               <div className="scheduled-event-row"><span>Timezone: {row.time_zone}</span></div>

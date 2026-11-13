@@ -151,12 +151,12 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   return <>
     {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf}
       onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
-    {addingTable && <dialog ref={addDialog} className="event-modal" aria-labelledby="add-player-heading"
+    {addingTable && <dialog id={`event-add-player-dialog-${event.id}`} ref={addDialog} className="event-modal" aria-labelledby="add-player-heading"
       onCancel={(event) => { event.preventDefault(); closeAddPlayer(); }}
       onClick={(event) => { if (isBackdropClick(event)) closeAddPlayer(); }}>
       <div className="event-modal-header">
         <h2 id="add-player-heading">Add a player to {addingTable}</h2>
-        <button type="button" disabled={saving} aria-label="Close add player" title="Close" onClick={closeAddPlayer}><X size={18} aria-hidden="true" /></button>
+        <button id="event-add-player-close-button" type="button" disabled={saving} aria-label="Close add player" title="Close" onClick={closeAddPlayer}><X size={18} aria-hidden="true" /></button>
       </div>
       <div className="add-player-search">
         <label htmlFor="add-player-query">Search players</label>
@@ -166,7 +166,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
         {playersLoading ? <p><LoadingIndicator label="Loading players…" /></p> : normalizedQuery ? suggestions.length ?
           <ul id="add-player-suggestions" className="add-player-results" role="listbox" aria-label="Suggested players">
             {suggestions.map((player) => <li key={player.discord_id} role="option" aria-selected="false">
-              <button type="button" disabled={saving} onClick={() => void addPlayer(player)}>
+              <button id={`event-add-player-select-${player.discord_id}`} type="button" disabled={saving} onClick={() => void addPlayer(player)}>
                 <strong>{player.real_name || player.discord_name}</strong>
                 <span>{player.real_name ? `@${player.discord_name} · ` : ""}{player.discord_id}</span>
               </button>
@@ -174,12 +174,12 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
           </ul> : <p className="help">No known players match “{playerQuery}”.</p>
           : <p className="help">Type a name or Discord ID to see known players.</p>}
       </div>
-      <div className="form-actions"><button type="button" disabled={saving} onClick={closeAddPlayer}>Cancel</button></div>
+      <div className="form-actions"><button id="event-add-player-cancel-button" type="button" disabled={saving} onClick={closeAddPlayer}>Cancel</button></div>
     </dialog>}
-    {removing && <ConfirmationDialog title={event.status === "assigned" ? "Remove player from table?" : "Remove player from signups?"} busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing.player)}>
+    {removing && <ConfirmationDialog id={`event-remove-player-dialog-${event.id}`} title={event.status === "assigned" ? "Remove player from table?" : "Remove player from signups?"} busy={saving} error="" onCancel={() => setRemoving(undefined)} onConfirm={() => void removePlayer(removing.player)}>
       <p>{event.status === "assigned" ? `Remove ${removing.player.display_name || removing.player.name} from their table? ${removing.willPromote ? "The next waitlisted player will be added automatically." : "No waitlisted player will be added automatically."}` : `Remove ${removing.player.display_name || removing.player.name} from this event’s signups? They will not be notified.`}</p>
     </ConfirmationDialog>}
-    {assigning && <ConfirmationDialog title="Add waitlisted player?" busy={saving} error={actionError}
+    {assigning && <ConfirmationDialog id={`event-add-waitlisted-player-dialog-${event.id}`} title="Add waitlisted player?" busy={saving} error={actionError}
       onCancel={() => { setAssigning(undefined); setActionError(""); }} onConfirm={() => void assignWaitlistedPlayer()}>
       <p>Are you sure you want to add this player? It will go beyond the table limit.</p>
     </ConfirmationDialog>}
@@ -210,7 +210,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
 }
 
 export function TableColumns({ event, rows, error = "", onSelect, editingWeight, weight = "", saving = false, readOnly = false, onWeightChange, onEditWeight, onCancelWeight, onSaveWeight, onToggleGuarantee, canEditSignups = false, canRemoveSignups = false, onAddPlayer, onRemovePlayer, onAssignWaitlisted }: {
-  event: Pick<EventRecord, "tables" | "status" | "scheduled_publish_at">;
+  event: Pick<EventRecord, "id" | "tables" | "status" | "scheduled_publish_at">;
   rows?: TableSignups[];
   error?: string;
   onSelect?: (player: { id: string; name: string }) => void;
@@ -240,8 +240,9 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
     }));
   }
   return (
-    <ul className="event-tables" aria-label="Tables">
-      {event.tables.map((table) => {
+    <ul id={`event-tables-${event.id}`} className="event-tables" aria-label="Tables">
+      {event.tables.map((table, tableIndex) => {
+        const tableId = `event-${event.id}-table-${tableIndex + 1}`;
         const row = rows?.find((row) => row.name === table.name);
         const players = row?.players;
         const count = rows ? players?.length : undefined;
@@ -254,12 +255,12 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               : (a.display_name || a.name).localeCompare(b.display_name || b.name, undefined, { sensitivity: "base" });
           return sort.descending ? -difference : difference;
         }) : players;
-        const header = (column: SortColumn, label: string, accessibleLabel: string) => <button type="button" className="table-player-sort"
+        const header = (column: SortColumn, label: string, accessibleLabel: string) => <button id={`${tableId}-sort-${column}`} type="button" className="table-player-sort"
           aria-label={`Sort ${table.name} by ${accessibleLabel}${sort?.column === column ? `, ${sort.descending ? "descending" : "ascending"}` : ""}`}
           aria-pressed={sort?.column === column} onClick={() => sortTable(table.name, column)}>
           {label}{sort?.column === column && <span aria-hidden="true">{sort.descending ? "▼" : "▲"}</span>}
         </button>;
-        return <li key={table.name} className="event-table">
+        return <li id={tableId} key={table.name} className="event-table">
           <div className="table-heading">
             <TableTitle>{table.name}</TableTitle>
             <span className="table-player-count" aria-label={`${count ?? "Unknown"} ${event.status === "assigned" ? "assigned players" : "signups"} for ${table.capacity} seats`}>
@@ -271,30 +272,30 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
           </div>}
           {players?.length ? <ul className="table-players">
             {sortedPlayers?.map((player) => <li key={player.id} className={event.status === "open" ? `table-player-row${readOnly ? " read-only" : ""}` : "table-assigned-player"}>
-              {event.status === "open" && !readOnly && <button type="button" className="player-guarantee" disabled={saving} aria-pressed={player.guaranteed_table === table.name}
+              {event.status === "open" && !readOnly && <button id={`${tableId}-player-guarantee-${player.id}`} type="button" className="player-guarantee" disabled={saving} aria-pressed={player.guaranteed_table === table.name}
                 aria-label={`${player.guaranteed_table === table.name ? "Remove" : "Guarantee"} ${player.display_name || player.name} at ${table.name}`}
                 title={player.guaranteed_table === table.name ? "Remove table guarantee" : player.guaranteed_seat && !player.guaranteed_table ? "Profile guarantees a seat at one selected table; click to guarantee this table" : "Guarantee this table"}
                 onClick={() => onToggleGuarantee?.(player, table.name)}>{isGuaranteedAtTable(player, table.name) ? "⭐" : "⚪"}</button>}
-              {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog"
+              {onSelect ? <button id={`${tableId}-player-profile-${player.id}`} type="button" className="player-name" aria-haspopup="dialog"
                 title={player.display_name || player.name} aria-label={player.display_name || player.name}
                 onClick={() => onSelect(player)}>{event.status === "open" ? <>{(player.display_name || player.name).slice(0, 26)}{(player.display_name || player.name).length > 26 ? "…" : ""}</> : player.display_name || player.name}</button> : event.status === "open" ? (player.display_name || player.name).slice(0, 26) : player.display_name || player.name}
               {event.status === "open" && (readOnly ? <span className="player-weight">{(player.weighting ?? 5).toFixed(1)}</span> : editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
-                <input type="text" inputMode="decimal" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)}
+                <input id={`${tableId}-player-weight-input-${player.id}`} type="text" inputMode="decimal" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)}
                   onBlur={() => onSaveWeight?.(player)} onKeyDown={(key) => { if (key.key === "Escape") { key.preventDefault(); onCancelWeight?.(); } }} disabled={saving} autoFocus />
-              </form> : <button type="button" className={`player-weight ${(player.weighting ?? 5) < 5 ? "low" : (player.weighting ?? 5) > 5 ? "high" : ""}`}
+              </form> : <button id={`${tableId}-player-weight-${player.id}`} type="button" className={`player-weight ${(player.weighting ?? 5) < 5 ? "low" : (player.weighting ?? 5) > 5 ? "high" : ""}`}
                 title="Edit event weight" aria-label={`Edit weight for ${player.display_name || player.name}: ${(player.weighting ?? 5).toFixed(1)}`} disabled={saving}
                 onClick={() => onEditWeight?.(player, table.name)}>{(player.weighting ?? 5).toFixed(1)}</button>)}
-              {canRemoveSignups && <button type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from ${event.status === "assigned" ? "table" : "signups"}`} title={event.status === "assigned" ? "Remove from table" : "Remove from signups"} onClick={() => onRemovePlayer?.(player, event.status === "assigned" && Boolean(row?.waitlist?.length) && (players?.length ?? 0) <= table.capacity)}>✕</button>}
+              {canRemoveSignups && <button id={`${tableId}-player-remove-${player.id}`} type="button" className="remove-signup-player" aria-label={`Remove ${player.display_name || player.name} from ${event.status === "assigned" ? "table" : "signups"}`} title={event.status === "assigned" ? "Remove from table" : "Remove from signups"} onClick={() => onRemovePlayer?.(player, event.status === "assigned" && Boolean(row?.waitlist?.length) && (players?.length ?? 0) <= table.capacity)}>✕</button>}
             </li>)}
           </ul> : <p className="help">{count === 0 ? event.status === "assigned" ? "No players assigned." : "No players signed up yet." : error ? "Signups unavailable." : <LoadingIndicator label="Loading signups…" />}</p>}
-          {canEditSignups && event.status !== "scheduled" && !(event.status === "draft" && event.scheduled_publish_at != null) && <button type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}
+          {canEditSignups && event.status !== "scheduled" && !(event.status === "draft" && event.scheduled_publish_at != null) && <button id={`${tableId}-add-player`} type="button" className="add-signup-player" onClick={() => onAddPlayer?.(table.name)}>Add Player</button>}
           {event.status === "assigned" && row && <div className="table-waitlist">
             <h4>Waitlist</h4>
             {row.waitlist?.length ? <ul aria-label={`Waitlist for ${table.name}`}>{row.waitlist.map((player) => <li key={player.id}>
-              {onAssignWaitlisted && <button type="button" className="add-waitlisted-player" disabled={saving}
+              {onAssignWaitlisted && <button id={`${tableId}-waitlist-add-${player.id}`} type="button" className="add-waitlisted-player" disabled={saving}
                 aria-label={`Add ${player.display_name || player.name} to ${table.name}`} title="Add to table"
                 onClick={() => onAssignWaitlisted(player, table.name)}><Plus size={16} aria-hidden="true" /></button>}
-              {onSelect ? <button type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
+              {onSelect ? <button id={`${tableId}-waitlist-profile-${player.id}`} type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
             </li>)}</ul> : <p className="help">No players waiting.</p>}
           </div>}
         </li>;

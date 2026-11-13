@@ -43,10 +43,11 @@ export default function EventActions({
   }
   return (
     <>
-      {isDraft && <button type="button" className="event-icon-action" aria-label="Edit draft" title="Edit Draft" onClick={() => onEdit(event)}>
+      {isDraft && <button id={`event-edit-${event.id}`} type="button" className="event-icon-action" aria-label="Edit draft" title="Edit Draft" onClick={() => onEdit(event)}>
         <Pencil size={18} aria-hidden="true" />
       </button>}
       <button
+        id={`event-delete-${event.id}`}
         type="button"
         className="event-icon-action"
         aria-label={isDraft ? "Delete draft" : "Delete signup"}
@@ -59,7 +60,7 @@ export default function EventActions({
         <Trash2 size={18} aria-hidden="true" />
       </button>
       {confirming && (
-        <ConfirmationDialog
+        <ConfirmationDialog id={`event-delete-dialog-${event.id}`}
           title={`Delete ${event.title}?`}
           busy={busy}
           error={error}
@@ -69,7 +70,7 @@ export default function EventActions({
         >
           <p>{isDraft ? "This permanently deletes the unpublished draft and its tables." : "This permanently deletes this event and its saved signups."}</p>
           {event.discord_url && <label className="delete-poll-option">
-            <input type="checkbox" checked={deletePoll} disabled={busy}
+            <input id={`event-delete-discord-checkbox-${event.id}`} type="checkbox" checked={deletePoll} disabled={busy}
               onChange={(event) => setDeletePoll(event.target.checked)} />
             Also delete the signup message on Discord
           </label>}

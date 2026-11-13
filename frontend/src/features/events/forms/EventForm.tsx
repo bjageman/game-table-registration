@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Plus } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Plus, Save } from "lucide-react";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Tooltip from "@mui/material/Tooltip";
@@ -42,7 +42,7 @@ export default function EventForm({
   onCancel,
   onAccessError,
 }: Props) {
-  const prefix = useId();
+  const prefix = "event-form";
   const [title, setTitle] = useState(draft?.title ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
   const [location, setLocation] = useState(draft?.location ?? "");
@@ -75,7 +75,7 @@ export default function EventForm({
           name: table.name,
           capacity: String(table.capacity),
         }))
-      : [{ id: 0, name: "", capacity: "15" }],
+      : [{ id: 0, name: "Table #1", capacity: "15" }],
   );
   const nextId = useRef(tables.length);
   const pendingTableFocus = useRef<number | null>(null);
@@ -105,7 +105,11 @@ export default function EventForm({
     if (inFlight.current || tables.length >= 10) return;
     const id = nextId.current++;
     pendingTableFocus.current = id;
-    setTables((rows) => [...rows, { id, name: "", capacity: "15" }]);
+    setTables((rows) => {
+      let number = rows.length + 1;
+      while (rows.some((row) => row.name.trim().toLowerCase() === `table #${number}`)) number++;
+      return [...rows, { id, name: `Table #${number}`, capacity: "15" }];
+    });
   }
 
   function handleTableEnter(event: KeyboardEvent<HTMLDivElement>) {
@@ -307,13 +311,14 @@ export default function EventForm({
   }
 
   return (
-    <section className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
+    <section id="event-form-panel" className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
       <div className="section-heading template-heading">
         <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : !scheduled ? "Create Draft Event" : frequency === "once" ? "Create Scheduled Event" : "Create Recurring Scheduled Event"}</h3>
-        {templates.length > 0 && <button type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
+        {templates.length > 0 && <button id="event-load-template-button" type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
       </div>
       {choosingTemplate && <TemplatePicker templates={templates} onSelect={loadTemplate} onClose={() => setChoosingTemplate(false)} />}
       <form
+        id="event-form"
         noValidate
         onSubmit={(event) => void submit(event)}
         aria-label={draft ? "Edit event" : "Create event"}
@@ -419,7 +424,7 @@ export default function EventForm({
             </div>
           </div>
           <div className="event-scheduling-options">
-          <label className="scheduled-event-checkbox"><input type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
+          <label className="scheduled-event-checkbox"><input id="event-scheduled-checkbox" type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
           <div className={`event-scheduling-inputs ${!scheduled ? "single" : ""}`}>
           {!scheduled && <TextField label="Signups Close Before Event (hours)" type="number" value={manualClosesBefore} onChange={(event) => setManualClosesBefore(event.target.value)} fullWidth slotProps={{ htmlInput: { min: 1, max: 767, step: 1 } }} />}
           {scheduled && <div className="form-grid event-schedule-fields">
@@ -494,9 +499,11 @@ export default function EventForm({
                     id={`${prefix}-name-${table.id}`}
                     error={Boolean(fieldErrors[`name-${table.id}`])}
                     helperText={fieldErrors[`name-${table.id}`]}
-                    label={`Table ${index + 1} name`}
+                    label="Name"
                     onKeyDown={handleTableEnter}
                     value={table.name}
+                    onFocus={(event) => event.target.select()}
+                    onClick={(event) => { if (event.target instanceof HTMLInputElement) event.target.select(); }}
                     onChange={(event) =>
                       updateTable(table.id, { name: event.target.value })
                     }
@@ -514,7 +521,7 @@ export default function EventForm({
                     id={`${prefix}-capacity-${table.id}`}
                     error={Boolean(fieldErrors[`capacity-${table.id}`])}
                     helperText={fieldErrors[`capacity-${table.id}`]}
-                    label={`Table ${index + 1} capacity`}
+                    label="Capacity"
                     onKeyDown={handleTableEnter}
                     type="number"
                     value={table.capacity}
@@ -533,6 +540,7 @@ export default function EventForm({
                 {tables.length > 1 && (
                   <button
                     type="button"
+                    id={`event-form-remove-table-${table.id}`}
                     aria-label={`Remove table ${index + 1}`}
                     onClick={() =>
                       setTables((rows) =>
@@ -547,6 +555,7 @@ export default function EventForm({
             ))}
           </div>
           <button
+            id="event-add-table-button"
             className="add-table-button"
             type="button"
             aria-label="Add table"
@@ -563,14 +572,16 @@ export default function EventForm({
           </p>
         )}
         {templateNotice && <p role="status" className="notice">{templateNotice}</p>}
-        <div className="form-actions">
-          <button className="primary" type="submit" disabled={saving}>
-            {saving ? "Saving…" : frequency === "once" ? "Save draft" : "Create schedule"}
+        <div id="event-form-actions" className="form-actions event-form-actions">
+          <button id="event-save-button" className="primary" type="submit" disabled={saving}>
+            <Save size={16} aria-hidden="true" />
+            {saving ? "Saving…" : frequency === "once" ? "Draft" : "Schedule"}
           </button>
-          <button type="button" onClick={() => void saveTemplate()} disabled={saving}>
-            {saving ? "Saving template…" : "Save as Template"}
+          <button id="event-save-template-button" type="button" onClick={() => void saveTemplate()} disabled={saving}>
+            <Save size={16} aria-hidden="true" />
+            {saving ? "Saving…" : "Template"}
           </button>
-          <button type="button" onClick={onCancel} disabled={saving}>
+          <button id="event-form-cancel-button" type="button" onClick={onCancel} disabled={saving}>
             Cancel
           </button>
         </div>

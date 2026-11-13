@@ -35,19 +35,19 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
     } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
     finally { inFlight.current = false; setBusy(false); }
   }
-  return <section className="assignment-settings" aria-label="Assignment settings">
+  return <section id="assignment-settings" className="assignment-settings" aria-label="Assignment settings">
     {!loaded && !error && <p><LoadingIndicator label="Loading assignment settings…" /></p>}
     {error && <p role="alert" className="error">{error}{!loaded && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry</button>}</p>}
-    {loaded && <form aria-label="Assignment settings" onSubmit={(event) => void save(event)}>
-      <div><FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox checked={enabled} disabled={busy || restricted}
+    {loaded && <form id="assignment-settings-form" aria-label="Assignment settings" onSubmit={(event) => void save(event)}>
+      <div className="general-setting-option"><FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox id="assignment-auto-weights" checked={enabled} disabled={busy || restricted}
         onChange={(event) => { setEnabled(event.target.checked); setSaved(false); }} />} /></div>
-      <div><FormControlLabel label="Announce Table Changes on Discord" control={<Checkbox checked={announceChanges} disabled={busy || restricted}
+      <div className="general-setting-option"><FormControlLabel label="Announce Table Changes on Discord" control={<Checkbox id="assignment-announce-changes" checked={announceChanges} disabled={busy || restricted}
         onChange={(event) => { setAnnounceChanges(event.target.checked); setSaved(false); }} />} /></div>
-      <div><FormControlLabel label="Post Discord updates to a new thread" control={<Checkbox checked={threadUpdates} disabled={busy || restricted}
+      <div className="general-setting-option"><FormControlLabel label="Post Discord updates to a new thread" control={<Checkbox id="assignment-thread-updates" checked={threadUpdates} disabled={busy || restricted}
         onChange={(event) => { setThreadUpdates(event.target.checked); setSaved(false); }} />} /></div>
       {threadUpdates && <p className="help">The bot needs Create Public Threads and Send Messages in Threads permissions in the signup channel.</p>}
       {saved && <p role="status">Assignment settings saved.</p>}
-      <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button type="submit" className="primary" disabled={busy || restricted}>{busy ? "Saving…" : "Save"}</button></span></div>
+      <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button id="assignment-settings-save-button" type="submit" className="primary" disabled={busy || restricted}>{busy ? "Saving…" : "Save"}</button></span></div>
     </form>}
   </section>;
 }

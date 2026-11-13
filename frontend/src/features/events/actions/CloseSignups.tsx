@@ -47,8 +47,8 @@ export default function CloseSignups({ event, csrf, onUpdated, onAccessError }: 
     }
   }
   return <>
-    <button type="button" className="primary" onClick={() => { setError(""); setConfirming(true); }}>Close Signups</button>
-    {confirming && <ConfirmationDialog title={`Close signups for ${event.title}?`}
+    <button id={`event-close-signups-${event.id}`} type="button" className="primary" onClick={() => { setError(""); setConfirming(true); }}>Close Signups</button>
+    {confirming && <ConfirmationDialog id={`event-close-signups-dialog-${event.id}`} title={`Close signups for ${event.title}?`}
       busy={busy} error={error} status="Closing signups and determining placement…"
       onCancel={() => setConfirming(false)} onConfirm={() => void close()}>
       <p>This closes signups and assigns players to their selected tables. The saved placements cannot be redrawn.{event.is_test ? " This event includes test users; its Discord announcement will be marked TEST." : ""}</p>

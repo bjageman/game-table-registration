@@ -19,23 +19,23 @@ export default function TemplatePicker({ templates, onSelect, onClose }: {
       if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
     };
   }, []);
-  return <dialog ref={dialog} aria-labelledby={heading}
+  return <dialog id="event-template-picker-dialog" ref={dialog} aria-labelledby={heading}
     onCancel={(event) => { event.preventDefault(); onClose(); }}
     onClick={(event) => { if (isBackdropClick(event)) onClose(); }}>
     <div className="event-modal-header">
       <h2 id={heading}>Load From Template</h2>
-      <button type="button" aria-label="Close template picker" title="Close" onClick={onClose}><X size={18} aria-hidden="true" /></button>
+      <button id="event-template-picker-close-button" type="button" aria-label="Close template picker" title="Close" onClick={onClose}><X size={18} aria-hidden="true" /></button>
     </div>
     <p>Choose a template to fill the title, signup duration, and tables. Your event date stays as it is.</p>
     <ul className="template-list">
       {templates.map((template) => <li key={template.id}>
-        <button type="button" onClick={() => onSelect(template)}>
+        <button id={`event-template-select-${template.id}`} type="button" onClick={() => onSelect(template)}>
           <strong>{template.title}</strong>
           <span>{template.duration_hours} hours · {template.tables.length} {template.tables.length === 1 ? "table" : "tables"}</span>
           <small>{template.tables.map((table) => `${table.name} (${table.capacity})`).join(" · ")}</small>
         </button>
       </li>)}
     </ul>
-    <div className="form-actions"><button type="button" onClick={onClose}>Cancel</button></div>
+    <div className="form-actions"><button id="event-template-picker-cancel-button" type="button" onClick={onClose}>Cancel</button></div>
   </dialog>;
 }

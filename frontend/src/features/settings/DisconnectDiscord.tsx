@@ -23,8 +23,8 @@ export default function DisconnectDiscord({ csrf, disabled, onDisconnected, onAc
     finally { inFlight.current = false; setBusy(false); onBusyChange(false); }
   }
   return <>
-    <button type="button" disabled={disabled || busy} onClick={() => { setError(""); setConfirming(true); }}>Disconnect</button>
-    {confirming && <ConfirmationDialog title="Disconnect Discord?" busy={busy} error={error} status="Disconnecting…"
+    <button id="discord-disconnect-button" type="button" disabled={disabled || busy} onClick={() => { setError(""); setConfirming(true); }}>Disconnect</button>
+    {confirming && <ConfirmationDialog id="discord-disconnect-dialog" title="Disconnect Discord?" busy={busy} error={error} status="Disconnecting…"
       onCancel={() => setConfirming(false)} onConfirm={() => void disconnect()}>{null}</ConfirmationDialog>}
   </>;
 }

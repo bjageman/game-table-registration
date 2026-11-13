@@ -20,8 +20,8 @@ export default function DeleteSignupMessage({ event, csrf, onUpdated, onAccessEr
     finally { setBusy(false); }
   }
   return <>
-    <button type="button" onClick={() => setConfirming(true)}>Delete Discord signup message</button>
-    {confirming && <ConfirmationDialog title={`Delete Discord signup for ${event.title}?`} busy={busy} error={error}
+    <button id={`event-delete-signup-message-${event.id}`} type="button" onClick={() => setConfirming(true)}>Delete Discord signup message</button>
+    {confirming && <ConfirmationDialog id={`event-delete-signup-message-dialog-${event.id}`} title={`Delete Discord signup for ${event.title}?`} busy={busy} error={error}
       status="Deleting…" onCancel={() => setConfirming(false)} onConfirm={() => void remove()}>
       <p>This removes the signup message from Discord. Saved placements remain available here.</p>
     </ConfirmationDialog>}

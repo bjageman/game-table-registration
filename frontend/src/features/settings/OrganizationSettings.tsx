@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
@@ -160,7 +160,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
     }
     finally { setBusy(false); }
   }
-  return <div className="organization-settings">
+  return <div id="organization-settings" className="organization-settings">
     {loading && <LoadingIndicator label="Loading organizations…" />}
     {error && <p role="alert" className="error">{error}</p>}
     <select id="organization-select" aria-label="Organization" value={selectedId} disabled={busy} onChange={(event) => void changeSelection(event.target.value)}>
@@ -168,20 +168,20 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
     </select>
     <div className="form-actions">
-      <button type="button" disabled={busy} onClick={() => { setCreateError(""); setCreating(true); }}>Create</button>
-      {selected && <button type="button" disabled={busy} onClick={() => {
+      <button id="organization-create-button" type="button" disabled={busy} onClick={() => { setCreateError(""); setCreating(true); }}>Create</button>
+      {selected && <button id={selected.created_by === userId ? "organization-delete-button" : "organization-leave-button"} type="button" disabled={busy} onClick={() => {
         if (selected.created_by === userId) { setDeleteError(""); setConfirmingDelete(true); }
         else void remove();
       }}>{selected.created_by === userId ? "Delete" : "Leave organization"}</button>}
     </div>
-    {creating && <dialog ref={createDialog} aria-labelledby="organization-create-heading"
+    {creating && <dialog id="organization-create-dialog" ref={createDialog} aria-labelledby="organization-create-heading"
       onCancel={(event) => { event.preventDefault(); closeCreate(); }}
       onClick={(event) => { if (isBackdropClick(event)) closeCreate(); }}>
       <div className="event-modal-header">
         <h2 id="organization-create-heading">Create an organization</h2>
         <button type="button" aria-label="Close create organization" title="Close" disabled={busy} onClick={closeCreate}><X size={18} aria-hidden="true" /></button>
       </div>
-      <form className="create-organization-form" onSubmit={(event) => void create(event)}>
+      <form id="organization-create-form" className="create-organization-form" onSubmit={(event) => void create(event)}>
         <label htmlFor="organization-name">Organization name</label>
         <input id="organization-name" autoFocus required maxLength={100} placeholder="Enter a unique name for your org"
           value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
@@ -193,34 +193,34 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       <h3>{selected.name}</h3>
       <div className="organization-member-table-wrap"><table className="organization-member-table">
         <thead><tr><th scope="col">Username</th><th scope="col">Permission</th><th scope="col">Delete</th></tr></thead>
-        <tbody>{members.map((member) => <tr key={member.user_id}>
+        <tbody>{members.map((member) => <tr id={`organization-member-${member.user_id}`} key={member.user_id}>
           <td>{member.username}</td>
-          <td><select aria-label={`Permission for ${member.username}`} value={member.role}
+          <td><select id={`organization-member-role-${member.user_id}`} aria-label={`Permission for ${member.username}`} value={member.role}
             disabled={busy || selected.role !== "admin" || member.user_id === selected.created_by}
             onChange={(event) => void changeRole(member, event.target.value as Organization["role"])}>
             <option value="user">User</option><option value="editor">Editor</option><option value="admin">Admin</option>
           </select></td>
-          <td><button type="button" aria-label={`Delete ${member.username}`} disabled={busy || selected.role !== "admin" || member.user_id === selected.created_by || member.user_id === userId}
-            onClick={() => { setRemoveError(""); setRemovingMember(member); }}>Delete</button></td>
+          <td><button id={`organization-member-delete-${member.user_id}`} type="button" aria-label={`Delete ${member.username}`} title={`Delete ${member.username}`} disabled={busy || selected.role !== "admin" || member.user_id === selected.created_by || member.user_id === userId}
+            onClick={() => { setRemoveError(""); setRemovingMember(member); }}><Trash2 size={18} aria-hidden="true" /></button></td>
         </tr>)}</tbody>
       </table></div>
-      {removingMember && <ConfirmationDialog title={`Remove ${removingMember.username}?`} busy={busy} error={removeError}
+      {removingMember && <ConfirmationDialog id={`organization-member-remove-dialog-${removingMember.user_id}`} title={`Remove ${removingMember.username}?`} busy={busy} error={removeError}
         onCancel={() => { setRemovingMember(undefined); setRemoveError(""); }} onConfirm={() => void removeMember()}>
         <p>Are you sure you want to remove {removingMember.username} from {selected.name}?</p>
       </ConfirmationDialog>}
-      {selected.role === "admin" && <button type="button" disabled={busy} onClick={() => { setAddUserError(""); setAddingUser(true); }}>Add User</button>}
-      {selected.role === "admin" && addingUser && <dialog ref={addUserDialog} aria-labelledby="organization-add-user-heading"
+      {selected.role === "admin" && <button id="organization-add-user-button" type="button" disabled={busy} onClick={() => { setAddUserError(""); setAddingUser(true); }}>Add User</button>}
+      {selected.role === "admin" && addingUser && <dialog id="organization-add-user-dialog" ref={addUserDialog} aria-labelledby="organization-add-user-heading"
         onCancel={(event) => { event.preventDefault(); closeAddUser(); }}
         onClick={(event) => { if (isBackdropClick(event)) closeAddUser(); }}>
         <div className="event-modal-header">
           <h2 id="organization-add-user-heading">Add User</h2>
           <button type="button" aria-label="Close add user" title="Close" disabled={busy} onClick={closeAddUser}><X size={18} aria-hidden="true" /></button>
         </div>
-        <form className="create-organization-form" onSubmit={(event) => void addUser(event)}>
+        <form id="organization-add-user-form" className="create-organization-form" onSubmit={(event) => void addUser(event)}>
         <label htmlFor="organization-user-search">Search users</label>
         <input id="organization-user-search" type="search" value={query} placeholder="Search known users" onChange={(event) => { setQuery(event.target.value); setNewUser(undefined); }} />
         {query.trim().length >= 2 && !newUser && <ul className="add-player-results" role="listbox" aria-label="Suggested users">
-          {results.map((user) => <li key={user.id} role="option" aria-selected="false"><button type="button" onClick={() => { setNewUser(user); setQuery(user.username); }}>{user.username} ({user.id})</button></li>)}
+          {results.map((user) => <li key={user.id} role="option" aria-selected="false"><button id={`organization-user-select-${user.id}`} type="button" onClick={() => { setNewUser(user); setQuery(user.username); }}>{user.username} ({user.id})</button></li>)}
         </ul>}
         {newUser && <p>Selected: {newUser.username}</p>}
         <label htmlFor="organization-role">Permission</label>
@@ -231,7 +231,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
         <div className="form-actions"><button type="submit" className="primary" disabled={busy || !newUser}>{busy ? "Adding…" : "Add User"}</button></div>
         </form>
       </dialog>}
-      {confirmingDelete && <ConfirmationDialog title="Delete organization?" busy={busy} error={deleteError}
+      {confirmingDelete && <ConfirmationDialog id="organization-delete-dialog" title="Delete organization?" busy={busy} error={deleteError}
         onCancel={() => { setConfirmingDelete(false); setDeleteError(""); }} onConfirm={() => void remove()}>
         <p>Are you sure you want to delete {selected.name}? This cannot be undone.</p>
       </ConfirmationDialog>}

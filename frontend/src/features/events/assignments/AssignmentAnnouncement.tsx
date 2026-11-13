@@ -47,8 +47,8 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken, read
     {delivery?.status === "pending" && <p role="status">Assignment announcement queued for Discord.</p>}
     {delivery?.status === "deleted" && <p>Assignment announcement removed from Discord.</p>}
     {delivery?.error && <p className="error">{delivery.error}</p>}
-    {!readOnly && delivery && !event.archived_at && (delivery.status === "needs_review" || delivery.status === "unavailable" || delivery.error) && <button type="button" onClick={() => setConfirming(true)}>{delivery.status === "unavailable" ? "Announce Assignments" : "Retry Announcement"}</button>}
-    {confirming && <ConfirmationDialog title="Announce assignments?" busy={busy} error={error}
+    {!readOnly && delivery && !event.archived_at && (delivery.status === "needs_review" || delivery.status === "unavailable" || delivery.error) && <button id={`event-announce-assignments-${event.id}`} type="button" onClick={() => setConfirming(true)}>{delivery.status === "unavailable" ? "Announce Assignments" : "Retry Announcement"}</button>}
+    {confirming && <ConfirmationDialog id={`event-announce-assignments-dialog-${event.id}`} title="Announce assignments?" busy={busy} error={error}
       onCancel={() => setConfirming(false)} onConfirm={() => void retry()}>
       <p>{delivery?.status === "unavailable" ? "Posts the saved table placements to Discord." : "Check Discord for an existing announcement before confirming a retry. This sends the saved placements and does not redraw them."}</p>
     </ConfirmationDialog>}

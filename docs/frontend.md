@@ -45,3 +45,32 @@ Settings → Assignments includes Automatically Adjust Player Weights for the cu
 The Discord tab offers Disconnect with shared Cancel/Confirm controls for connected accounts. Disconnect hides server/channel controls until authorization succeeds again. Connect uses the authenticated callback flow; server controls appear only after successful authorization. The Assignments tab remains accessible and offers Connect Discord when disconnected. The Refresh Channels icon beside Signup Channel reloads eligible channels without leaving Settings.
 
 The event list toolbar searches titles case-insensitively and provides a sort-icon menu for title A–Z/Z–A and event date earliest/latest first. Date ascending is the default; search and sort respect Show Archived.
+
+## UI references
+
+Major sections, controls, and dialogs have descriptive HTML `id` attributes for referring to the interface in issues and change requests. Find them with the browser's Inspect command; they are not visible labels. Keep these IDs stable when changing styling. Use record IDs for repeated controls and keep IDs unique in the rendered document. Existing labels and ARIA references must continue to point to their fields and headings.
+
+| Area | Example IDs |
+| --- | --- |
+| Top bar | `site-header`, `site-title`, `active-organization`, `profile-menu-button` |
+| Profile menu | `profile-players-link`, `profile-settings-link`, `profile-logout-button` |
+| Events | `events-dashboard`, `events-search`, `events-sort-button`, `event-create-button`, `events-refresh-button`, `events-show-archived` |
+| Event details | `event-open-{eventId}`, `event-dialog-{eventId}`, `event-close-{eventId}` |
+| Event actions | `event-publish-{eventId}`, `event-edit-{eventId}`, `event-delete-{eventId}`, `event-archive-{eventId}`, `event-share-{eventId}`, `event-download-{eventId}` |
+| Event form | `event-form`, `event-form-title`, `event-add-table-button`, `event-save-button`, `event-save-template-button` |
+| Table controls | `event-{eventId}-table-{number}-add-player`, `event-{eventId}-table-{number}-player-remove-{playerId}` |
+| Player lookup | `player-lookup`, `player-lookup-search`, `player-lookup-sort-guaranteed_seat`, `player-open-{playerId}` |
+| Player information | `player-profile-dialog-{playerId}`, `player-display-name-{playerId}`, `player-weight-{playerId}`, `player-guaranteed-seat-{playerId}` |
+| Settings tabs | `settings-discord-tab`, `settings-assignments-tab` (General), `settings-organization-tab` |
+| Discord settings | `discord-connect-button`, `discord-server-select`, `discord-channel-select`, `discord-settings-save-button` |
+| General settings | `assignment-auto-weights`, `assignment-announce-changes`, `assignment-thread-updates`, `assignment-settings-save-button` |
+| Organization | `organization-select`, `organization-create-button`, `organization-delete-button`, `organization-add-user-button` |
+| Organization members | `organization-member-{userId}`, `organization-member-role-{userId}`, `organization-member-delete-{userId}` |
+| Confirmation | `organization-delete-dialog`, `organization-delete-dialog-cancel`, `organization-delete-dialog-confirm`; other confirmation controls also use their dialog ID plus `-cancel`, `-confirm`, or `-close` |
+| Footer | `site-footer`, `footer-github-link` |
+
+New table rows default to Table #1, Table #2, and so on, with Name and Capacity labels. Clicking or focusing a Name field selects its contents for replacement. New defaults avoid collisions with existing table names.
+
+The create form actions use save icons with Draft (Schedule for recurring events), Template, and Cancel, and stay on one row on mobile.
+
+The footer has a top divider and a single GitHub repository icon link, using the compact rounded icon style from Tiny Grimoire. General settings use dividers between checkbox options. Organization deletion requires confirmation, and member removal uses a trash icon with an accessible username label.
