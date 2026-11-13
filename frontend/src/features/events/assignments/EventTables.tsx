@@ -1,3 +1,4 @@
+import ModalHeader from "../../../components/ModalHeader";
 import TableTitle from "../TableTitle";
 import PlayerProfile from "../../players/PlayerProfile";
 import { useEffect, useRef, useState } from "react";
@@ -46,11 +47,12 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
   const addDialog = useRef<HTMLDialogElement>(null);
   const hasSignups = event.status === "open" || event.status === "closing" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
-  const canEditSignups = !readOnly && (event.status === "draft" || event.status === "scheduled" || event.status === "open");
+  const canEditSignups = !readOnly && !event.archived_at && (event.status === "draft" || event.status === "scheduled" || event.status === "open" || event.status === "assigned");
   const canRemoveSignups = !readOnly && (canEditSignups || event.status === "assigned");
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
   const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
-    `${player.discord_name} ${player.real_name} ${player.discord_id}`.toLocaleLowerCase().includes(normalizedQuery),
+    `${player.discord_name} ${player.real_name} ${player.discord_id}`.toLocaleLowerCase().includes(normalizedQuery)
+      && (event.status !== "assigned" || !rows?.some((row) => row.players.some((seated) => seated.id === player.discord_id))),
   ).slice(0, 30) : [];
   function closeAddPlayer() {
     if (saving) return;
@@ -154,10 +156,12 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     {addingTable && <dialog id={`event-add-player-dialog-${event.id}`} ref={addDialog} className="event-modal" aria-labelledby="add-player-heading"
       onCancel={(event) => { event.preventDefault(); closeAddPlayer(); }}
       onClick={(event) => { if (isBackdropClick(event)) closeAddPlayer(); }}>
-      <div className="event-modal-header">
+      <ModalHeader>
         <h2 id="add-player-heading">Add a player to {addingTable}</h2>
         <button id="event-add-player-close-button" type="button" disabled={saving} aria-label="Close add player" title="Close" onClick={closeAddPlayer}><X size={18} aria-hidden="true" /></button>
-      </div>
+      </ModalHeader>
+      {event.status === "assigned" && <p>Add this player directly to the table, even if it is full. Discord assignments will update automatically.</p>}
+      {actionError && <p role="alert" className="error">{actionError}</p>}
       <div className="add-player-search">
         <label htmlFor="add-player-query">Search players</label>
         <input id="add-player-query" type="search" autoFocus autoComplete="off" placeholder="Name or Discord ID"
@@ -188,7 +192,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry signups</button>
     </p>}
     {weightNotice && <p role="status" className="notice">{weightNotice}</p>}
-    {actionError && !assigning && <p role="alert" className="error">{actionError}</p>}
+    {actionError && !assigning && !addingTable && <p role="alert" className="error">{actionError}</p>}
     <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
       canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingTable(table); }} onRemovePlayer={(player, willPromote) => setRemoving({ player, willPromote })}
       onAssignWaitlisted={!readOnly && event.status === "assigned" ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}

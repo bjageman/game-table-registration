@@ -10,12 +10,15 @@ from sqlalchemy.orm import Session
 
 from app.announcements import clean, enqueue_refresh
 from app.assignment_preferences import announce_changes
+from app.event_threads import queue_member
 from app.models import (
     Announcement,
     Event,
+    EventManagerSignup,
     EventManualAssignment,
     EventWithdrawal,
     LotteryRun,
+    PlayerProfile,
 )
 
 
@@ -38,6 +41,18 @@ def announcement_event(
                 Announcement.deleted_at.is_(None),
             )
         )
+
+
+def result_players(db: Session, run: LotteryRun) -> dict[str, Any]:
+    players = {player["id"]: player for player in run.snapshot["players"]}
+    for signup in db.scalars(
+        select(EventManagerSignup).where(EventManagerSignup.event_id == run.event_id)
+    ):
+        players.setdefault(
+            signup.discord_id,
+            {"id": signup.discord_id, "name": signup.discord_name},
+        )
+    return players
 
 
 def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
@@ -71,7 +86,7 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
         if manual_row.discord_id not in withdrawn:
             assignments[manual_row.discord_id] = manual_row.table_name
 
-    by_id = {player["id"]: player for player in run.snapshot["players"]}
+    by_id = result_players(db, run)
     tables = []
     for table in result["tables"]:
         name = table["name"]
@@ -203,11 +218,7 @@ def withdraw(
             )
         )
         if promoted_id and announce_changes(db, event):
-            left = next(
-                player
-                for player in run.snapshot["players"]
-                if player["id"] == player_id
-            )
+            left = result_players(db, run)[player_id]
             promoted = next(
                 player
                 for player in run.snapshot["players"]
@@ -309,9 +320,7 @@ def manager_remove(
                 promoted_id=promoted_id,
             )
         )
-        left = next(
-            player for player in run.snapshot["players"] if player["id"] == player_id
-        )
+        left = result_players(db, run)[player_id]
         left_name = (
             clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
         )
@@ -372,9 +381,15 @@ def manager_remove(
 
 
 def manager_add(
-    engine: Engine, guild_id: str, event_id: str, player_id: str, table_name: str
+    engine: Engine,
+    guild_id: str,
+    event_id: str,
+    player_id: str,
+    table_name: str,
+    *,
+    allow_known_player: bool = False,
 ) -> bool:
-    """Assign an available waitlisted player to a table, even when it is full."""
+    """Assign a waitlisted or explicitly selected known player, even to a full table."""
     with Session(engine) as db:
         claimed = db.execute(
             update(Event)
@@ -396,10 +411,37 @@ def manager_add(
         table = next(
             (row for row in current["tables"] if row["name"] == table_name), None
         )
-        if table is None or player_id not in {p["id"] for p in table["waitlist"]}:
+        if table is None:
+            return False
+        waitlisted = player_id in {p["id"] for p in table["waitlist"]}
+        if not waitlisted and not allow_known_player:
             return False
         if player_id in current["assignments"]:
             return False
+        if db.get(EventWithdrawal, (event_id, player_id)) is not None:
+            return False
+        profile = db.get(PlayerProfile, (guild_id, player_id))
+        known = result_players(db, run)
+        if not waitlisted and profile is None:
+            return False
+        if player_id not in known:
+            assert profile is not None
+            override = db.get(EventManagerSignup, (event_id, player_id))
+            if override is None:
+                db.add(
+                    EventManagerSignup(
+                        event_id=event_id,
+                        discord_id=player_id,
+                        discord_name=profile.discord_name,
+                        choices=[table_name],
+                        removed=False,
+                    )
+                )
+            else:
+                override.discord_name = profile.discord_name
+                override.choices = [table_name]
+                override.removed = False
+            known[player_id] = {"id": player_id, "name": profile.discord_name}
         db.add(
             EventManualAssignment(
                 event_id=event_id,
@@ -410,12 +452,10 @@ def manager_add(
         )
         event = db.get(Event, event_id)
         assert event is not None
+        queue_member(db, event, player_id)
         if announce_changes(db, event):
-            promoted = next(
-                player
-                for player in run.snapshot["players"]
-                if player["id"] == player_id
-            )
+            action = "promoted from the waitlist" if waitlisted else "added"
+            promoted = known[player_id]
             name = (
                 clean(promoted["name"])
                 if player_id.startswith("test-")
@@ -442,7 +482,8 @@ def manager_add(
                         channel_id=channel_id,
                         payload={
                             "content": (
-                                f"{name} has been promoted from the waitlist "
+                                f"{name} has been "
+                                f"{action} "
                                 f"to **{clean(table_name)}**."
                             ),
                             "allowed_mentions": {

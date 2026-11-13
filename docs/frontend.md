@@ -76,3 +76,7 @@ The create form actions use save icons with Draft (Schedule for recurring events
 The footer has a top divider and a single GitHub repository icon link, using the compact rounded icon style from Tiny Grimoire. General settings use dividers between checkbox options. Organization deletion requires confirmation, and member removal uses a trash icon with an accessible username label.
 
 Event process buttons share the 46px primary action height. Icon actions and modal close buttons are square at 46×46px. The event toolbar wraps on narrow screens, uses a Discord icon for the signup link, and relies on automatic signup polling rather than a toolbar refresh button.
+
+All modal headers use ModalHeader to fit their title onto one line beside the square close button. Titles refit when their text, available width, or fonts change, including after resizing an open dialog. Keep new modal headers on the shared component rather than implementing separate sizing logic.
+
+Active assigned events offer Add Player for known players who are not already seated. The backend saves the placement as a manual override and keeps the original lottery snapshot/result unchanged. New additions can overfill a table, join the event thread, and queue a refresh of the existing Discord assignment posts. The General announcement setting controls separate table-change notices; roster edits are queued regardless. Previously withdrawn players remain unavailable for re-addition.

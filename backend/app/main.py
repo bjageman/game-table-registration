@@ -1516,6 +1516,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         authenticated(request, True)
         valid_player_id(player_id)
         with DBSession(engine) as db:
+            assigned_event = db.get(Event, event_id)
+            assigned_guild = (
+                assigned_event.guild_id
+                if assigned_event is not None
+                and matches_destination(assigned_event, request)
+                and assigned_event.status == "assigned"
+                else None
+            )
+        if assigned_guild:
+            if not manager_add(
+                engine,
+                assigned_guild,
+                event_id,
+                player_id,
+                body.table,
+                allow_known_player=True,
+            ):
+                raise HTTPException(409, "Player is already assigned or unavailable")
+            return {"ok": True}
+        with DBSession(engine) as db:
             claimed = db.execute(
                 update(Event)
                 .where(

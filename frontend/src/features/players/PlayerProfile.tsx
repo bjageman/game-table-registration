@@ -1,3 +1,4 @@
+import ModalHeader from "../../components/ModalHeader";
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import Checkbox from "@mui/material/Checkbox";
@@ -145,11 +146,11 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
         void close();
       }
     }}>
-    <div className="event-modal-header player-profile-header">
+    <ModalHeader className="player-profile-header">
       <h2 id={heading}>Player Information</h2>
       {profile?.is_test && <span className="badge">Test User</span>}
       <button id={`player-profile-close-${player.id}`} type="button" aria-label="Close player information" title="Close" onClick={() => void close()} autoFocus><X size={18} aria-hidden="true" /></button>
-    </div>
+    </ModalHeader>
     <dl className="player-discord-name"><dt>Discord Name</dt><dd>{profile?.discord_name ?? player.name}</dd></dl>
     {!profile && !error && <p><LoadingIndicator label="Loading player information…" /></p>}
     {error && <p role="alert" className="error">{error}</p>}

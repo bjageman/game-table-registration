@@ -3223,3 +3223,92 @@ def test_server_list_skips_inaccessible_servers_but_reports_discord_outages(
         assert response.json()["guilds"] == [{"id": "100", "name": "Available"}]
     else:
         assert response.status_code == 502
+
+
+@pytest.mark.parametrize("player_id", ["999", "test-" + "a" * 24])
+def test_add_known_player_after_assignment_updates_discord_without_redrawing(
+    client, player_id
+):
+    from copy import deepcopy
+
+    from app.announcements import dispatch_due
+    from app.models import Announcement, Event, LotteryRun, PlayerProfile
+
+    headers, event, path, _ = closing_event(client)
+    engine = client.app.state.engine
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    with DBSession(engine) as db:
+        run = db.get(LotteryRun, event["id"])
+        saved_snapshot = deepcopy(run.snapshot)
+        saved_result = deepcopy(run.result)
+        db.add(
+            PlayerProfile(
+                guild_id="guild",
+                discord_id=player_id,
+                discord_name="Late Player",
+                real_name="Late Display Name",
+                is_test=player_id.startswith("test-"),
+            )
+        )
+        db.commit()
+    target = f"{path}/manager-players/{player_id}"
+    body = {"table": "A", "name": "Untrusted client name"}
+    assert client.put(target, json=body).status_code == 403
+    assert (
+        client.put(
+            target, headers=headers, json={**body, "table": "missing"}
+        ).status_code
+        == 409
+    )
+    assert (
+        client.put(
+            f"{path}/manager-players/888", headers=headers, json=body
+        ).status_code
+        == 409
+    )
+    assert client.put(target, headers=headers, json=body).status_code == 200
+    assert client.put(target, headers=headers, json=body).status_code == 409
+    rows = client.get(path + "/signups").json()
+    table = next(row for row in rows if row["name"] == "A")
+    added = next(player for player in table["players"] if player["id"] == player_id)
+    assert added["name"] == "Late Player"
+    assert added["display_name"] == "Late Display Name"
+    assert len(table["players"]) == 2
+    with DBSession(engine) as db:
+        run = db.get(LotteryRun, event["id"])
+        assert run.snapshot == saved_snapshot
+        assert run.result == saved_result
+        refresh = (
+            db.query(Announcement).filter_by(event_id=event["id"], kind="refresh").one()
+        )
+        assert refresh.state == "pending"
+    dispatch_due(engine, lambda guild, channel: discord)
+    channel, message, edit = discord.at.return_value.edit_announcement.call_args.args
+    assert (channel, message) == ("channel", "announcement")
+    field = next(
+        field
+        for field in edit["embeds"][0]["fields"]
+        if field["name"].startswith("A (")
+    )
+    assert (
+        "Late Player" if player_id.startswith("test-") else f"<@{player_id}>"
+    ) in field["value"]
+    assert client.delete(target, headers=headers).status_code == 200
+    assert all(
+        player["id"] != player_id
+        for row in client.get(path + "/signups").json()
+        for player in row["players"]
+    )
+    assert client.put(target, headers=headers, json=body).status_code == 409
+    with DBSession(engine) as db:
+        db.add(PlayerProfile(guild_id="guild", discord_id="777", discord_name="Other"))
+        db.get(Event, event["id"]).archived_at = time.time()
+        db.commit()
+    assert (
+        client.put(
+            f"{path}/manager-players/777", headers=headers, json=body
+        ).status_code
+        == 409
+    )

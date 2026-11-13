@@ -1,3 +1,4 @@
+import ModalHeader from "../../../components/ModalHeader";
 import { useEffect, useId, useRef } from "react";
 import { isBackdropClick } from "../../../lib/dialogBackdrop";
 import type { EventTemplateRecord } from "../../../lib/api";
@@ -22,10 +23,10 @@ export default function TemplatePicker({ templates, onSelect, onClose }: {
   return <dialog id="event-template-picker-dialog" ref={dialog} aria-labelledby={heading}
     onCancel={(event) => { event.preventDefault(); onClose(); }}
     onClick={(event) => { if (isBackdropClick(event)) onClose(); }}>
-    <div className="event-modal-header">
+    <ModalHeader>
       <h2 id={heading}>Load From Template</h2>
       <button id="event-template-picker-close-button" type="button" aria-label="Close template picker" title="Close" onClick={onClose}><X size={18} aria-hidden="true" /></button>
-    </div>
+    </ModalHeader>
     <p>Choose a template to fill the title, signup duration, and tables. Your event date stays as it is.</p>
     <ul className="template-list">
       {templates.map((template) => <li key={template.id}>

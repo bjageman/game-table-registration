@@ -1,3 +1,4 @@
+import ModalHeader from "../../../components/ModalHeader";
 import { useEffect, useRef, useState } from "react";
 import { Share2, X } from "lucide-react";
 import { api, errorMessage, mutationOptions } from "../../../lib/api";
@@ -32,9 +33,9 @@ export default function ShareEvent({ eventId, csrf, onAccessError }: {
     {open && <dialog id={`event-share-dialog-${eventId}`} ref={dialog} aria-labelledby="share-event-heading"
       onCancel={(event) => { event.preventDefault(); setOpen(false); }}
       onClick={(event) => { if (isBackdropClick(event)) setOpen(false); }}>
-      <div className="event-modal-header"><h2 id="share-event-heading">Share table assignments</h2>
+      <ModalHeader><h2 id="share-event-heading">Share table assignments</h2>
         <button id={`event-share-close-${eventId}`} type="button" aria-label="Close sharing" onClick={() => setOpen(false)}><X size={18} aria-hidden="true" /></button>
-      </div>
+      </ModalHeader>
       <p>Anyone with this link can view the current table assignments and waitlists without signing in.</p>
       {error && <p role="alert" className="error">{error}</p>}
       {!url && !error && <p role="status">Preparing link…</p>}

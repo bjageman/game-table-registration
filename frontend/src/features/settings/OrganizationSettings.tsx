@@ -1,3 +1,4 @@
+import ModalHeader from "../../components/ModalHeader";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Trash2, X } from "lucide-react";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
@@ -177,10 +178,10 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
     {creating && <dialog id="organization-create-dialog" ref={createDialog} aria-labelledby="organization-create-heading"
       onCancel={(event) => { event.preventDefault(); closeCreate(); }}
       onClick={(event) => { if (isBackdropClick(event)) closeCreate(); }}>
-      <div className="event-modal-header">
+      <ModalHeader>
         <h2 id="organization-create-heading">Create an organization</h2>
         <button type="button" aria-label="Close create organization" title="Close" disabled={busy} onClick={closeCreate}><X size={18} aria-hidden="true" /></button>
-      </div>
+      </ModalHeader>
       <form id="organization-create-form" className="create-organization-form" onSubmit={(event) => void create(event)}>
         <label htmlFor="organization-name">Organization name</label>
         <input id="organization-name" autoFocus required maxLength={100} placeholder="Enter a unique name for your org"
@@ -212,10 +213,10 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       {selected.role === "admin" && addingUser && <dialog id="organization-add-user-dialog" ref={addUserDialog} aria-labelledby="organization-add-user-heading"
         onCancel={(event) => { event.preventDefault(); closeAddUser(); }}
         onClick={(event) => { if (isBackdropClick(event)) closeAddUser(); }}>
-        <div className="event-modal-header">
+        <ModalHeader>
           <h2 id="organization-add-user-heading">Add User</h2>
           <button type="button" aria-label="Close add user" title="Close" disabled={busy} onClick={closeAddUser}><X size={18} aria-hidden="true" /></button>
-        </div>
+        </ModalHeader>
         <form id="organization-add-user-form" className="create-organization-form" onSubmit={(event) => void addUser(event)}>
         <label htmlFor="organization-user-search">Search users</label>
         <input id="organization-user-search" type="search" value={query} placeholder="Search known users" onChange={(event) => { setQuery(event.target.value); setNewUser(undefined); }} />

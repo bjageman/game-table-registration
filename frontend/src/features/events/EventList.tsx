@@ -1,3 +1,4 @@
+import ModalHeader from "../../components/ModalHeader";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
@@ -91,31 +92,12 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const title = useRef<HTMLHeadingElement>(null);
   const signupOpensAt = event.published_at ?? event.scheduled_publish_at;
   const signupClosesAt = event.closes_at ?? (
     event.series_id && event.scheduled_publish_at != null
       ? event.scheduled_publish_at + event.duration_hours * 3600
       : null
   );
-  useEffect(() => {
-    const heading = title.current;
-    if (!heading) return;
-    function fitTitle() {
-      if (!heading) return;
-      heading.style.removeProperty("font-size");
-      if (!window.matchMedia?.("(max-width: 600px)").matches) return;
-      const size = parseFloat(getComputedStyle(heading).fontSize);
-      if (heading.scrollWidth > heading.clientWidth && heading.clientWidth > 0) {
-        heading.style.fontSize = `${Math.max(1, size * heading.clientWidth / heading.scrollWidth - 0.2)}px`;
-      }
-    }
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fitTitle) : null;
-    observer?.observe(heading);
-    window.addEventListener("resize", fitTitle);
-    fitTitle();
-    return () => { observer?.disconnect(); window.removeEventListener("resize", fitTitle); };
-  }, [event.title]);
   useEffect(() => {
     const modal = dialog.current;
     const trigger = document.activeElement;
@@ -128,8 +110,8 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
   return (
     <dialog id={`event-dialog-${event.id}`} onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
-      <div className="event-modal-header">
-        <h2 ref={title} id={`event-${event.id}`}>{event.title}</h2>
+      <ModalHeader className="event-details-header">
+        <h2 id={`event-${event.id}`}>{event.title}</h2>
         <span className="event-badges"><span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
           {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}
         </span>{event.is_test && <span className="badge">Test</span>}</span>
@@ -160,7 +142,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
         <button id={`event-close-${event.id}`} type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
           <X size={18} aria-hidden="true" />
         </button>
-      </div>
+      </ModalHeader>
             <dl className="event-details">
               <div>
                 <dt>Event starts</dt>

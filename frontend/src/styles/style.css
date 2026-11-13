@@ -561,7 +561,7 @@ dd {
 .public-event-page .event-table ol li { margin-bottom: 6px; }
 .public-event-description { white-space: pre-wrap; }
 .event-modal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-.event-modal-header h2 { margin: 0; min-width: 0; }
+.event-modal-header h2 { margin: 0; min-width: 0; flex: 1; white-space: nowrap; }
 .event-modal-header > .badge { flex-shrink: 0; }
 .event-badges { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .event-modal-header > button { margin-left: auto; flex-shrink: 0; width: var(--action-button-height); height: var(--action-button-height); padding: 8px; }
@@ -571,17 +571,13 @@ dd {
 .event-header-actions > .button { min-height: var(--action-button-height); white-space: nowrap; }
 .event-icon-action { padding: 8px; width: var(--action-button-height); height: var(--action-button-height); min-width: var(--action-button-height); min-height: var(--action-button-height); flex-shrink: 0; }
 @media (max-width: 600px) {
-  .event-modal-header { gap: 8px; flex-wrap: wrap; }
-  .event-modal > .event-modal-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-  .event-modal > .event-modal-header h2 { grid-column: 1; grid-row: 1; white-space: nowrap; }
-  .event-modal > .event-modal-header > .badge,
-  .event-modal > .event-modal-header > .event-badges { grid-column: 1; grid-row: 2; justify-self: start; }
-  .event-modal > .event-modal-header > button { grid-column: 2; grid-row: 1; }
-  .event-modal > .event-modal-header > .event-header-actions { grid-column: 1 / -1; grid-row: 3; }
+  .event-modal-header { gap: 8px; }
+  .event-details-header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
+  .event-details-header h2 { grid-column: 1; grid-row: 1; }
+  .event-details-header > .event-badges { grid-column: 2; grid-row: 1; }
+  .event-details-header > button { grid-column: 3; grid-row: 1; }
+  .event-details-header > .event-header-actions { grid-column: 1 / -1; grid-row: 2; }
   .event-header-actions { gap: 4px; order: 1; flex-basis: 100%; flex-wrap: wrap; }
-  .player-profile-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-  .player-profile-header > .badge { grid-column: 1; grid-row: 2; justify-self: start; }
-  .player-profile-header > button { grid-column: 2; grid-row: 1; }
 }
 
 .confirmation-actions {

@@ -1,3 +1,4 @@
+import ModalHeader from "../../../components/ModalHeader";
 import { useEffect, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
 import { isBackdropClick } from "../../../lib/dialogBackdrop";
@@ -39,10 +40,10 @@ export default function SignupDownload({ event, onAccessError }: {
     {open && <dialog id={`event-download-dialog-${event.id}`} ref={dialog} aria-label={`Download signups for ${event.title}`}
       onClick={(click) => { if (!busy && isBackdropClick(click)) setOpen(false); }}
       onCancel={(cancel) => { cancel.preventDefault(); if (!busy) setOpen(false); }}>
-      <div className="event-modal-header">
+      <ModalHeader>
         <h2>Download signups</h2>
         <button id={`event-download-close-${event.id}`} type="button" aria-label="Close dialog" title="Close" disabled={busy} onClick={() => setOpen(false)}><X size={18} aria-hidden="true" /></button>
-      </div>
+      </ModalHeader>
       <p>Choose a file for {event.title}.</p>
       {error && <p role="alert" className="error">{error}</p>}
       <div className="form-actions">
