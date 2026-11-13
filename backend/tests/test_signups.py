@@ -112,10 +112,9 @@ def test_custom_publication_and_duplicate_guard(custom_client):
     headers, event, path = publish(custom_client)
     payload = client.app.state.discord.publish.call_args.args[0]
     assert "poll" not in payload
-    assert "embeds" not in payload
-    assert "1️⃣ A · 1 seats" in payload["content"]
-    assert "2️⃣ B · 1 seats" in payload["content"]
-    assert "lottery entry" in payload["content"]
+    embed = payload["embeds"][0]
+    assert [field["name"] for field in embed["fields"]] == ["1️⃣ A (0/1)", "2️⃣ B (0/1)"]
+    assert "lottery entry" in embed["description"]
     assert payload["allowed_mentions"] == {"parse": []}
     assert "components" not in payload
     assert event["signup_mode"] == "custom"

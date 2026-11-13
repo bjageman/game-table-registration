@@ -25,9 +25,9 @@ def test_numbered_publication_seeds_only_listed_tables(custom_client):
     _, event, _ = publish(custom_client, reaction=True)
     assert event["signup_mode"] == "reactions"
     payload = client.app.state.discord.publish.call_args.args[0]
-    assert "embeds" not in payload
-    assert "1️⃣ A · 1 seats" in payload["content"]
-    assert "Remove your reaction" in payload["content"]
+    embed = payload["embeds"][0]
+    assert embed["fields"][0]["name"] == "1️⃣ A (0/1)"
+    assert "Remove your reaction" in embed["description"]
     assert "components" not in payload and "poll" not in payload
     client.app.state.discord.seed_reactions.assert_called_once_with(
         "message", ["1️⃣", "2️⃣"]
