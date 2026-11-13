@@ -315,7 +315,7 @@ def test_closing_signup_embed_keeps_title_and_tables_and_adds_footer():
     api.bot = Mock(return_value={"content": "", "embeds": [embed]})
     api.close_reaction_message("message")
     payload = api.bot.call_args.kwargs["json"]
-    assert "content" not in payload
+    assert payload["content"] == ""
     saved = payload["embeds"][0]
     assert saved["title"] == embed["title"]
     assert saved["description"] == embed["description"]
@@ -326,10 +326,31 @@ def test_closing_signup_embed_keeps_title_and_tables_and_adds_footer():
     )
 
 
-def test_closing_legacy_signup_retains_original_content():
+def test_closing_regular_signup_converts_it_to_an_embed():
     api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
-    api.bot = Mock(return_value={"content": "Legacy title and tables"})
+    api.bot = Mock(
+        return_value={
+            "content": "**Legacy title**\nEvent: <t:2000000000:F>\n1️⃣ Table A · 8 seats"
+        }
+    )
     api.close_reaction_message("message")
     payload = api.bot.call_args.kwargs["json"]
-    assert payload["content"].startswith("Legacy title and tables\n\n")
-    assert "Signups closed" in payload["content"]
+    assert payload["content"] == ""
+    embed = payload["embeds"][0]
+    assert embed["title"] == "Legacy title"
+    assert "1️⃣ Table A · 8 seats" in embed["description"]
+    assert (
+        embed["footer"]["text"] == "Signups closed. Reactions no longer change entries."
+    )
+
+
+def test_closing_poll_signup_converts_it_and_removes_controls():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(return_value={"content": "**Game Night**\nEvent: <t:2000000000:F>"})
+    api.close_signup_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert payload["content"] == ""
+    assert payload["components"] == []
+    assert payload["embeds"][0]["title"] == "Game Night"
+    assert "Event: <t:2000000000:F>" in payload["embeds"][0]["description"]
+    assert payload["embeds"][0]["footer"]["text"] == "Signups closed."

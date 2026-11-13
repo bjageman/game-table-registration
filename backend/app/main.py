@@ -392,6 +392,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                     discord.close_signup_message(event["message"])
                                 elif event["mode"] == "reactions":
                                     discord.close_reaction_message(event["message"])
+                                elif event["mode"] == "poll":
+                                    discord.close_signup_message(event["message"])
                         except Exception:
                             logging.getLogger(__name__).exception(
                                 "Automatic signup closing failed for event %s",
@@ -1809,7 +1811,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "late reactions are rejected"
                     )
             if (
-                event.signup_mode == "custom"
+                event.signup_mode in ("custom", "poll")
                 and event.message_id
                 and not event.signup_deleted_at
             ):
