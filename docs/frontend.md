@@ -80,3 +80,5 @@ Event process buttons share the 46px primary action height. Icon actions and mod
 All modal headers use ModalHeader to fit their title onto one line beside the square close button. Titles refit when their text, available width, or fonts change, including after resizing an open dialog. Keep new modal headers on the shared component rather than implementing separate sizing logic.
 
 Active assigned events offer Add Player for known players who are not already seated. The backend saves the placement as a manual override and keeps the original lottery snapshot/result unchanged. New additions can overfill a table, join the event thread, and queue a refresh of the existing Discord assignment posts. The General announcement setting controls separate table-change notices; roster edits are queued regardless. Previously withdrawn players remain unavailable for re-addition.
+
+Trial event-detail layout: date labels and values appear inline with a colon, while long values can wrap within their column on narrow screens. This presentation change is isolated in its own commit for easy reversal.
