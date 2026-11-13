@@ -1,12 +1,16 @@
+import EventDateLine from "../../components/EventDateLine";
+import { useTimezone, formatTimestamp } from "../../lib/timezone";
+import ModalHeader from "../../components/ModalHeader";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
-import { Eye, RefreshCw, X } from "lucide-react";
+import { X } from "lucide-react";
 import ArchiveEvent from "./actions/ArchiveEvent";
 import ShareEvent from "./sharing/ShareEvent";
 import DeleteDiscordMessages from "./actions/DeleteDiscordMessages";
 import DeleteSignupMessage from "./actions/DeleteSignupMessage";
 import EventTables from "./assignments/EventTables";
 import DiscordLink from "../../components/DiscordLink";
+import { DiscordIcon } from "../../components/DiscordIcon";
 import PopulateTestUsers from "./actions/PopulateTestUsers";
 import AssignmentAnnouncement from "./assignments/AssignmentAnnouncement";
 import SignupDownload from "./exports/SignupDownload";
@@ -14,13 +18,6 @@ import CloseSignups from "./actions/CloseSignups";
 import EventActions from "./actions/EventActions";
 import type { EventRecord } from "../../lib/api";
 import PublishEvent, { type PublicationActions } from "./actions/PublishEvent";
-
-export function formatTime(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "long",
-  }).format(new Date(timestamp * 1000));
-}
 
 export default function EventList({
   events,
@@ -40,10 +37,11 @@ export default function EventList({
   const selected = events.find((event) => event.id === selectedId);
   return (
     <>
-      <ul className="event-list">
+      <ul id="events-list" className="event-list">
         {events.map((event) => (
           <li key={event.id}>
             <button
+              id={`event-open-${event.id}`}
               type="button"
               className="event-list-item"
               aria-haspopup="dialog"
@@ -89,33 +87,12 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const title = useRef<HTMLHeadingElement>(null);
-  const [refreshToken, setRefreshToken] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
   const signupOpensAt = event.published_at ?? event.scheduled_publish_at;
   const signupClosesAt = event.closes_at ?? (
     event.series_id && event.scheduled_publish_at != null
       ? event.scheduled_publish_at + event.duration_hours * 3600
       : null
   );
-  useEffect(() => {
-    const heading = title.current;
-    if (!heading) return;
-    function fitTitle() {
-      if (!heading) return;
-      heading.style.removeProperty("font-size");
-      if (!window.matchMedia?.("(max-width: 600px)").matches) return;
-      const size = parseFloat(getComputedStyle(heading).fontSize);
-      if (heading.scrollWidth > heading.clientWidth && heading.clientWidth > 0) {
-        heading.style.fontSize = `${Math.max(1, size * heading.clientWidth / heading.scrollWidth - 0.2)}px`;
-      }
-    }
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fitTitle) : null;
-    observer?.observe(heading);
-    window.addEventListener("resize", fitTitle);
-    fitTitle();
-    return () => { observer?.disconnect(); window.removeEventListener("resize", fitTitle); };
-  }, [event.title]);
   useEffect(() => {
     const modal = dialog.current;
     const trigger = document.activeElement;
@@ -126,28 +103,19 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
     };
   }, []);
   return (
-    <dialog onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
+    <dialog id={`event-dialog-${event.id}`} onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
-      <div className="event-modal-header">
-        <h2 ref={title} id={`event-${event.id}`}>{event.title}</h2>
+      <ModalHeader className="event-details-header">
+        <h2 id={`event-${event.id}`}>{event.title}</h2>
         <span className="event-badges"><span className={`badge ${event.status === "draft" ? "draft" : ""}`}>
           {event.archived_at ? "Archived" : (event.status === "draft" && event.scheduled_publish_at != null ? "scheduled" : event.status.replaceAll("_", " "))}
         </span>{event.is_test && <span className="badge">Test</span>}</span>
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {event.status !== "draft" && event.status !== "scheduled" && event.status !== "assigned" && (
-          <button type="button" className="event-icon-action"
-            aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
-            title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
-            disabled={refreshing}
-            onClick={() => setRefreshToken((value) => value + 1)}>
-            <RefreshCw size={18} aria-hidden="true" />
-          </button>
-          )}
           {event.discord_url && (
             <DiscordLink className="button event-icon-action" url={event.discord_url} label={`View Discord signup for ${event.title}`}>
-              <Eye size={18} aria-hidden="true" />
+              <DiscordIcon size={18} />
             </DiscordLink>
           )}
           {!readOnly && event.status === "assigned" && !event.archived_at && <ArchiveEvent event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
@@ -166,45 +134,18 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
             </>
           )}
         </div>
-        <button type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
+        <button id={`event-close-${event.id}`} type="button" onClick={onClose} aria-label="Close event" title="Close event" autoFocus>
           <X size={18} aria-hidden="true" />
         </button>
-      </div>
+      </ModalHeader>
             <dl className="event-details">
-              <div>
-                <dt>Event starts</dt>
-                <dd>
-                  <time
-                    dateTime={new Date(event.starts_at * 1000).toISOString()}
-                  >
-                    {formatTime(event.starts_at)}
-                  </time>
-                </dd>
-              </div>
+              <EventDateLine label="Event starts" timestamp={event.starts_at} />
               {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
-              {signupOpensAt != null && (
-                <div>
-                  <dt>Signup Open</dt>
-                  <dd>
-                    <time dateTime={new Date(signupOpensAt * 1000).toISOString()}>
-                      {formatTime(signupOpensAt)}
-                    </time>
-                  </dd>
-                </div>
-              )}
-                <div>
-                  <dt>Signup Close</dt>
-                  <dd>
-                    {signupClosesAt != null ? <time
-                      dateTime={new Date(signupClosesAt * 1000).toISOString()}
-                    >
-                      {formatTime(signupClosesAt)}
-                    </time> : "-"}
-                  </dd>
-                </div>
+              {signupOpensAt != null && <EventDateLine label="Signup Open" timestamp={signupOpensAt} />}
+              <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
             </dl>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
-            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
             </p>}
@@ -212,7 +153,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
-            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onAccessError={actions.onAccessError} />}
+            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (
@@ -226,7 +167,8 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
 }
 
 function ListTime({ timestamp }: { timestamp: number }) {
+  const timezone = useTimezone();
   return <time dateTime={new Date(timestamp * 1000).toISOString()}>
-    {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp * 1000))}
+    {formatTimestamp(timestamp, timezone)}
   </time>;
 }

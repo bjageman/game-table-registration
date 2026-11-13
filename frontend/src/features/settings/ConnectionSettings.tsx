@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { FormField } from "../../components/FormFields";
 import { RefreshCw } from "lucide-react";
 import Tabs from "@mui/material/Tabs";
@@ -21,7 +21,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
   onSaved: () => Promise<void>;
   onAccessError: (error: unknown) => boolean;
 }) {
-  const tabId = useId();
+  const tabId = "settings";
   const [tab, setTab] = useState("discord");
   const [setup, setSetup] = useState<Setup>();
   const [guilds, setGuilds] = useState<Choice[]>([]);
@@ -90,9 +90,8 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
   }
   const connectUrl = setup?.connect_url ?? "/api/auth/connect";
   const restricted = Boolean(setup?.organization_role && setup.organization_role !== "admin");
-  return <section className="panel settings-panel" aria-labelledby="settings-heading">
-    <div className="section-heading"><h2 id="settings-heading">Settings</h2></div>
-    <Tabs className="settings-tabs" value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
+  return <section id="settings-panel" className="panel settings-panel" aria-label="Settings">
+    <Tabs id="settings-tabs" className="settings-tabs" value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
       <Tab label="Discord" value="discord" id={`${tabId}-discord-tab`} aria-controls={`${tabId}-discord-panel`} />
       <Tab label="General" value="assignments" id={`${tabId}-assignments-tab`} aria-controls={`${tabId}-assignments-panel`} />
       <Tab label="Organization" value="organization" id={`${tabId}-organization-tab`} aria-controls={`${tabId}-organization-panel`} />
@@ -102,23 +101,23 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     {error && <p role="alert" className="error">{error}{!setup && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry settings</button>}</p>}
     {setup && <>
       <div className="form-actions settings-connections">
-        {!setup.selection && <a className="button" href={connectUrl}>Connect</a>}
+        {!setup.selection && <a id="discord-connect-button" className="button" href={connectUrl}>Connect</a>}
       </div>
-      {setup.selection && <form onSubmit={(event) => void save(event)} aria-label="Discord settings">
+      {setup.selection && <form id="discord-settings-form" onSubmit={(event) => void save(event)} aria-label="Discord settings">
         <div className="form-grid">
           <div className="signup-channel-field">
-          <FormField select label="Discord Server" value={guildId} fullWidth
+          <FormField id="discord-server-select" select label="Discord Server" value={guildId} fullWidth
             disabled={restricted || saving || guilds.length <= 1}
             onChange={(event) => { setGuildId(event.target.value); setChannelId(""); setChannels(undefined); setChannelError(""); }}>
             {guildId && !guilds.some((guild) => guild.id === guildId) &&
               <MenuItem value={guildId}>{setup.selection.guild_name}</MenuItem>}
             {guilds.map((guild) => <MenuItem key={guild.id} value={guild.id}>{guild.name}</MenuItem>)}
           </FormField>
-          <button type="button" className="settings-refresh" aria-label="Refresh Servers" title="Refresh Servers"
+          <button id="discord-refresh-servers-button" type="button" className="settings-refresh" aria-label="Refresh Servers" title="Refresh Servers"
             disabled={restricted || saving || refreshingServers} onClick={() => void refreshServers()}><RefreshCw size={18} aria-hidden="true" /></button>
           </div>
           <div className="signup-channel-field">
-          {restricted ? <FormField label="Signup Channel" value={`#${setup.selection.channel_name}`} disabled /> : <FormField select label="Signup Channel" value={channels ? channelId : ""} fullWidth disabled={saving || !channels?.length}
+          {restricted ? <FormField id="discord-channel-select" label="Signup Channel" value={`#${setup.selection.channel_name}`} disabled /> : <FormField id="discord-channel-select" select label="Signup Channel" value={channels ? channelId : ""} fullWidth disabled={saving || !channels?.length}
             slotProps={{ inputLabel: { shrink: true } }}
             onChange={(event) => setChannelId(event.target.value)}>
             <MenuItem value="">Choose a channel</MenuItem>
@@ -126,7 +125,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
               <MenuItem value={channelId}>#{setup.selection.channel_name}</MenuItem>}
             {(channels ?? []).map((c) => <MenuItem key={c.id} value={c.id}>#{c.name}</MenuItem>)}
           </FormField>}
-          {!restricted && <button type="button" className="settings-refresh" aria-label="Refresh Channels" title="Refresh Channels"
+          {!restricted && <button id="discord-refresh-channels-button" type="button" className="settings-refresh" aria-label="Refresh Channels" title="Refresh Channels"
             disabled={saving || !guildId || (!channels && !channelError)}
             onClick={() => { setChannelError(""); setChannels(undefined); setChannelAttempt((n) => n + 1); }}>
             <RefreshCw size={18} aria-hidden="true" />
@@ -139,7 +138,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
           <p className="help">If channels are missing, disconnect from Discord and reconnect.</p>
         </>}
         {channels?.length === 0 && <p className="help">No eligible text channels found.</p>}
-        <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button className="primary" type="submit" disabled={restricted || saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></span>
+        <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button id="discord-settings-save-button" className="primary" type="submit" disabled={restricted || saving || !guildId || !channelId || !channels?.some((c) => c.id === channelId)}>{saving ? "Saving…" : "Save"}</button></span>
         {setup.selection && !setup.disconnected && <DisconnectDiscord csrf={csrf} disabled={saving || restricted} onAccessError={onAccessError} onBusyChange={setSaving}
           onDisconnected={async () => {
             await onSaved();
@@ -152,7 +151,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     </>}
     </div>
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
-      {setup ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} />
+      {setup ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} onSaved={onSaved} />
         : <p><LoadingIndicator label="Loading settings…" /></p>}
     </div>
     <div role="tabpanel" id={`${tabId}-organization-panel`} aria-labelledby={`${tabId}-organization-tab`} hidden={tab !== "organization"}>

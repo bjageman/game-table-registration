@@ -61,23 +61,23 @@ export default function PlayerLookup({ session, onAccessError }: {
       : { key, direction: "asc" });
   }
 
-  return <section className="panel" aria-labelledby="player-lookup-heading">
+  return <section id="player-lookup" className="panel" aria-labelledby="player-lookup-heading">
     <div className="section-heading"><h2 id="player-lookup-heading">Player Lookup</h2></div>
-    <FormField type="search" label="Search players" placeholder="Search by name or Discord ID"
+    <FormField id="player-lookup-search" type="search" label="Search players" placeholder="Search by name or Discord ID"
       value={query} onChange={(event) => setQuery(event.target.value)} />
     {loading && <p><LoadingIndicator label="Loading players…" /></p>}
     {error && <p role="alert" className="error">Could not load players. {error} <button type="button" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Retry</button></p>}
     {!loading && !error && <>
       <p>{visible.length} {visible.length === 1 ? "player" : "players"}</p>
       {visible.length ? <div className="player-lookup-table">
-        <div className="player-lookup-columns">{sortHeaders.map(({ key, label }) => <button key={key}
+        <div className="player-lookup-columns">{sortHeaders.map(({ key, label }) => <button id={`player-lookup-sort-${key}`} key={key}
           type="button" className="player-lookup-sort" aria-pressed={sort.key === key}
           aria-label={`Sort by ${label}${sort.key === key ? `, currently ${sort.direction === "asc" ? "ascending" : "descending"}` : ""}`}
           onClick={() => changeSort(key)}>
           {label}{sort.key === key && (sort.direction === "asc" ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />)}
         </button>)}</div>
         <ul className="player-lookup-list">{sorted.map((player) => <li key={player.discord_id}>
-        <button type="button" className="player-lookup-item" onClick={() => setSelected(player)}>
+        <button id={`player-open-${player.discord_id}`} type="button" className="player-lookup-item" onClick={() => setSelected(player)}>
           <span className="player-lookup-star">{player.guaranteed_seat && <Star size={18} fill="currentColor" aria-label="Always guaranteed" />}</span>
           <span className="player-lookup-username">{player.discord_name}</span>
           <span className="player-lookup-display-name">{player.real_name || "—"}</span>

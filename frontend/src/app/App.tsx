@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, GitBranch, Menu as MenuIcon } from "lucide-react";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import {
@@ -13,6 +13,7 @@ import Dashboard from "../features/events/Dashboard";
 import ConnectionSettings from "../features/settings/ConnectionSettings";
 import LoadingIndicator from "../components/LoadingIndicator";
 import PlayerLookup from "../features/players/PlayerLookup";
+import { TimezoneContext } from "../lib/timezone";
 
 type AuthState =
   | { kind: "loading" }
@@ -130,23 +131,27 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="site-header">
-        <div>
-          {branding && <h1><a className="home-link" href="/">{branding.logo_url && <img className="brand-logo" src={branding.logo_url} alt="" />}{branding.name}</a></h1>}
+    <TimezoneContext.Provider value={auth.kind === "ready" ? auth.session.timezone ?? null : null}>
+    <div id="app-shell" className="app-shell">
+      <header id="site-header" className="site-header">
+        <div id="site-branding" className="site-branding">
+          {branding && <h1 id="site-title"><a id="home-link" className="home-link" href="/">{branding.logo_url && <img className="brand-logo" src={branding.logo_url} alt="" />}{branding.name}</a></h1>}
         </div>
         {auth.kind === "ready" && (
           <div className="account">
-            {auth.session.organization && <span className="active-organization">{auth.session.organization.name}</span>}
+            {auth.session.organization && <span id="active-organization" className="active-organization">{auth.session.organization.name}</span>}
             <button
+              id="profile-menu-button"
               className="profile-button"
+              aria-label={auth.session.username}
               aria-haspopup="menu"
               aria-expanded={Boolean(accountAnchor)}
               aria-controls={accountAnchor ? "account-menu" : undefined}
               onClick={(event) => setAccountAnchor(event.currentTarget)}
             >
+              <MenuIcon className="profile-icon" size={22} aria-hidden="true" />
               <span><strong>{auth.session.username}</strong></span>
-              <ChevronDown size={16} aria-hidden="true" />
+              <ChevronDown className="profile-chevron" size={16} aria-hidden="true" />
             </button>
             <Menu
               id="account-menu"
@@ -156,13 +161,14 @@ export default function App() {
               anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
               transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
-              <MenuItem component="a" href="#/players" onClick={() => setAccountAnchor(null)}>
+              <MenuItem id="profile-players-link" component="a" href="#/players" onClick={() => setAccountAnchor(null)}>
                 Player Lookup
               </MenuItem>
-              <MenuItem component="a" href="#/settings" onClick={() => setAccountAnchor(null)}>
+              <MenuItem id="profile-settings-link" component="a" href="#/settings" onClick={() => setAccountAnchor(null)}>
                 Settings
               </MenuItem>
               <MenuItem
+                id="profile-logout-button"
                 disabled={loggingOut}
                 onClick={() => {
                   setAccountAnchor(null);
@@ -175,7 +181,7 @@ export default function App() {
           </div>
         )}
       </header>
-      <main>
+      <main id="main-content">
         {logoutError && (
           <p role="alert" className="error">
             {logoutError}
@@ -185,11 +191,11 @@ export default function App() {
           <p><LoadingIndicator label="Checking your Discord session…" /></p>
         )}
         {auth.kind === "signed-out" && (
-          <section className="panel sign-in" aria-labelledby="sign-in-heading">
+          <section id="sign-in-panel" className="panel sign-in" aria-labelledby="sign-in-heading">
             <h2 id="sign-in-heading">Bring Everyone to the Table.</h2>
             <p>Sign in with Discord to manage your community’s game events.</p>
             {auth.configured ? (
-              <a className="button primary" href="/api/auth/login">
+              <a id="discord-login-button" className="button primary" href="/api/auth/login">
                 Log in with Discord
               </a>
             ) : (
@@ -215,7 +221,7 @@ export default function App() {
                 role.
               </p>
             )}
-            <button onClick={retry}>Check again</button>
+            <button id="session-retry-button" onClick={retry}>Check again</button>
           </section>
         )}
         {auth.kind === "ready" && (
@@ -230,7 +236,13 @@ export default function App() {
           ) : <Dashboard key={`${auth.session.destination ?? "legacy"}:${auth.session.organization?.id ?? "personal"}`} session={auth.session} onAccessError={onAccessError} />
         )}
       </main>
-      {branding && <footer>{branding.tagline}</footer>}
+      <footer id="site-footer">
+        <a id="footer-github-link" className="footer-icon-link" href="https://github.com/bjageman/game-table-registration"
+          target="_blank" rel="noopener noreferrer" aria-label="GitHub" title="GitHub">
+          <GitBranch size={18} aria-hidden="true" />
+        </a>
+      </footer>
     </div>
+    </TimezoneContext.Provider>
   );
 }

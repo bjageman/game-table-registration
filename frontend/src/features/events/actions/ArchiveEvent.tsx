@@ -45,9 +45,9 @@ export default function ArchiveEvent({ event, csrf, onUpdated, onAccessError }: 
     finally { inFlight.current = false; setBusy(false); }
   }
   return <>
-    <button type="button" className="event-icon-action" aria-label="Archive event" title="Archive Event"
+    <button id={`event-archive-${event.id}`} type="button" className="event-icon-action" aria-label="Archive event" title="Archive Event"
       onClick={() => { setError(""); setConfirming(true); }}><Archive size={18} aria-hidden="true" /></button>
-    {confirming && <ConfirmationDialog title={`Archive ${event.title}?`} busy={busy} error={error} status={status}
+    {confirming && <ConfirmationDialog id={`event-archive-dialog-${event.id}`} title={`Archive ${event.title}?`} busy={busy} error={error} status={status}
       onCancel={() => setConfirming(false)} onConfirm={() => void archive()}>
       <p>This keeps the event and its saved placements in the archive.</p>
       <label className="delete-poll-option"><input type="checkbox" checked={deleteMessages} disabled={busy}

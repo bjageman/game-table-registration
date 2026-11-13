@@ -10,7 +10,7 @@ const event: EventRecord = {
 };
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("suggests known players as the manager types and adds the selected player", async () => {
+it.each(["open", "assigned"])("suggests known players and adds the selected player during %s", async (status) => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   let added = false;
@@ -23,7 +23,7 @@ it("suggests known players as the manager types and adds the selected player", a
     return new Response(JSON.stringify([{ name: "Table A", players: added ? [{ id: "123", name: "mary" }] : [] }, { name: "Table B", players: [] }]));
   });
   vi.stubGlobal("fetch", fetchMock);
-  render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
+  render(<EventTables csrf="csrf" event={{ ...event, status }} onAccessError={() => false} />);
   fireEvent.click(screen.getAllByRole("button", { name: "Add Player" })[0]);
   const search = screen.getByRole("combobox", { name: "Search players" });
   fireEvent.change(search, { target: { value: "mar" } });

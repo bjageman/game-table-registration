@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Plus } from "lucide-react";
+import { resolveLocalTime, useTimezone } from "../../../lib/timezone";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Plus, Save } from "lucide-react";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Tooltip from "@mui/material/Tooltip";
@@ -30,8 +31,8 @@ interface Props {
   onAccessError: (error: unknown) => boolean;
 }
 
-function initialTime(): Dayjs {
-  return dayjs().add(1, "hour").startOf("hour");
+function initialTime(timezone: string): Dayjs {
+  return dayjs().tz(timezone).add(1, "hour").startOf("hour");
 }
 
 export default function EventForm({
@@ -42,25 +43,22 @@ export default function EventForm({
   onCancel,
   onAccessError,
 }: Props) {
-  const prefix = useId();
+  const prefix = "event-form";
+  const timezone = useTimezone();
   const [title, setTitle] = useState(draft?.title ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
   const [location, setLocation] = useState(draft?.location ?? "");
   const [startsAt, setStartsAt] = useState<Dayjs | null>(
-    draft ? dayjs.unix(draft.starts_at) : null,
+    draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
   );
   const [startsAtLocal, setStartsAtLocal] = useState(
-    draft ? dayjs.unix(draft.starts_at).format("YYYY-MM-DDTHH:mm") : "",
+    draft ? dayjs.unix(draft.starts_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : "",
   );
   const [mobileDate, setMobileDate] = useState<Dayjs | null>(
-    draft ? dayjs.unix(draft.starts_at) : null,
+    draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
   );
   const [mobileTime, setMobileTime] = useState(() =>
-    draft
-      ? dayjs()
-          .hour(dayjs.unix(draft.starts_at).hour())
-          .minute(dayjs.unix(draft.starts_at).minute())
-      : initialTime(),
+    draft ? dayjs.unix(draft.starts_at).tz(timezone) : initialTime(timezone),
   );
   const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
   const [manualClosesBefore, setManualClosesBefore] = useState(draft?.closes_at != null ? String(Math.round((draft.starts_at - draft.closes_at) / 3600)) : draft ? "" : "24");
@@ -75,7 +73,7 @@ export default function EventForm({
           name: table.name,
           capacity: String(table.capacity),
         }))
-      : [{ id: 0, name: "", capacity: "15" }],
+      : [{ id: 0, name: "Table #1", capacity: "15" }],
   );
   const nextId = useRef(tables.length);
   const pendingTableFocus = useRef<number | null>(null);
@@ -105,7 +103,11 @@ export default function EventForm({
     if (inFlight.current || tables.length >= 10) return;
     const id = nextId.current++;
     pendingTableFocus.current = id;
-    setTables((rows) => [...rows, { id, name: "", capacity: "15" }]);
+    setTables((rows) => {
+      let number = rows.length + 1;
+      while (rows.some((row) => row.name.trim().toLowerCase() === `table #${number}`)) number++;
+      return [...rows, { id, name: `Table #${number}`, capacity: "15" }];
+    });
   }
 
   function handleTableEnter(event: KeyboardEvent<HTMLDivElement>) {
@@ -215,6 +217,7 @@ export default function EventForm({
     const errors = validateEvent({
       title,
       startsAt: startsAtLocal,
+      timezone,
       duration: scheduled ? String(Number(opensBefore) - Number(closesBefore)) : duration,
       tables,
       explicitClosing: !scheduled,
@@ -227,7 +230,7 @@ export default function EventForm({
       );
       return;
     }
-    const start = new Date(startsAtLocal);
+    const start = resolveLocalTime(startsAtLocal, timezone).date!;
     const hours = scheduled ? Number(opensBefore) - Number(closesBefore) : 0;
     if (!scheduled && manualClosesBefore.trim()) {
       const close = Number(manualClosesBefore);
@@ -246,7 +249,7 @@ export default function EventForm({
       const opening = new Date(start.getTime() - open * 3600000);
       const now = new Date();
       if (opening.getTime() <= now.getTime()) {
-        const format = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "long" });
+        const format = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: timezone });
         setError(`Open signup of ${format.format(opening)} needs to start after the current time ${format.format(now)}.`);
         return;
       }
@@ -266,7 +269,7 @@ export default function EventForm({
             ...(scheduled ? { opens_before_hours: Number(opensBefore), closes_before_hours: Number(closesBefore) } : { closes_before_hours: manualClosesBefore.trim() ? Number(manualClosesBefore) : null }),
             ...(frequency !== "once" ? {
               frequency,
-              time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              time_zone: timezone,
               opens_before_hours: Number(opensBefore),
               closes_before_hours: Number(closesBefore),
             } : {}),
@@ -307,13 +310,14 @@ export default function EventForm({
   }
 
   return (
-    <section className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
+    <section id="event-form-panel" className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
       <div className="section-heading template-heading">
         <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : !scheduled ? "Create Draft Event" : frequency === "once" ? "Create Scheduled Event" : "Create Recurring Scheduled Event"}</h3>
-        {templates.length > 0 && <button type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
+        {templates.length > 0 && <button id="event-load-template-button" type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
       </div>
       {choosingTemplate && <TemplatePicker templates={templates} onSelect={loadTemplate} onClose={() => setChoosingTemplate(false)} />}
       <form
+        id="event-form"
         noValidate
         onSubmit={(event) => void submit(event)}
         aria-label={draft ? "Edit event" : "Create event"}
@@ -341,6 +345,7 @@ export default function EventForm({
               {isMobile ? (
                 <div className="mobile-date-time-fields">
                   <DatePicker
+                    timezone={timezone}
                     label="Event starts"
                     slotProps={{
                       textField: {
@@ -357,6 +362,7 @@ export default function EventForm({
                     format="MMMM D, YYYY"
                   />
                   <TimePicker
+                    timezone={timezone}
                     label="Event time"
                     value={mobileTime}
                     onChange={updateMobileTime}
@@ -378,6 +384,7 @@ export default function EventForm({
                 </div>
               ) : (
                 <DateTimePicker
+                    timezone={timezone}
                   label="Event starts"
                   onOpen={() => {
                     scheduleFields.current?.scrollIntoView({
@@ -418,8 +425,9 @@ export default function EventForm({
               )}
             </div>
           </div>
+          <p className="help">Event times are in {timezone.replaceAll("_", " ")}.</p>
           <div className="event-scheduling-options">
-          <label className="scheduled-event-checkbox"><input type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
+          <label className="scheduled-event-checkbox"><input id="event-scheduled-checkbox" type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
           <div className={`event-scheduling-inputs ${!scheduled ? "single" : ""}`}>
           {!scheduled && <TextField label="Signups Close Before Event (hours)" type="number" value={manualClosesBefore} onChange={(event) => setManualClosesBefore(event.target.value)} fullWidth slotProps={{ htmlInput: { min: 1, max: 767, step: 1 } }} />}
           {scheduled && <div className="form-grid event-schedule-fields">
@@ -494,9 +502,11 @@ export default function EventForm({
                     id={`${prefix}-name-${table.id}`}
                     error={Boolean(fieldErrors[`name-${table.id}`])}
                     helperText={fieldErrors[`name-${table.id}`]}
-                    label={`Table ${index + 1} name`}
+                    label="Name"
                     onKeyDown={handleTableEnter}
                     value={table.name}
+                    onFocus={(event) => event.target.select()}
+                    onClick={(event) => { if (event.target instanceof HTMLInputElement) event.target.select(); }}
                     onChange={(event) =>
                       updateTable(table.id, { name: event.target.value })
                     }
@@ -514,7 +524,7 @@ export default function EventForm({
                     id={`${prefix}-capacity-${table.id}`}
                     error={Boolean(fieldErrors[`capacity-${table.id}`])}
                     helperText={fieldErrors[`capacity-${table.id}`]}
-                    label={`Table ${index + 1} capacity`}
+                    label="Capacity"
                     onKeyDown={handleTableEnter}
                     type="number"
                     value={table.capacity}
@@ -533,6 +543,7 @@ export default function EventForm({
                 {tables.length > 1 && (
                   <button
                     type="button"
+                    id={`event-form-remove-table-${table.id}`}
                     aria-label={`Remove table ${index + 1}`}
                     onClick={() =>
                       setTables((rows) =>
@@ -547,6 +558,7 @@ export default function EventForm({
             ))}
           </div>
           <button
+            id="event-add-table-button"
             className="add-table-button"
             type="button"
             aria-label="Add table"
@@ -563,14 +575,16 @@ export default function EventForm({
           </p>
         )}
         {templateNotice && <p role="status" className="notice">{templateNotice}</p>}
-        <div className="form-actions">
-          <button className="primary" type="submit" disabled={saving}>
-            {saving ? "Saving…" : frequency === "once" ? "Save draft" : "Create schedule"}
+        <div id="event-form-actions" className="form-actions event-form-actions">
+          <button id="event-save-button" className="primary" type="submit" disabled={saving}>
+            <Save size={16} aria-hidden="true" />
+            {saving ? "Saving…" : frequency === "once" ? "Draft" : "Schedule"}
           </button>
-          <button type="button" onClick={() => void saveTemplate()} disabled={saving}>
-            {saving ? "Saving template…" : "Save as Template"}
+          <button id="event-save-template-button" type="button" onClick={() => void saveTemplate()} disabled={saving}>
+            <Save size={16} aria-hidden="true" />
+            {saving ? "Saving…" : "Template"}
           </button>
-          <button type="button" onClick={onCancel} disabled={saving}>
+          <button id="event-form-cancel-button" type="button" onClick={onCancel} disabled={saving}>
             Cancel
           </button>
         </div>
