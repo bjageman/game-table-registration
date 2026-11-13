@@ -111,6 +111,7 @@ class AssignmentSettingsInput(BaseModel):
     post_discord_updates_to_thread: bool = False
     timezone: str | None = Field(default=None, max_length=64)
     show_open_signup_players: bool = False
+    dm_waitlist_promotions: bool = False
 
     @field_validator("timezone")
     @classmethod

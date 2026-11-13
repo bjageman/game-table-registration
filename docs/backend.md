@@ -67,3 +67,11 @@ Discord signup messages use a rich embed ordered as title, description, then dat
 API integration tests live in `backend/tests/test_api_*.py`, with the shared client fixture in `conftest.py` and workflow setup in `flow_helpers.py`. Run individual feature files or the full suite with `uv run pytest`.
 
 Keep source and test files below 1,000 total lines. Run `python3 scripts/check_file_lengths.py` from the repository root; Repository basics CI enforces the same rule.
+
+## Private waitlist promotion notices
+
+General → Send private messages for waitlist promotions defaults off and is scoped to the selected organization or personal events. When enabled, automatic promotions after a withdrawal and organizer moves from the waitlist queue a private bot message. Initial lottery placements, simulated players, and adding a known player who was not waiting do not trigger a DM. The option is independent of public table-change announcements.
+
+Each message names the event, table, and start time and includes a **Give up my seat** button. The Gateway verifies the application, private message, and intended recipient, then uses the same locked withdrawal service as channel reactions. Repeated clicks cannot release another player's seat or promote anyone twice. Withdrawals stop when the event starts or is archived. The saved lottery draw remains unchanged.
+
+`promotion_dms` is a separate durable delivery queue. The assignment commits before Discord is contacted; blocked inboxes never revoke a seat. Temporary errors and rate limits retry, while ambiguous sends are reconciled with message history before any further action. Unconfirmed delivery is recorded for review rather than blindly reposted. Archived events, expired events, disabled preferences, and players who no longer hold the promoted seat cancel pending notices. Public assignment updates continue independently. The existing Gateway listener must be running for DM buttons to work; no extra privileged intent is required.

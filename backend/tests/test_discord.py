@@ -382,3 +382,17 @@ def test_delivery_recovery_rejects_unrelated_embeds_and_mismatched_nonces(conten
     assert api.find_announcement("channel", payload, 0) == ("100" if content else None)
     unrelated["nonce"] = "expected"
     assert api.find_announcement("channel", payload, 0) == "100"
+
+
+def test_private_channel_creation_uses_the_recipient_and_validates_the_result():
+    from app.discord_api import DiscordRequestError
+
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(return_value={"id": "private-channel"})
+    assert api.open_dm("123") == "private-channel"
+    api.bot.assert_called_once_with(
+        "POST", "/users/@me/channels", json={"recipient_id": "123"}, timeout=8
+    )
+    api.bot.return_value = {}
+    with pytest.raises(DiscordRequestError):
+        api.open_dm("123")

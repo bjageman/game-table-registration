@@ -425,6 +425,14 @@ class DiscordAPI:
             self.bot("PATCH", f"/channels/{thread_id}", json={"archived": False})
             self.bot("PUT", f"/channels/{thread_id}/thread-members/{user_id}")
 
+    def open_dm(self, user_id: str) -> str:
+        channel = self.bot(
+            "POST", "/users/@me/channels", json={"recipient_id": user_id}, timeout=8
+        )
+        if not isinstance(channel.get("id"), str) or not channel["id"]:
+            raise DiscordRequestError(None)
+        return str(channel["id"])
+
     def send_announcement(
         self, channel_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:

@@ -26,6 +26,7 @@ from app.models import (
     RecurringSeries,
 )
 from app.open_signup_rosters import synchronize_due as synchronize_open_rosters
+from app.promotion_dms import dispatch_due as dispatch_promotion_dms
 from app.publication import mark_signup_closed
 from app.publication import publish_event as publish_event_service
 from app.recurrence import fill_schedule
@@ -182,6 +183,7 @@ def application_lifespan(
                         engine,
                         context.client_for_destination,
                     )
+                    dispatch_promotion_dms(engine, context.app.state.discord)
                 except Exception:
                     logging.getLogger(__name__).exception(
                         "Assignment delivery worker failed"
