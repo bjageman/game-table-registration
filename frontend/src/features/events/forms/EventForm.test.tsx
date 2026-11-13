@@ -1,3 +1,4 @@
+import { TimezoneContext } from "../../../lib/timezone";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createElement } from "react";
@@ -218,4 +219,27 @@ it("loads a template while preserving the selected event date", async () => {
   fireEvent.click(screen.getByLabelText("Scheduled Event"));
   expect(screen.getByRole("spinbutton", { name: /^Close before event/ })).toHaveValue(48);
   expect(screen.getAllByRole("textbox", { name: /^Name/ })[1]).toHaveValue("Root");
+});
+
+
+it.each(["once", "weekly"])("uses the selected timezone when submitting %s events", async (frequency) => {
+  const fetchMock = vi.fn(async (path: string) => path === "/api/templates"
+    ? new Response("[]") : new Response(JSON.stringify({ id: "saved", title: "Friday games" }), { status: 201 }));
+  const onScheduled = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  render(<TimezoneContext.Provider value="America/Los_Angeles"><LocalizationProvider dateAdapter={AdapterDayjs}>
+    <EventForm {...props} onScheduled={onScheduled} />
+  </LocalizationProvider></TimezoneContext.Provider>);
+  fill();
+  if (frequency === "weekly") {
+    fireEvent.click(screen.getByRole("checkbox", { name: "Scheduled Event" }));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Repeat" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Weekly" }));
+  }
+  fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
+  await waitFor(() => expect(frequency === "once" ? props.onCreated : onScheduled).toHaveBeenCalled());
+  const request = fetchMock.mock.calls.find(([path]) => path === (frequency === "once" ? "/api/events" : "/api/recurring-series")) as unknown as [string, RequestInit];
+  const body = JSON.parse(request[1].body as string);
+  expect(body.starts_at).toBe("2090-06-15T02:00:00.000Z");
+  if (frequency === "weekly") expect(body.time_zone).toBe("America/Los_Angeles");
 });

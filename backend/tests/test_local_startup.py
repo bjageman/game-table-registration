@@ -33,3 +33,35 @@ def test_local_upgrade_resumes_after_partial_sqlite_ddl(tmp_path, monkeypatch):
         "ix_events_organization_id"
     }
     engine.dispose()
+
+
+def test_timezone_migration_preserves_existing_preferences(tmp_path, monkeypatch):
+    url = f"sqlite:///{tmp_path}/timezone.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    config = Config("alembic.ini")
+    command.upgrade(config, "20261105_event_update_threads")
+    engine = create_engine(url)
+    with engine.begin() as db:
+        db.execute(
+            text(
+                "INSERT INTO assignment_preferences (scope_key, "
+                "automatic_weight_adjustment, announce_table_changes, "
+                "post_discord_updates_to_thread) VALUES ('user:owner', 0, 1, 1)"
+            )
+        )
+    command.upgrade(config, "head")
+    with engine.connect() as db:
+        row = db.execute(
+            text(
+                "SELECT automatic_weight_adjustment, announce_table_changes, "
+                "post_discord_updates_to_thread, timezone "
+                "FROM assignment_preferences WHERE scope_key = 'user:owner'"
+            )
+        ).one()
+        assert tuple(row) == (0, 1, 1, None)
+    command.downgrade(config, "20261105_event_update_threads")
+    assert "timezone" not in {
+        column["name"]
+        for column in inspect(engine).get_columns("assignment_preferences")
+    }
+    engine.dispose()

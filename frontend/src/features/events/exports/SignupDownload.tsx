@@ -1,3 +1,4 @@
+import { useTimezone } from "../../../lib/timezone";
 import ModalHeader from "../../../components/ModalHeader";
 import { useEffect, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
@@ -9,6 +10,7 @@ export default function SignupDownload({ event, onAccessError }: {
   event: EventRecord;
   onAccessError: (error: unknown) => boolean;
 }) {
+  const timezone = useTimezone();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -24,8 +26,8 @@ export default function SignupDownload({ event, onAccessError }: {
     setBusy(true);
     setError("");
     try {
-      const timezone = format === "pdf" ? `?timezone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")}` : "";
-      await download(`/events/${encodeURIComponent(event.id)}/signups.${format}${timezone}`, `signups-${event.id}.${format}`);
+      const query = format === "pdf" ? `?timezone=${encodeURIComponent(timezone)}` : "";
+      await download(`/events/${encodeURIComponent(event.id)}/signups.${format}${query}`, `signups-${event.id}.${format}`);
       setOpen(false);
     } catch (failure) {
       if (!onAccessError(failure)) setError(errorMessage(failure));

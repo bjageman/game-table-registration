@@ -72,6 +72,7 @@ export function errorMessage(error: unknown): string {
 }
 
 export interface ModeratorSession {
+  timezone?: string | null;
   user_id?: string;
   organization?: { id: string; name: string } | null;
   organization_role?: "user" | "editor" | "admin" | null;

@@ -279,6 +279,7 @@ class AssignmentPreference(Base):
     automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
     announce_table_changes: Mapped[bool] = mapped_column(default=False)
     post_discord_updates_to_thread: Mapped[bool] = mapped_column(default=False)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class EventThreadMember(Base):

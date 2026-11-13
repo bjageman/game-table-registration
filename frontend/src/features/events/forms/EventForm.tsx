@@ -1,3 +1,4 @@
+import { resolveLocalTime, useTimezone } from "../../../lib/timezone";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Plus, Save } from "lucide-react";
 import TextField from "@mui/material/TextField";
@@ -30,8 +31,8 @@ interface Props {
   onAccessError: (error: unknown) => boolean;
 }
 
-function initialTime(): Dayjs {
-  return dayjs().add(1, "hour").startOf("hour");
+function initialTime(timezone: string): Dayjs {
+  return dayjs().tz(timezone).add(1, "hour").startOf("hour");
 }
 
 export default function EventForm({
@@ -43,24 +44,21 @@ export default function EventForm({
   onAccessError,
 }: Props) {
   const prefix = "event-form";
+  const timezone = useTimezone();
   const [title, setTitle] = useState(draft?.title ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
   const [location, setLocation] = useState(draft?.location ?? "");
   const [startsAt, setStartsAt] = useState<Dayjs | null>(
-    draft ? dayjs.unix(draft.starts_at) : null,
+    draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
   );
   const [startsAtLocal, setStartsAtLocal] = useState(
-    draft ? dayjs.unix(draft.starts_at).format("YYYY-MM-DDTHH:mm") : "",
+    draft ? dayjs.unix(draft.starts_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : "",
   );
   const [mobileDate, setMobileDate] = useState<Dayjs | null>(
-    draft ? dayjs.unix(draft.starts_at) : null,
+    draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
   );
   const [mobileTime, setMobileTime] = useState(() =>
-    draft
-      ? dayjs()
-          .hour(dayjs.unix(draft.starts_at).hour())
-          .minute(dayjs.unix(draft.starts_at).minute())
-      : initialTime(),
+    draft ? dayjs.unix(draft.starts_at).tz(timezone) : initialTime(timezone),
   );
   const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
   const [manualClosesBefore, setManualClosesBefore] = useState(draft?.closes_at != null ? String(Math.round((draft.starts_at - draft.closes_at) / 3600)) : draft ? "" : "24");
@@ -219,6 +217,7 @@ export default function EventForm({
     const errors = validateEvent({
       title,
       startsAt: startsAtLocal,
+      timezone,
       duration: scheduled ? String(Number(opensBefore) - Number(closesBefore)) : duration,
       tables,
       explicitClosing: !scheduled,
@@ -231,7 +230,7 @@ export default function EventForm({
       );
       return;
     }
-    const start = new Date(startsAtLocal);
+    const start = resolveLocalTime(startsAtLocal, timezone).date!;
     const hours = scheduled ? Number(opensBefore) - Number(closesBefore) : 0;
     if (!scheduled && manualClosesBefore.trim()) {
       const close = Number(manualClosesBefore);
@@ -250,7 +249,7 @@ export default function EventForm({
       const opening = new Date(start.getTime() - open * 3600000);
       const now = new Date();
       if (opening.getTime() <= now.getTime()) {
-        const format = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "long" });
+        const format = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: timezone });
         setError(`Open signup of ${format.format(opening)} needs to start after the current time ${format.format(now)}.`);
         return;
       }
@@ -270,7 +269,7 @@ export default function EventForm({
             ...(scheduled ? { opens_before_hours: Number(opensBefore), closes_before_hours: Number(closesBefore) } : { closes_before_hours: manualClosesBefore.trim() ? Number(manualClosesBefore) : null }),
             ...(frequency !== "once" ? {
               frequency,
-              time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              time_zone: timezone,
               opens_before_hours: Number(opensBefore),
               closes_before_hours: Number(closesBefore),
             } : {}),
@@ -346,6 +345,7 @@ export default function EventForm({
               {isMobile ? (
                 <div className="mobile-date-time-fields">
                   <DatePicker
+                    timezone={timezone}
                     label="Event starts"
                     slotProps={{
                       textField: {
@@ -362,6 +362,7 @@ export default function EventForm({
                     format="MMMM D, YYYY"
                   />
                   <TimePicker
+                    timezone={timezone}
                     label="Event time"
                     value={mobileTime}
                     onChange={updateMobileTime}
@@ -383,6 +384,7 @@ export default function EventForm({
                 </div>
               ) : (
                 <DateTimePicker
+                    timezone={timezone}
                   label="Event starts"
                   onOpen={() => {
                     scheduleFields.current?.scrollIntoView({
@@ -423,6 +425,7 @@ export default function EventForm({
               )}
             </div>
           </div>
+          <p className="help">Event times are in {timezone.replaceAll("_", " ")}.</p>
           <div className="event-scheduling-options">
           <label className="scheduled-event-checkbox"><input id="event-scheduled-checkbox" type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
           <div className={`event-scheduling-inputs ${!scheduled ? "single" : ""}`}>

@@ -13,6 +13,7 @@ import Dashboard from "../features/events/Dashboard";
 import ConnectionSettings from "../features/settings/ConnectionSettings";
 import LoadingIndicator from "../components/LoadingIndicator";
 import PlayerLookup from "../features/players/PlayerLookup";
+import { TimezoneContext } from "../lib/timezone";
 
 type AuthState =
   | { kind: "loading" }
@@ -130,6 +131,7 @@ export default function App() {
   }
 
   return (
+    <TimezoneContext.Provider value={auth.kind === "ready" ? auth.session.timezone ?? null : null}>
     <div id="app-shell" className="app-shell">
       <header id="site-header" className="site-header">
         <div id="site-branding" className="site-branding">
@@ -241,5 +243,6 @@ export default function App() {
         </a>
       </footer>
     </div>
+    </TimezoneContext.Provider>
   );
 }

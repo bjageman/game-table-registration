@@ -31,6 +31,7 @@ from app.announcements import (
 from app.announcements import (
     status as announcement_status,
 )
+from app.assignment_preferences import for_event as preferences_for_event
 from app.assignment_preferences import scope_key as assignment_scope_key
 from app.branding import load_branding
 from app.closing import close_and_assign
@@ -189,6 +190,17 @@ class AssignmentSettingsInput(BaseModel):
     automatic_weight_adjustment: bool
     announce_table_changes: bool
     post_discord_updates_to_thread: bool = False
+    timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, ValueError) as error:
+                raise ValueError("Choose a valid timezone") from error
+        return value
 
 
 class PlayerProfileInput(BaseModel):
@@ -829,6 +841,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if saved
                 else "legacy"
             )
+            preferences = db.get(
+                AssignmentPreference,
+                assignment_scope_key(
+                    organization.id if organization else None, session.user_id
+                ),
+            )
+            timezone = preferences.timezone if preferences else None
         needs_setup = (
             not bool(organization.channel_id)
             if organization
@@ -844,6 +863,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "csrf": session.csrf,
             "needs_setup": needs_setup,
             "destination": selection,
+            "timezone": timezone,
             "organization": {"id": organization.id, "name": organization.name}
             if organization
             else None,
@@ -1129,6 +1149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "post_discord_updates_to_thread": saved.post_discord_updates_to_thread
                 if saved
                 else False,
+                "timezone": saved.timezone if saved else None,
             }
 
     @app.put("/api/settings/assignment")
@@ -1141,6 +1162,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 403, "Only organization admins can save assignment settings"
             )
         with DBSession(engine) as db:
+            key = assignment_scope_key(request.state.organization_id, session.user_id)
+            previous = db.get(AssignmentPreference, key)
+            if "timezone" not in body.model_fields_set and previous:
+                body.timezone = previous.timezone
             db.merge(
                 AssignmentPreference(
                     scope_key=assignment_scope_key(
@@ -1149,6 +1174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     automatic_weight_adjustment=body.automatic_weight_adjustment,
                     announce_table_changes=body.announce_table_changes,
                     post_discord_updates_to_thread=body.post_discord_updates_to_thread,
+                    timezone=body.timezone,
                 )
             )
             db.commit()
@@ -1965,8 +1991,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if run is None:
                 raise HTTPException(404, "Shared event not found")
             rows = list_names(current_result(db, run)["tables"], event.guild_id)
+            preferences = preferences_for_event(db, event)
             return {
                 "title": event.title,
+                "timezone": preferences.timezone if preferences else None,
                 "description": event.description,
                 "location": event.location,
                 "starts_at": event.starts_at,

@@ -1,3 +1,4 @@
+import { useTimezone, formatTimestamp } from "../../lib/timezone";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDownWideNarrow, Download, RefreshCw, Search, Eye, Trash2 } from "lucide-react";
 import Menu from "@mui/material/Menu";
@@ -29,12 +30,11 @@ const sortOptions = [
 ] as const;
 type SortOrder = typeof sortOptions[number]["value"];
 const titleOrder = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
-const scheduleTime = new Intl.DateTimeFormat(undefined, {
-  month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
-});
 interface RecurringSeriesRecord { id: string; title: string; frequency: string; time_zone: string; opens_before_hours: number; closes_before_hours: number }
 
 export default function Dashboard({ session, onAccessError }: DashboardProps) {
+  const timezone = useTimezone();
+  const scheduleTime = new Intl.DateTimeFormat(undefined, { timeZone: timezone, month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortOrder>("date-asc");
   const [sortAnchor, setSortAnchor] = useState<HTMLElement | null>(null);
@@ -114,7 +114,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   async function cancelScheduled(event: EventRecord) {
     try {
       await api(`/events/${event.id}/cancel-scheduled`, mutationOptions(session.csrf));
-      setNotice(`Canceled ${event.title} on ${new Date(event.starts_at * 1000).toLocaleString()}.`);
+      setNotice(`Canceled ${event.title} on ${formatTimestamp(event.starts_at, timezone)}.`);
       setAttempt((value) => value + 1);
     } catch (failure) { if (!onAccessError(failure)) setNotice(errorMessage(failure)); }
   }

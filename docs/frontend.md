@@ -8,7 +8,7 @@ Checks: `npm run lint`, `npm run build`, `npm test`, and `npx playwright install
 
 Run `docker compose -f compose.yml -f compose.frontend.yml up --build -d --wait` from the repository root. Open http://localhost:8080. Set PUBLIC_URL to your browser origin. The frontend Compose file extends the backend Compose file and is not a standalone deployment.
 
-The event list loads the server's event records with start times, signup duration, table capacities, and publication status. Times use the browser's local timezone. Refresh retrieves the latest server state. A lost session or removed moderator access hides the dashboard. Events awaiting publication review show a check-Discord notice.
+The event list loads the server's event records with start times, signup duration, table capacities, and publication status. Times use the timezone selected in General settings, falling back to the browser timezone. Refresh retrieves the latest server state. A lost session or removed moderator access hides the dashboard. Events awaiting publication review show a check-Discord notice.
 
 Create event opens a draft form for the title, local event date/time, whole-hour signup duration (1–768), and 1–10 tables with capacities (1–999, default 15). MUI X uses a combined date/time picker on desktop and separate date and time pickers on mobile. Both use a clock face for hour and minute selection, with 15-minute increments, defaulting to the current time rounded up to the next 15-minute interval. The browser sends a timezone-qualified timestamp. Table names must be distinct, and the event must start after the signup window ends. Saving creates a draft; it does not publish a Discord message. Failed requests keep entered values for correction.
 
@@ -63,7 +63,7 @@ Major sections, controls, and dialogs have descriptive HTML `id` attributes for 
 | Player information | `player-profile-dialog-{playerId}`, `player-display-name-{playerId}`, `player-weight-{playerId}`, `player-guaranteed-seat-{playerId}` |
 | Settings tabs | `settings-discord-tab`, `settings-assignments-tab` (General), `settings-organization-tab` |
 | Discord settings | `discord-connect-button`, `discord-server-select`, `discord-channel-select`, `discord-settings-save-button` |
-| General settings | `assignment-auto-weights`, `assignment-announce-changes`, `assignment-thread-updates`, `assignment-settings-save-button` |
+| General settings | `assignment-auto-weights`, `assignment-announce-changes`, `assignment-thread-updates`, `general-timezone`, `assignment-settings-save-button` |
 | Organization | `organization-select`, `organization-create-button`, `organization-delete-button`, `organization-add-user-button` |
 | Organization members | `organization-member-{userId}`, `organization-member-role-{userId}`, `organization-member-delete-{userId}` |
 | Confirmation | `organization-delete-dialog`, `organization-delete-dialog-cancel`, `organization-delete-dialog-confirm`; other confirmation controls also use their dialog ID plus `-cancel`, `-confirm`, or `-close` |
@@ -81,4 +81,9 @@ All modal headers use ModalHeader to fit their title onto one line beside the sq
 
 Active assigned events offer Add Player for known players who are not already seated. The backend saves the placement as a manual override and keeps the original lottery snapshot/result unchanged. New additions can overfill a table, join the event thread, and queue a refresh of the existing Discord assignment posts. The General announcement setting controls separate table-change notices; roster edits are queued regardless. Previously withdrawn players remain unavailable for re-addition.
 
-Trial event-detail layout: date labels and values appear inline with a colon, while long values can wrap within their column on narrow screens. This presentation change is isolated in its own commit for easy reversal.
+Event-detail date labels and values appear inline with a colon. Each full date line scales to fit without wrapping, with labels aligned left and timestamps aligned right. Timestamps omit timezone abbreviations.
+
+
+General → Timezone persists an IANA timezone for the selected organization or personal workspace. Default (<current timezone>) follows the browser timezone; organization admins control shared settings. The setting applies to event lists/details, shared assignment pages, event date entry, recurring schedules, and PDF exports. Changing display timezone does not alter existing event instants or an existing series’ recurrence timezone. Date entry rejects nonexistent or repeated wall times at daylight-saving transitions. Discord continues rendering its timestamp markup in each viewer’s own timezone.
+
+The timezone preference adds a nullable column to assignment_preferences; run the normal Alembic upgrade to head before starting a backend without local automatic migrations.

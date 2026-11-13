@@ -1,3 +1,5 @@
+import EventDateLine from "../../components/EventDateLine";
+import { useTimezone, formatTimestamp } from "../../lib/timezone";
 import ModalHeader from "../../components/ModalHeader";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
@@ -16,13 +18,6 @@ import CloseSignups from "./actions/CloseSignups";
 import EventActions from "./actions/EventActions";
 import type { EventRecord } from "../../lib/api";
 import PublishEvent, { type PublicationActions } from "./actions/PublishEvent";
-
-export function formatTime(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "long",
-  }).format(new Date(timestamp * 1000));
-}
 
 export default function EventList({
   events,
@@ -144,37 +139,10 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
         </button>
       </ModalHeader>
             <dl className="event-details">
-              <div>
-                <dt>Event starts</dt>
-                <dd>
-                  <time
-                    dateTime={new Date(event.starts_at * 1000).toISOString()}
-                  >
-                    {formatTime(event.starts_at)}
-                  </time>
-                </dd>
-              </div>
+              <EventDateLine label="Event starts" timestamp={event.starts_at} />
               {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
-              {signupOpensAt != null && (
-                <div>
-                  <dt>Signup Open</dt>
-                  <dd>
-                    <time dateTime={new Date(signupOpensAt * 1000).toISOString()}>
-                      {formatTime(signupOpensAt)}
-                    </time>
-                  </dd>
-                </div>
-              )}
-                <div>
-                  <dt>Signup Close</dt>
-                  <dd>
-                    {signupClosesAt != null ? <time
-                      dateTime={new Date(signupClosesAt * 1000).toISOString()}
-                    >
-                      {formatTime(signupClosesAt)}
-                    </time> : "-"}
-                  </dd>
-                </div>
+              {signupOpensAt != null && <EventDateLine label="Signup Open" timestamp={signupOpensAt} />}
+              <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
             </dl>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
             <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
@@ -199,7 +167,8 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
 }
 
 function ListTime({ timestamp }: { timestamp: number }) {
+  const timezone = useTimezone();
   return <time dateTime={new Date(timestamp * 1000).toISOString()}>
-    {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp * 1000))}
+    {formatTimestamp(timestamp, timezone)}
   </time>;
 }

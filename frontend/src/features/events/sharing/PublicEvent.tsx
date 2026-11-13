@@ -1,7 +1,9 @@
+import { formatTimestamp } from "../../../lib/timezone";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../lib/api";
 
 interface SharedEvent {
+  timezone?: string | null;
   title: string; description: string; location: string; starts_at: number; archived: boolean;
   tables: { name: string; capacity: number; players: { name: string }[]; waitlist: { name: string }[] }[];
 }
@@ -32,7 +34,7 @@ export default function PublicEvent({ token }: { token: string }) {
     {event && <>
       <header id="public-event-header"><h1 id="public-event-title">{event.title}</h1>{event.location && <p>{event.location}</p>}</header>
       <dl className="event-details">
-        <div><dt>Event starts</dt><dd><time dateTime={new Date(event.starts_at * 1000).toISOString()}>{new Date(event.starts_at * 1000).toLocaleString()}</time></dd></div>
+        <div><dt>Event starts</dt><dd><time dateTime={new Date(event.starts_at * 1000).toISOString()}>{formatTimestamp(event.starts_at, event.timezone ?? undefined)}</time></dd></div>
       </dl>
       {event.description && <p className="public-event-description">{event.description}</p>}
       <ul id="public-event-tables" className="event-tables" aria-label="Table assignments">{event.tables.map((table, index) => <li id={`public-event-table-${index + 1}`} className="event-table" key={table.name}>

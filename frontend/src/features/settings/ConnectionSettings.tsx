@@ -90,8 +90,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
   }
   const connectUrl = setup?.connect_url ?? "/api/auth/connect";
   const restricted = Boolean(setup?.organization_role && setup.organization_role !== "admin");
-  return <section id="settings-panel" className="panel settings-panel" aria-labelledby="settings-heading">
-    <div className="section-heading"><h2 id="settings-heading">Settings</h2></div>
+  return <section id="settings-panel" className="panel settings-panel" aria-label="Settings">
     <Tabs id="settings-tabs" className="settings-tabs" value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
       <Tab label="Discord" value="discord" id={`${tabId}-discord-tab`} aria-controls={`${tabId}-discord-panel`} />
       <Tab label="General" value="assignments" id={`${tabId}-assignments-tab`} aria-controls={`${tabId}-assignments-panel`} />
@@ -152,7 +151,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     </>}
     </div>
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
-      {setup ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} />
+      {setup ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} onSaved={onSaved} />
         : <p><LoadingIndicator label="Loading settings…" /></p>}
     </div>
     <div role="tabpanel" id={`${tabId}-organization-panel`} aria-labelledby={`${tabId}-organization-tab`} hidden={tab !== "organization"}>

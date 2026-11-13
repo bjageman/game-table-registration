@@ -283,15 +283,19 @@ h3 {
   min-width: 0;
 }
 .event-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   margin: 0 0 20px;
 }
 .event-details > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .event-details dt { flex: none; }
 .event-details dt::after { content: ":"; }
 .event-details dd { margin: 0; min-width: 0; }
+.event-date-line { white-space: nowrap; }
+.event-date-line dt { font-size: 0.875em; }
+.event-date-line dd { margin-left: auto; text-align: right; flex: none; }
+.general-timezone-setting { padding-top: 24px; }
 dt {
   color: #52665a;
   font-size: 0.875rem;
