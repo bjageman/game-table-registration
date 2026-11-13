@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { openEvent } from "./eventActions";
 
 const draft = {
   id: "event-1",
@@ -38,13 +39,15 @@ test("requires confirmation and replaces the publish action with a Discord link"
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Publish to Discord" }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  const details = await openEvent(page);
+  await details.getByRole("button", { name: "Publish to Discord" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Publish Friday games?" });
+  await expect(confirmation).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Cancel", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(confirmation).toHaveCount(0);
   expect(publications).toBe(0);
   await page.getByRole("button", { name: "Publish to Discord" }).click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
@@ -72,9 +75,10 @@ test("holds uncertain publication instead of offering a duplicate request", asyn
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Publish to Discord" }).click();
+  const details = await openEvent(page);
+  await details.getByRole("button", { name: "Publish to Discord" }).click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(page.getByText("unconfirmed", { exact: true })).toBeVisible();
+  await expect(details.getByText("unconfirmed", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Publish to Discord" }),
   ).toHaveCount(0);

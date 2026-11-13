@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("confirms closing signups and shows saved placements and waitlists", async ({ page }) => {
   let closed = false;

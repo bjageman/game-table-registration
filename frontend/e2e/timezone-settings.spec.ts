@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("saves the timezone and keeps all three event timestamps on single lines", async ({ page }) => {
   let timezone: string | null = "America/New_York";

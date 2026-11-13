@@ -42,3 +42,14 @@ it("can keep Cancel as the only dismiss control and focus it", () => {
   fireEvent.click(cancel);
   expect(onCancel).toHaveBeenCalledOnce();
 });
+
+it.each([false, true])("keeps Escape inside a nested confirmation (busy: %s)", (busy) => {
+  const parentCancel = vi.fn();
+  const onCancel = vi.fn();
+  render(<dialog open aria-label="Event details" onCancel={parentCancel}>
+    <ConfirmationDialog title="Publish event?" busy={busy} error="" onCancel={onCancel} onConfirm={() => {}}>{null}</ConfirmationDialog>
+  </dialog>);
+  fireEvent(screen.getByRole("dialog", { name: "Publish event?" }), new Event("cancel", { bubbles: true, cancelable: true }));
+  expect(parentCancel).not.toHaveBeenCalled();
+  expect(onCancel).toHaveBeenCalledTimes(busy ? 0 : 1);
+});

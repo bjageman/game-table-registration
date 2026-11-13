@@ -1,4 +1,4 @@
-import { test, expect, type Locator } from "@playwright/test";
+import { test, expect, type Locator } from "./fixtures";
 
 async function expectHeaderFits(dialog: Locator) {
   await expect.poll(() => dialog.locator(".event-modal-header").evaluate((header) => {

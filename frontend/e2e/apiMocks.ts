@@ -9,8 +9,12 @@ export async function mockApiDefaults(page: Page) {
       "/api/setup": { configured: true },
       "/api/recurring-series": [],
       "/api/templates": [],
+      "/api/settings/guilds": { guilds: [{ id: "100", name: "Server" }, { id: "200", name: "Chosen Server" }] },
     };
-    if (!(path in defaults)) throw new Error(`Missing API mock: ${path}`);
+    if (route.request().method() === "GET" && /^\/api\/events\/[^/]+\/signups$/.test(path)) {
+      return route.fulfill({ json: [] });
+    }
+    if (route.request().method() !== "GET" || !(path in defaults)) throw new Error(`Missing API mock: ${route.request().method()} ${path}`);
     return route.fulfill({ json: defaults[path] });
   });
 }
