@@ -46,7 +46,7 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
     discord = client.app.state.discord
     discord.send_announcement.assert_not_called()
     assert client.post(path + "/publish", headers=headers).status_code == 200
-    assert "[TEST]" in discord.publish.call_args.args[0]["content"]
+    assert "[TEST]" in str(discord.publish.call_args.args[0])
     discord.table_signups.return_value = [
         {"name": "Clocktower", "players": [{"id": "999", "name": "Real Signup"}]}
     ]

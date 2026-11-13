@@ -33,7 +33,7 @@ def test_signup_deadline_is_relative_to_event_or_open_ended(client, offset):
     assert published.json()["signup_mode"] == "reactions"
     payload = client.app.state.discord.publish.call_args.args[0]
     if offset is None:
-        assert "stay open until closed manually" in payload["content"]
+        assert "stay open until closed manually" in str(payload)
     now = time.time()
     assert reactions.replace(client.app.state.engine, event["id"], [], now)
     reactions.change(client.app.state.engine, event["id"], "1️⃣", "1", "Mary", True, now)
@@ -326,10 +326,19 @@ def test_reaction_promotion_notice_has_no_table_update_heading(client):
         )
 
 
-def test_table_change_notices_are_off_until_enabled(client):
+def test_table_change_notices_can_be_disabled_and_enabled(client):
     from app.models import Announcement
 
     headers, event, path, _ = closing_event(client)
+    client.put(
+        "/api/settings/assignment",
+        headers=headers,
+        json={
+            "automatic_weight_adjustment": True,
+            "announce_table_changes": False,
+            "post_discord_updates_to_thread": False,
+        },
+    )
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
@@ -416,6 +425,16 @@ def test_assignment_changes_refresh_existing_discord_message_with_retry(client):
 
     headers, event, path, _ = closing_event(client)
     discord = client.app.state.discord
+    # This test exercises roster edits independently of separate change notices.
+    client.put(
+        "/api/settings/assignment",
+        headers=headers,
+        json={
+            "automatic_weight_adjustment": True,
+            "announce_table_changes": False,
+            "post_discord_updates_to_thread": False,
+        },
+    )
     discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
@@ -508,7 +527,7 @@ def test_optional_open_signup_rosters_publish_refresh_and_restore(client):
     }
     assert (
         client.get("/api/settings/assignment").json()["show_open_signup_players"]
-        is False
+        is True
     )
     assert client.put("/api/settings/assignment", json=settings).status_code == 403
     assert (

@@ -31,6 +31,7 @@ def client(tmp_path):
     Base.metadata.drop_all(app.state.engine)
     Base.metadata.create_all(app.state.engine)
     app.state.discord = Mock()
+    app.state.discord.event_thread.return_value = "thread"
     app.state.discord.send_announcement.return_value = {"id": "announcement"}
     app.state.discord.identity.return_value = {"id": "owner", "username": "organizer"}
     app.state.discord.publish.return_value = {
@@ -82,7 +83,11 @@ def promotion_db(tmp_path):
             )
         )
         db.add(
-            AssignmentPreference(scope_key="user:owner", dm_waitlist_promotions=True)
+            AssignmentPreference(
+                scope_key="user:owner",
+                dm_waitlist_promotions=True,
+                announce_table_changes=False,
+            )
         )
         db.flush()
         db.add(

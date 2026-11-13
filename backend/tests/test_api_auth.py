@@ -27,9 +27,8 @@ def test_login_publish_and_duplicate_protection(client):
     assert published.json()["discord_url"].endswith("/message")
     assert client.post(path, headers=headers).status_code == 409
     payload = client.app.state.discord.publish.call_args.args[0]
-    assert "embeds" not in payload
-    assert payload["content"].startswith("**Friday games**\nEvent:")
-    assert "Bring friends" in payload["content"]
+    assert payload["embeds"][0]["title"] == "Friday games"
+    assert "Bring friends" in payload["embeds"][0]["description"]
     assert payload["poll"]["allow_multiselect"] is True
     assert payload["allowed_mentions"] == {"parse": []}
     assert (

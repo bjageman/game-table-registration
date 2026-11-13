@@ -1,12 +1,12 @@
-"""Opt-in preferences are scoped and older clients cannot reset them."""
+"""Promotion preferences are scoped and older clients cannot reset them."""
 
 from flow_helpers import login
 
 
-def test_dm_preference_is_default_off_scoped_and_preserved_when_omitted(client):
+def test_dm_preference_is_default_on_scoped_and_preserved_when_omitted(client):
     headers = login(client)
     assert (
-        client.get("/api/settings/assignment").json()["dm_waitlist_promotions"] is False
+        client.get("/api/settings/assignment").json()["dm_waitlist_promotions"] is True
     )
     body = {
         "automatic_weight_adjustment": True,
@@ -35,7 +35,7 @@ def test_dm_preference_is_default_off_scoped_and_preserved_when_omitted(client):
         json={"organization_id": org["id"]},
     )
     assert (
-        client.get("/api/settings/assignment").json()["dm_waitlist_promotions"] is False
+        client.get("/api/settings/assignment").json()["dm_waitlist_promotions"] is True
     )
     client.put(
         "/api/settings/assignment",

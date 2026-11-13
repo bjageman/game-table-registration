@@ -338,3 +338,15 @@ def test_uncertain_continuation_send_is_reconciled_before_reposting(roster):
         )
         == 1
     )
+
+
+def test_roster_sync_defaults_on_without_saved_preferences(roster):
+    from sqlalchemy import delete
+
+    engine, discord, factory = roster
+    with Session(engine) as db:
+        db.execute(delete(AssignmentPreference))
+        db.commit()
+    synchronize_due(engine, factory)
+    factory.assert_called_once_with("guild", "channel")
+    assert "<@1>" in str(last_embed(discord))

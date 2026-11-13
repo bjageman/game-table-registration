@@ -272,10 +272,10 @@ def synchronize_due(
         (Event.organization_id.is_not(None), literal("org:") + Event.organization_id),
         else_=literal("user:") + Event.created_by,
     )
-    enabled = exists(
+    enabled = ~exists(
         select(AssignmentPreference.scope_key).where(
             AssignmentPreference.scope_key == scope,
-            AssignmentPreference.show_open_signup_players.is_(True),
+            AssignmentPreference.show_open_signup_players.is_(False),
         )
     )
     with Session(engine) as db:

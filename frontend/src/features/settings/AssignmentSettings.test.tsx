@@ -30,7 +30,7 @@ it("saves assignment options for an admin", async () => {
   const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => new Response(JSON.stringify(
     options?.method === "PUT"
       ? { automatic_weight_adjustment: true, announce_table_changes: true, post_discord_updates_to_thread: true, timezone: "America/New_York", show_open_signup_players: true, dm_waitlist_promotions: true }
-      : { automatic_weight_adjustment: true, announce_table_changes: false },
+      : { automatic_weight_adjustment: true, announce_table_changes: false, post_discord_updates_to_thread: false, show_open_signup_players: false, dm_waitlist_promotions: false },
   )));
   vi.stubGlobal("fetch", fetchMock);
   render(<AssignmentSettings csrf="csrf" onAccessError={() => false} />);
@@ -50,4 +50,15 @@ it("saves assignment options for an admin", async () => {
     }) }),
   ));
   expect(screen.getByRole("checkbox", { name: "Post Discord updates to a new thread" })).toBeChecked();
+});
+
+it("enables every General toggle by default before the first settings save", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    automatic_weight_adjustment: true, announce_table_changes: true,
+  }))));
+  render(<AssignmentSettings csrf="csrf" onAccessError={() => false} />);
+  await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
+  const toggles = screen.getAllByRole("checkbox");
+  expect(toggles).toHaveLength(5);
+  toggles.forEach((toggle) => expect(toggle).toBeChecked());
 });
