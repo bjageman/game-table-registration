@@ -24,7 +24,7 @@ export default function ConfirmationDialog({
   const dialog = useDialog(true, cancel);
   return (
     <dialog id={dialogId} onClick={(event) => { if (!busy && isBackdropClick(event)) onCancel(); }} ref={dialog} aria-labelledby={heading} aria-busy={busy}
-      onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
+      onCancel={(event) => { event.preventDefault(); event.stopPropagation(); if (!busy) onCancel(); }}>
       <ModalHeader>
         <h2 id={heading}>{title}</h2>
         {showClose && <button id={`${dialogId}-close`} type="button" disabled={busy} aria-label="Close dialog" title="Close" onClick={onCancel}><X size={18} aria-hidden="true" /></button>}

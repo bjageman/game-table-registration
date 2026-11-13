@@ -1,7 +1,4 @@
-import { test, expect } from "@playwright/test";
-import { mockApiDefaults } from "./apiMocks";
-
-test.beforeEach(async ({ page }) => mockApiDefaults(page));
+import { test, expect } from "./fixtures";
 
 test("edits a persistent player profile inside the event modal", async ({ page }) => {
   let realName = "";

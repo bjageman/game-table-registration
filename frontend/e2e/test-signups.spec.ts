@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 for (const allowed of [true, false]) {
   test(`test signup population is ${allowed ? "available" : "hidden"} for this account`, async ({ page }) => {
@@ -18,7 +18,7 @@ for (const allowed of [true, false]) {
         return route.fulfill({ json: { ...event, is_test: true, test_generation: "new", test_user_count: 10 } });
       }
       if (path === "/api/events/event/signups") return route.fulfill({ json: [{ name: "Table A", players: populated ? Array.from({ length: 10 }, (_, i) => ({ id: `test-${i}`, name: `Test Player ${i + 1}` })) : [] }] });
-      return route.fulfill({ status: 404, json: { detail: "Unexpected request" } });
+      return route.fallback();
     });
     await page.goto("/");
     await page.getByRole("button", { name: /^Game Night/ }).click();

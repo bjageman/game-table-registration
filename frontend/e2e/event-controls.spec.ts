@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("uses text Publish and Cancel dismiss controls, and puts assignments in the toolbar", async ({ page }) => {
   let status = "draft";

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("adds a known player after assignment and keeps failed additions available to retry", async ({ page }) => {
   let attempts = 0;

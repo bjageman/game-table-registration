@@ -4,7 +4,7 @@ Run `npm ci` and `npm run dev` from `frontend/`, then open http://localhost:5180
 
 For headless access, set `DEV_HOST=0.0.0.0` and `PUBLIC_URL=http://your-host:5180` in the root `.env`. The configured hostname is allowlisted. API proxying targets loopback port 8000. Register your PUBLIC_URL plus `/api/auth/callback` as the redirect URI in Discord's OAuth2 settings. Use the exact same origin in your browser.
 
-Checks: `npm run lint`, `npm run build`, `npm test`, and `npx playwright install chromium && npm run test:e2e`. Stop any existing server on port 5180 before the browser tests. CI also builds the frontend Docker image. Browser tests mock the API and check login/logout on desktop and mobile without contacting Discord.
+Checks: `npm run lint`, `npm run build`, `npm test`, and `npx playwright install chromium && npm run test:e2e`. Browser tests start their own server on port 5181, leaving the development server on 5180 available. Set `PLAYWRIGHT_PORT` to use another port. CI runs automatically on pull requests and pushes to dev/main, and also builds the frontend Docker image. Browser tests use shared API fixtures and check moderator journeys on desktop and mobile without contacting the backend or Discord. Feature routes override the common read-only defaults; unexpected API requests fail the test. CI retains traces and screenshots for browser failures.
 
 Run `docker compose -f compose.yml -f compose.frontend.yml up --build -d --wait` from the repository root. Open http://localhost:8080. Set PUBLIC_URL to your browser origin. The frontend Compose file extends the backend Compose file and is not a standalone deployment.
 

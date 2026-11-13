@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("Connect authorizes, saves the server on return, and saves a channel separately", async ({ page, context, baseURL }) => {
   let selection: { guild_id: string; guild_name: string; channel_id: string; channel_name: string } | null = null;
@@ -40,7 +40,7 @@ test("Connect authorizes, saves the server on return, and saves a channel separa
   });
   await page.goto("/#/settings");
   await expect(page.getByRole("link", { name: "Add TableSignup to Discord" })).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "Discord Server" })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveCount(0);
   const connect = page.getByRole("link", { name: "Connect", exact: true });
   await expect(connect).toHaveAttribute("href", "/api/auth/connect");
   await connect.click();
@@ -48,17 +48,19 @@ test("Connect authorizes, saves the server on return, and saves a channel separa
   await page.getByRole("link", { name: "Authorize", exact: true }).click();
   await expect(page).toHaveURL(`${baseURL}/#/settings`);
   await expect(page.getByRole("button", { name: "Disconnect", exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Discord Server" })).toHaveValue("Chosen Server");
-  await expect(page.getByRole("textbox", { name: "Discord Server" })).toHaveAttribute("readonly", "");
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveText("Chosen Server");
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveAttribute("aria-expanded", "false");
   await expect(connect).toHaveCount(0);
   expect(channelSaves).toBe(0);
   expect(context.pages()).toHaveLength(1);
   await page.reload();
-  await expect(page.getByRole("textbox", { name: "Discord Server" })).toHaveValue("Chosen Server");
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveText("Chosen Server");
   await page.getByRole("combobox", { name: "Signup Channel" }).click();
   await page.getByRole("option", { name: "#games" }).click();
-  await page.getByRole("form", { name: "Discord settings" }).getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText("Settings saved.", { exact: true })).toBeVisible();
+  await Promise.all([
+    page.waitForResponse((response) => new URL(response.url()).pathname === "/api/settings" && response.request().method() === "PUT" && response.ok()),
+    page.getByRole("form", { name: "Discord settings" }).getByRole("button", { name: "Save", exact: true }).click(),
+  ]);
   expect(channelSaves).toBe(1);
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveText("#games");
@@ -77,14 +79,14 @@ test("Connect authorizes, saves the server on return, and saves a channel separa
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(connect).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Discord Server" })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Signup Channel" })).toHaveCount(0);
   await page.reload();
   await expect(connect).toBeVisible();
   expect(disconnects).toBe(1);
 });
 
-test("Assignments is accessible after server authorization and persists its setting", async ({ page }) => {
+test("General settings are accessible after server authorization and persists its setting", async ({ page }) => {
   let enabled = true;
   await page.route("**/api/me", (route) => route.fulfill({ json: { username: "organizer", csrf: "csrf", needs_setup: true } }));
   await page.route("**/api/settings", (route) => route.fulfill({ json: {
@@ -100,7 +102,7 @@ test("Assignments is accessible after server authorization and persists its sett
   });
   await page.goto("/#/settings");
   await expect(page.getByRole("link", { name: "Game Events", exact: true })).toHaveCount(0);
-  await page.getByRole("tab", { name: "Assignments", exact: true }).click();
+  await page.getByRole("tab", { name: "General", exact: true }).click();
   const form = page.getByRole("form", { name: "Assignment settings" });
   const checkbox = form.getByLabel("Automatically Adjust Player Weights");
   await expect(checkbox).toBeChecked();
@@ -108,14 +110,14 @@ test("Assignments is accessible after server authorization and persists its sett
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form.getByRole("status")).toHaveText("Assignment settings saved.");
   await page.reload();
-  await page.getByRole("tab", { name: "Assignments", exact: true }).click();
+  await page.getByRole("tab", { name: "General", exact: true }).click();
   await expect(checkbox).not.toBeChecked();
   await checkbox.check();
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form.getByRole("status")).toHaveText("Assignment settings saved.");
   expect(enabled).toBe(true);
   await page.getByRole("tab", { name: "Discord", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Discord Server" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Discord Server" })).toBeVisible();
   await expect(form).toBeHidden();
   await page.getByRole("tab", { name: "Discord", exact: true }).focus();
   await page.keyboard.press("ArrowRight"); await page.keyboard.press("Enter");
