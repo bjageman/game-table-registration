@@ -6,16 +6,10 @@ from typing import Any
 from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
-from app.discord_format import clean
-from app.event_description import (
-    REACTION_DESCRIPTION,
-    signup_content,
-    signup_embed,
-)
 from app.event_threads import queue_member
 from app.models import Event, TableSignup
+from app.signup_messages import EMOJIS, signup_body
 
-EMOJIS = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟")
 GAP = (
     "Reaction signups need synchronization. Keep the bot connected before the deadline."
 )
@@ -24,25 +18,10 @@ GAP = (
 def publication(
     event: Event, closes_at: float | None, include_roster: bool = True
 ) -> dict[str, Any]:
-    labels = [f"{EMOJIS[i]} {clean(t['name'])}" for i, t in enumerate(event.tables)]
-    deadline = (
-        f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
-        if closes_at is not None
-        else "Signups stay open until closed manually."
-    )
-    if include_roster:
-        payload: dict[str, Any] = {
-            "embeds": [signup_embed(event, REACTION_DESCRIPTION, deadline, labels)]
-        }
-    else:
-        rows = [
-            f"{EMOJIS[i]} {clean(table['name'])} · {table['capacity']} seats"
-            for i, table in enumerate(event.tables)
-        ]
-        payload = {
-            "content": signup_content(event, REACTION_DESCRIPTION, deadline, rows)
-        }
-    return {**payload, "allowed_mentions": {"parse": []}}
+    return {
+        **signup_body(event, "reactions", closes_at, include_roster),
+        "allowed_mentions": {"parse": []},
+    }
 
 
 def event_for(engine: Engine, guild: str, channel: str, message: str) -> str | None:

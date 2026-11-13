@@ -1,8 +1,9 @@
+import useDialog from "../../hooks/useDialog";
 import EventDateLine, { EventDateDetails } from "../../components/EventDateLine";
 import { useTimezone, formatTimestamp } from "../../lib/timezone";
 import ModalHeader from "../../components/ModalHeader";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
 import ArchiveEvent from "./actions/ArchiveEvent";
 import ShareEvent from "./sharing/ShareEvent";
@@ -86,7 +87,6 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
   onEdit: (event: EventRecord) => void;
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const [announcementUrl, setAnnouncementUrl] = useState<string | null>(null);
   const discordUrl = event.status === "assigned" && announcementUrl
     ? announcementUrl : event.discord_url;
@@ -98,15 +98,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
       ? event.scheduled_publish_at + event.duration_hours * 3600
       : null
   );
-  useEffect(() => {
-    const modal = dialog.current;
-    const trigger = document.activeElement;
-    modal?.showModal();
-    return () => {
-      modal?.close();
-      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
-    };
-  }, []);
+  const dialog = useDialog();
   return (
     <dialog id={`event-dialog-${event.id}`} onClick={(event) => { if (isBackdropClick(event)) onClose(); }} ref={dialog} className="event-modal" aria-labelledby={`event-${event.id}`}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>

@@ -1,5 +1,6 @@
+import useDialog from "../../../hooks/useDialog";
 import ModalHeader from "../../../components/ModalHeader";
-import { useEffect, useId, useRef } from "react";
+import { useId } from "react";
 import { isBackdropClick } from "../../../lib/dialogBackdrop";
 import type { EventTemplateRecord } from "../../../lib/api";
 import { X } from "lucide-react";
@@ -10,16 +11,7 @@ export default function TemplatePicker({ templates, onSelect, onClose }: {
   onClose: () => void;
 }) {
   const heading = useId();
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const modal = dialog.current;
-    const trigger = document.activeElement;
-    modal?.showModal();
-    return () => {
-      modal?.close();
-      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
-    };
-  }, []);
+  const dialog = useDialog();
   return <dialog id="event-template-picker-dialog" ref={dialog} aria-labelledby={heading}
     onCancel={(event) => { event.preventDefault(); onClose(); }}
     onClick={(event) => { if (isBackdropClick(event)) onClose(); }}>

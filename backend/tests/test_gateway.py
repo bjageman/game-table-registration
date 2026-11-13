@@ -208,7 +208,7 @@ def test_api_lifespan_starts_and_closes_gateway(custom_client, monkeypatch):
     config.discord_gateway_enabled = True
     gateway = Mock(run_listener=AsyncMock(), close=AsyncMock())
     factory = Mock(return_value=gateway)
-    monkeypatch.setattr("app.main.SignupGateway", factory)
+    monkeypatch.setattr("app.lifecycle.SignupGateway", factory)
     app = create_app(config)
     with TestClient(app):
         assert app.state.gateway is gateway
@@ -218,7 +218,7 @@ def test_api_lifespan_starts_and_closes_gateway(custom_client, monkeypatch):
 
 
 def test_disconnected_gateway_blocks_publication_before_posting(custom_client):
-    from test_flow import event_body, login
+    from flow_helpers import event_body, login
 
     client, _, config = custom_client
     headers = login(client)

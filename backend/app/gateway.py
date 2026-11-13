@@ -15,6 +15,7 @@ from app.config import Settings
 from app.discord_api import DiscordAPI
 from app.event_threads import queue_member
 from app.models import Event
+from app.signup_messages import EMOJIS
 from app.signups import handle
 
 logger = logging.getLogger("uvicorn.error")
@@ -207,7 +208,7 @@ class SignupGateway(discord.Client):
                 except Exception:
                     logger.exception("Could not process an assignment withdrawal")
             return
-        if event.emoji.name not in reactions.EMOJIS:
+        if event.emoji.name not in EMOJIS:
             return
         async with self.reaction_lock:
             event_id = await asyncio.to_thread(
@@ -304,7 +305,7 @@ class SignupGateway(discord.Client):
     async def on_raw_reaction_clear_emoji(
         self, event: discord.RawReactionClearEmojiEvent
     ) -> None:
-        if event.emoji.id is None and event.emoji.name in reactions.EMOJIS:
+        if event.emoji.id is None and event.emoji.name in EMOJIS:
             await self.clear_reactions(
                 event.guild_id, event.channel_id, event.message_id, event.emoji.name
             )

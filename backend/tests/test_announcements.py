@@ -256,3 +256,45 @@ def test_two_deliverers_cannot_post_the_same_pending_part(tmp_path):
     discord.send_announcement.assert_called_once()
     discord.find_announcement.assert_not_called()
     engine.dispose()
+
+
+def test_long_event_details_do_not_overflow_assignment_embeds():
+    from app.discord_format import embed_length
+
+    tables = []
+    all_players = []
+    for index in range(10):
+        players = [
+            {
+                "id": f"test-{index}-{number}",
+                "name": f"Player {index} {number:02d}" + "x" * 30,
+            }
+            for number in range(13)
+        ]
+        all_players.extend(players)
+        tables.append({"name": f"Table {index}", "players": players})
+    event = Event(
+        id="event",
+        guild_id="guild",
+        title="T" * 100,
+        description="D" * 300,
+        location="L" * 200,
+        starts_at=2_000_000_000,
+        message_id="signup",
+        tables=[{"name": table["name"], "capacity": 15} for table in tables],
+    )
+    messages = payloads(
+        event,
+        "channel",
+        {"tables": tables, "waitlist": []},
+        {"players": all_players, "is_test": True},
+    )
+    assert len(messages) > 1
+    assert all(embed_length(message["embeds"][0]) <= 6000 for message in messages)
+    roster = "\n".join(
+        field["value"]
+        for message in messages
+        for field in message["embeds"][0]["fields"]
+    )
+    for player in all_players:
+        assert roster.count(player["name"]) == 1

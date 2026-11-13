@@ -235,7 +235,7 @@ def test_gateway_recovery_uses_rest_then_marks_healthy(custom_client, monkeypatc
 
 
 def test_seeding_failure_holds_original_message_for_review(custom_client):
-    from test_flow import event_body, login
+    from flow_helpers import event_body, login
 
     client, _, _ = custom_client
     headers = login(client)
