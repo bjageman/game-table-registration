@@ -22,10 +22,9 @@ export default function ReviewAssignments({ event, csrf, readOnly, onUpdated, on
       if (!onAccessError(failure)) setError(errorMessage(failure));
     } finally { setBusy(false); inFlight.current = false; }
   }
-  return <section aria-label="Assignment review" className="assignment-review">
-    <p role="status">Review the table assignments and waitlists below. Results will be sent to Discord after confirmation.</p>
+  return <>
     {error && <p role="alert" className="error">{error}</p>}
     {!readOnly && <button id={`event-approve-assignments-${event.id}`} type="button" className="primary" disabled={busy}
-      onClick={() => void approve()}>{busy ? "Confirming assignments…" : "Confirm Assignments and Send to Discord"}</button>}
-  </section>;
+      onClick={() => void approve()}>{busy ? "Sending…" : "Send to Discord"}</button>}
+  </>;
 }

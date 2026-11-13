@@ -111,6 +111,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
+          {event.status === "review" && <ReviewAssignments event={event} csrf={actions.csrf} readOnly={readOnly} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
           {discordUrl && (
             <DiscordLink className="button event-icon-action" url={discordUrl} label={discordLabel}>
               <DiscordIcon size={18} />
@@ -143,7 +144,8 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
             </EventDateDetails>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
-            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly || event.status === "review"} onAccessError={actions.onAccessError} />
+            {event.status === "review" && <p role="status" className="notice">Review these assignments. Add or remove players as needed, then send the results to Discord.</p>}
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
             </p>}
@@ -151,7 +153,6 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
-            {event.status === "review" && <ReviewAssignments event={event} csrf={actions.csrf} readOnly={readOnly} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} onLinkChange={setAnnouncementUrl} />}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
