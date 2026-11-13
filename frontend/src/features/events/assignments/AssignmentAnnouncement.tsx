@@ -6,8 +6,8 @@ import LoadingIndicator from "../../../components/LoadingIndicator";
 
 interface Delivery { status: "pending" | "sent" | "needs_review" | "unavailable" | "deleted"; error: string | null; url: string | null; update_pending?: boolean; update_error?: string | null; }
 
-export default function AssignmentAnnouncement({ event, csrf, refreshToken, readOnly = false, onAccessError }: {
-  event: EventRecord; csrf: string; refreshToken: number; readOnly?: boolean; onAccessError: (error: unknown) => boolean;
+export default function AssignmentAnnouncement({ event, csrf, refreshToken = 0, readOnly = false, onAccessError }: {
+  event: EventRecord; csrf: string; refreshToken?: number; readOnly?: boolean; onAccessError: (error: unknown) => boolean;
 }) {
   const [delivery, setDelivery] = useState<Delivery>();
   const [error, setError] = useState("");

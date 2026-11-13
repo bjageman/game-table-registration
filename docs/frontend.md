@@ -74,3 +74,5 @@ New table rows default to Table #1, Table #2, and so on, with Name and Capacity 
 The create form actions use save icons with Draft (Schedule for recurring events), Template, and Cancel, and stay on one row on mobile.
 
 The footer has a top divider and a single GitHub repository icon link, using the compact rounded icon style from Tiny Grimoire. General settings use dividers between checkbox options. Organization deletion requires confirmation, and member removal uses a trash icon with an accessible username label.
+
+Event process buttons share the 46px primary action height. Icon actions and modal close buttons are square at 46×46px. The event toolbar wraps on narrow screens, uses a Discord icon for the signup link, and relies on automatic signup polling rather than a toolbar refresh button.

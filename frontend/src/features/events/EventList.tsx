@@ -1,12 +1,13 @@
 import { isBackdropClick } from "../../lib/dialogBackdrop";
 import { useEffect, useRef, useState } from "react";
-import { Eye, RefreshCw, X } from "lucide-react";
+import { X } from "lucide-react";
 import ArchiveEvent from "./actions/ArchiveEvent";
 import ShareEvent from "./sharing/ShareEvent";
 import DeleteDiscordMessages from "./actions/DeleteDiscordMessages";
 import DeleteSignupMessage from "./actions/DeleteSignupMessage";
 import EventTables from "./assignments/EventTables";
 import DiscordLink from "../../components/DiscordLink";
+import { DiscordIcon } from "../../components/DiscordIcon";
 import PopulateTestUsers from "./actions/PopulateTestUsers";
 import AssignmentAnnouncement from "./assignments/AssignmentAnnouncement";
 import SignupDownload from "./exports/SignupDownload";
@@ -91,8 +92,6 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
 } & PublicationActions) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
-  const [refreshToken, setRefreshToken] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
   const signupOpensAt = event.published_at ?? event.scheduled_publish_at;
   const signupClosesAt = event.closes_at ?? (
     event.series_id && event.scheduled_publish_at != null
@@ -137,18 +136,9 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {event.status !== "draft" && event.status !== "scheduled" && event.status !== "assigned" && (
-          <button type="button" className="event-icon-action"
-            aria-label={refreshing ? "Refreshing signups" : "Refresh signups"}
-            title={refreshing ? "Refreshing Signups" : "Refresh Signups"}
-            disabled={refreshing}
-            onClick={() => setRefreshToken((value) => value + 1)}>
-            <RefreshCw size={18} aria-hidden="true" />
-          </button>
-          )}
           {event.discord_url && (
             <DiscordLink className="button event-icon-action" url={event.discord_url} label={`View Discord signup for ${event.title}`}>
-              <Eye size={18} aria-hidden="true" />
+              <DiscordIcon size={18} />
             </DiscordLink>
           )}
           {!readOnly && event.status === "assigned" && !event.archived_at && <ArchiveEvent event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
@@ -205,7 +195,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
                 </div>
             </dl>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
-            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onRefreshingChange={setRefreshing} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
             </p>}
@@ -213,7 +203,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
-            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} refreshToken={refreshToken} onAccessError={actions.onAccessError} />}
+            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (
