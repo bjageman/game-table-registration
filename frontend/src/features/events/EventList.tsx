@@ -1,4 +1,4 @@
-import EventDateLine from "../../components/EventDateLine";
+import EventDateLine, { EventDateDetails } from "../../components/EventDateLine";
 import { useTimezone, formatTimestamp } from "../../lib/timezone";
 import ModalHeader from "../../components/ModalHeader";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
@@ -138,12 +138,12 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
           <X size={18} aria-hidden="true" />
         </button>
       </ModalHeader>
-            <dl className="event-details">
+            <EventDateDetails>
               <EventDateLine label="Event starts" timestamp={event.starts_at} />
               {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               {signupOpensAt != null && <EventDateLine label="Signup Open" timestamp={signupOpensAt} />}
               <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
-            </dl>
+            </EventDateDetails>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
             <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">

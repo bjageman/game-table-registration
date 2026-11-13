@@ -221,7 +221,7 @@ def test_signup_deadline_is_relative_to_event_or_open_ended(client, offset):
     assert published.json()["signup_mode"] == "reactions"
     payload = client.app.state.discord.publish.call_args.args[0]
     if offset is None:
-        assert "stay open until closed manually" in payload["content"]
+        assert "stay open until closed manually" in payload["embeds"][0]["description"]
     now = time.time()
     assert reactions.replace(client.app.state.engine, event["id"], [], now)
     reactions.change(client.app.state.engine, event["id"], "1️⃣", "1", "Mary", True, now)
@@ -398,8 +398,8 @@ def test_login_publish_and_duplicate_protection(client):
     assert published.json()["discord_url"].endswith("/message")
     assert client.post(path, headers=headers).status_code == 409
     payload = client.app.state.discord.publish.call_args.args[0]
-    assert "Bring friends" in payload["content"]
-    assert "This is a lottery entry" not in payload["content"]
+    assert payload["embeds"][0]["description"].startswith("Bring friends\n\nEvent:")
+    assert "This is a lottery entry" not in payload["embeds"][0]["description"]
     assert payload["poll"]["allow_multiselect"] is True
     assert payload["allowed_mentions"] == {"parse": []}
     assert (
@@ -2157,7 +2157,7 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
     discord = client.app.state.discord
     discord.send_announcement.assert_not_called()
     assert client.post(path + "/publish", headers=headers).status_code == 200
-    assert "[TEST]" in discord.publish.call_args.args[0]["content"]
+    assert "[TEST]" in discord.publish.call_args.args[0]["embeds"][0]["title"]
     discord.table_signups.return_value = [
         {"name": "Clocktower", "players": [{"id": "999", "name": "Real Signup"}]}
     ]

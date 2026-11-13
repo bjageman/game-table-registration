@@ -112,12 +112,15 @@ def test_custom_publication_and_duplicate_guard(custom_client):
     headers, event, path = publish(custom_client)
     payload = client.app.state.discord.publish.call_args.args[0]
     assert "poll" not in payload
-    assert "A · 1 seats" in payload["content"]
-    assert "B · 1 seats" in payload["content"]
-    assert "lottery entry" in payload["content"]
+    embed = payload["embeds"][0]
+    assert [field["value"] for field in embed["fields"]] == [
+        "1 seats\n\u200b",
+        "1 seats\n\u200b",
+    ]
+    assert "lottery entry" in embed["description"]
     assert payload["allowed_mentions"] == {"parse": []}
-    assert "1️⃣ A" in payload["content"]
-    assert "2️⃣ B" in payload["content"]
+    assert [field["name"] for field in embed["fields"]] == ["1️⃣ A", "2️⃣ B"]
+    assert all(field["inline"] is False for field in embed["fields"])
     assert "components" not in payload
     assert event["signup_mode"] == "custom"
     assert event["closes_at"] == pytest.approx(time.time() + 86400, abs=5)

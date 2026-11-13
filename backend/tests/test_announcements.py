@@ -27,11 +27,12 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
     assert "[Signup message]" in messages[0]["content"]
     fields = messages[0]["embeds"][0]["fields"]
     assert [(field["name"], field["inline"]) for field in fields] == [
-        ("First (1)", True),
-        ("Second (1)", True),
+        ("First (1)", False),
+        ("Second (1)", False),
         ("Waitlist (1)", False),
     ]
     assert fields[2]["value"] == "1. <@3>"
+    assert all(field["value"].endswith("\n\u200b") for field in fields[:2])
 
 
 def test_large_announcements_are_complete_bounded_and_private():

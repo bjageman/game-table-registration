@@ -65,18 +65,25 @@ def payloads(
     )
     introduction = (
         f"**{'[TEST] ' if is_test else ''}{clean(event.title)} — Table Assignments**"
+        + (
+            "\n\n" + "\n".join(clean(line) for line in event.description.splitlines())
+            if event.description and event.description.strip()
+            else ""
+        )
         + (f"\nEvent: <t:{int(event.starts_at)}:F>" if event.starts_at else "")
         + (f"\nLocation: {clean(event.location)}" if event.location else "")
         + f"\n[Signup message]({poll_url})"
     )
     max_ping_length = min(1500, 1900 - len(introduction) - 1)
     field_parts: list[tuple[dict[str, Any], list[str]]] = []
-    for header, entries, inline in sections:
+    for header, entries, spaced in sections:
         lines: list[str] = []
         ids: list[str] = []
         part = 0
         for line, mention in entries:
-            field_full = len("\n".join(lines)) + len(line) + 1 > 1024
+            field_full = len("\n".join(lines)) + len(line) + 1 > 1024 - (
+                2 if spaced else 0
+            )
             mentions_full = bool(
                 notify
                 and mention
@@ -91,8 +98,8 @@ def payloads(
                     (
                         {
                             "name": header if part == 0 else f"{header} (continued)",
-                            "value": "\n".join(lines),
-                            "inline": inline,
+                            "value": "\n".join(lines) + ("\n\u200b" if spaced else ""),
+                            "inline": False,
                         },
                         ids,
                     )
@@ -106,8 +113,8 @@ def payloads(
             (
                 {
                     "name": header if part == 0 else f"{header} (continued)",
-                    "value": "\n".join(lines),
-                    "inline": inline,
+                    "value": "\n".join(lines) + ("\n\u200b" if spaced else ""),
+                    "inline": False,
                 },
                 ids,
             )

@@ -42,7 +42,7 @@ from app.connection_settings import (
     register_settings,
 )
 from app.discord_api import DiscordAPI, DiscordRequestError
-from app.event_description import POLL_DESCRIPTION, signup_description, signup_location
+from app.event_description import POLL_DESCRIPTION, signup_embed
 from app.event_threads import queue_member
 from app.event_threads import synchronize_due as synchronize_threads
 from app.gateway import SignupGateway
@@ -2490,14 +2490,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     reaction_publication(event, closes_at)
                     if event.signup_mode == "reactions"
                     else {
-                        "content": (
-                            f"**{'[TEST] ' if event.test_signups else ''}"
-                            f"{event.title}**\n"
-                            f"Event: <t:{int(event.starts_at)}:F>\n"
-                            f"{signup_location(event.location)}"
-                            f"Signups open for {event.duration_hours} hours. "
-                            f"{signup_description(event.description, POLL_DESCRIPTION)}"
-                        ),
+                        "embeds": [
+                            signup_embed(
+                                event,
+                                POLL_DESCRIPTION,
+                                f"Signups open for {event.duration_hours} hours.",
+                            )
+                        ],
                         "allowed_mentions": {"parse": []},
                         "poll": {
                             "question": {"text": "Which tables would you attend?"},

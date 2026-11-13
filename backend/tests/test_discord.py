@@ -301,3 +301,35 @@ def test_identity_retains_authorized_guild_from_code_exchange():
     user = api.identity("authorization-code")
     assert user["authorized_guild"] == {"id": "100"}
     assert "access_token" not in user
+
+
+def test_closing_signup_embed_keeps_title_and_tables_and_adds_footer():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    embed = {
+        "type": "rich",
+        "title": "Game Night",
+        "description": "Instructions\n\nEvent: soon",
+        "color": 0x2F6B4F,
+        "fields": [{"name": "1️⃣ A", "value": "8 seats\n\u200b", "inline": False}],
+    }
+    api.bot = Mock(return_value={"content": "", "embeds": [embed]})
+    api.close_reaction_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert "content" not in payload
+    saved = payload["embeds"][0]
+    assert saved["title"] == embed["title"]
+    assert saved["description"] == embed["description"]
+    assert saved["fields"] == embed["fields"]
+    assert "type" not in saved
+    assert (
+        saved["footer"]["text"] == "Signups closed. Reactions no longer change entries."
+    )
+
+
+def test_closing_legacy_signup_retains_original_content():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(return_value={"content": "Legacy title and tables"})
+    api.close_reaction_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert payload["content"].startswith("Legacy title and tables\n\n")
+    assert "Signups closed" in payload["content"]

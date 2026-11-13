@@ -1,6 +1,9 @@
 """Description text used in Discord signup messages."""
 
+from typing import Any
+
 from app.announcements import clean
+from app.models import Event
 
 REACTION_DESCRIPTION = (
     "React with the number for every table you would attend. "
@@ -28,3 +31,27 @@ def signup_description(value: str | None, default: str) -> str:
 
 def signup_location(value: str | None) -> str:
     return f"Location: {clean(value)}\n" if value and value.strip() else ""
+
+
+def signup_embed(
+    event: Event, default: str, deadline: str, labels: list[str] | None = None
+) -> dict[str, Any]:
+    embed: dict[str, Any] = {
+        "title": f"{'[TEST] ' if event.test_signups else ''}{clean(event.title)}",
+        "description": (
+            f"{signup_description(event.description, default)}\n\n"
+            f"Event: <t:{int(event.starts_at)}:F>\n"
+            f"{signup_location(event.location)}{deadline}"
+        ),
+        "color": 0x2F6B4F,
+    }
+    if labels is not None:
+        embed["fields"] = [
+            {
+                "name": label,
+                "value": f"{table['capacity']} seats\n\u200b",
+                "inline": False,
+            }
+            for label, table in zip(labels, event.tables, strict=True)
+        ]
+    return embed

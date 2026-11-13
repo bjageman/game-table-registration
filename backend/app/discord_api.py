@@ -217,6 +217,23 @@ class DiscordAPI:
         path = f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
         message = self.bot("GET", path)
         marker = "**Signups closed. Reactions no longer change entries.**"
+        embeds = message.get("embeds") or []
+        if embeds and embeds[0].get("color") == 0x2F6B4F:
+            embed = {
+                key: value
+                for key, value in embeds[0].items()
+                if key in {"title", "description", "color", "fields"}
+            }
+            embed["footer"] = {"text": marker.strip("*")}
+            self.bot(
+                "PATCH",
+                path,
+                json={
+                    "embeds": [embed],
+                    "allowed_mentions": {"parse": []},
+                },
+            )
+            return
         content = str(message.get("content") or "")
         if marker not in content:
             content = f"{content}\n\n{marker}"

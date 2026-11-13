@@ -9,8 +9,7 @@ from sqlalchemy.orm import Session
 from app.announcements import clean
 from app.event_description import (
     REACTION_DESCRIPTION,
-    signup_description,
-    signup_location,
+    signup_embed,
 )
 from app.event_threads import queue_member
 from app.models import Event, TableSignup
@@ -22,24 +21,14 @@ GAP = (
 
 
 def publication(event: Event, closes_at: float | None) -> dict[str, Any]:
-    tables = "\n".join(
-        f"{EMOJIS[i]} {clean(t['name'])} · {t['capacity']} seats"
-        for i, t in enumerate(event.tables)
-    )
+    labels = [f"{EMOJIS[i]} {clean(t['name'])}" for i, t in enumerate(event.tables)]
     deadline = (
         f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
         if closes_at is not None
         else "Signups stay open until closed manually."
     )
     return {
-        "content": (
-            f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
-            f"Event: <t:{int(event.starts_at)}:F>\n"
-            f"{signup_location(event.location)}"
-            f"{deadline}\n\n"
-            f"{signup_description(event.description, REACTION_DESCRIPTION)}\n\n"
-            f"{tables}"
-        ),
+        "embeds": [signup_embed(event, REACTION_DESCRIPTION, deadline, labels)],
         "allowed_mentions": {"parse": []},
     }
 
