@@ -285,7 +285,7 @@ h3 {
 .event-details {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px 40px;
+  gap: 8px 24px;
   margin: 0 0 20px;
 }
 dt {
