@@ -10,11 +10,10 @@ from app.event_threads import queue_member
 from app.models import (
     Event,
     EventWaitlistAddition,
-    EventWithdrawal,
     LotteryRun,
     PlayerProfile,
 )
-from app.withdrawals import current_result
+from app.withdrawals import current_result, result_players
 
 
 def add_player(
@@ -37,7 +36,10 @@ def add_player(
             return False
         run = db.get(LotteryRun, event_id)
         profile = db.get(PlayerProfile, (guild_id, player_id))
-        if run is None or profile is None:
+        if run is None:
+            return False
+        known = result_players(db, run).get(player_id)
+        if profile is None and known is None:
             return False
         current = current_result(db, run)
         table = next(
@@ -47,19 +49,32 @@ def add_player(
             table is None
             or player_id in current["assignments"]
             or any(player["id"] == player_id for player in table["waitlist"])
-            or db.get(EventWithdrawal, (event_id, player_id)) is not None
-            or (player_id.startswith("test-") and not profile.is_test)
+            or (
+                player_id.startswith("test-")
+                and profile is not None
+                and not profile.is_test
+            )
         ):
             return False
-        db.add(
-            EventWaitlistAddition(
-                event_id=event_id,
-                discord_id=player_id,
-                table_name=table_name,
-                discord_name=profile.discord_name,
-                added_at=time.time(),
+        if profile is not None:
+            name = profile.discord_name
+        else:
+            assert known is not None
+            name = known["name"]
+        addition = db.get(EventWaitlistAddition, (event_id, player_id, table_name))
+        if addition is None:
+            db.add(
+                EventWaitlistAddition(
+                    event_id=event_id,
+                    discord_id=player_id,
+                    table_name=table_name,
+                    discord_name=name,
+                    added_at=time.time(),
+                )
             )
-        )
+        else:
+            addition.discord_name = name
+            addition.added_at = time.time()
         event = db.get(Event, event_id)
         assert event is not None
         queue_member(db, event, player_id)

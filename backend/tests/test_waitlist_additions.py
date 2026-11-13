@@ -162,3 +162,100 @@ def test_waitlist_api_permissions_validation_and_state(client):
         db.get(Event, event["id"]).created_by = "another-owner"
         db.commit()
     assert client.post(target, headers=headers, json=body).status_code == 404
+
+
+@pytest.mark.parametrize("remove", ["manager", "discord"])
+def test_withdrawn_player_rejoins_at_end_and_can_leave_again(promotion_db, remove):
+    engine = promotion_db
+
+    def leave(player_id):
+        if remove == "manager":
+            return manager_remove(engine, "guild", "event", player_id)
+        return withdraw(engine, "guild", "channel", "assignment-message", player_id)
+
+    def roster():
+        with Session(engine) as db:
+            return current_result(db, db.get(LotteryRun, "event"))
+
+    assert leave("1")
+    # Lottery participants remain known even without a saved profile.
+    assert add_player(engine, "guild", "event", "1", "Table A")
+    assert roster()["assignments"] == {"2": "Table A"}
+    assert roster()["waitlist"] == ["3", "1"]
+    assert [p["id"] for p in roster()["tables"][0]["waitlist"]] == ["3", "1"]
+    assert not add_player(engine, "guild", "event", "1", "Table A")
+    assert leave("2")
+    assert leave("3")
+    assert roster()["assignments"] == {"1": "Table A"}
+    assert leave("1")
+    assert roster()["assignments"] == {}
+    assert roster()["waitlist"] == []
+    # Reuses the prior addition rather than hitting its unique constraint.
+    assert add_player(engine, "guild", "event", "1", "Table A")
+    assert roster()["waitlist"] == ["1"]
+    for _ in range(2):
+        assert manager_add(engine, "guild", "event", "1", "Table A")
+        assert roster()["assignments"] == {"1": "Table A"}
+        assert leave("1")
+        assert roster()["assignments"] == {}
+        assert add_player(engine, "guild", "event", "1", "Table A")
+        assert roster()["waitlist"] == ["1"]
+
+
+def test_rejoining_keeps_previous_replacement_seated(promotion_db):
+    engine = promotion_db
+    assert manager_remove(engine, "guild", "event", "1")
+    assert add_player(engine, "guild", "event", "1", "Table A")
+    # Deliberately overfill: the first replacement must retain their seat when
+    # the returning player leaves a second time.
+    assert manager_add(engine, "guild", "event", "1", "Table A")
+    assert manager_remove(engine, "guild", "event", "1")
+    with Session(engine) as db:
+        current = current_result(db, db.get(LotteryRun, "event"))
+        assert current["assignments"] == {"2": "Table A"}
+        assert current["waitlist"] == ["3"]
+    assert manager_remove(engine, "guild", "event", "2")
+    with Session(engine) as db:
+        current = current_result(db, db.get(LotteryRun, "event"))
+        assert current["assignments"] == {"3": "Table A"}
+
+
+def test_original_waitlisted_player_rejoins_at_end_after_leaving(promotion_db):
+    engine = promotion_db
+    assert manager_remove(engine, "guild", "event", "1")
+    assert manager_remove(engine, "guild", "event", "2")
+    assert add_player(engine, "guild", "event", "2", "Table A")
+    profile(engine, "4")
+    assert add_player(engine, "guild", "event", "4", "Table A")
+    assert manager_remove(engine, "guild", "event", "3")
+    assert manager_remove(engine, "guild", "event", "2")
+    assert add_player(engine, "guild", "event", "2", "Table A")
+    with Session(engine) as db:
+        current = current_result(db, db.get(LotteryRun, "event"))
+        assert current["assignments"] == {"4": "Table A"}
+        assert current["waitlist"] == ["2"]
+        assert [p["id"] for p in current["tables"][0]["waitlist"]] == ["2"]
+
+
+def test_api_can_requeue_a_player_removed_from_a_table(client):
+    headers, _, path, _ = closing_event(client)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    rows = client.get(path + "/signups").json()
+    table = next(row for row in rows if row["players"])
+    player_id = table["players"][0]["id"]
+    assert (
+        client.delete(
+            path + f"/manager-players/{player_id}", headers=headers
+        ).status_code
+        == 200
+    )
+    target = path + f"/waitlisted-players/{player_id}"
+    assert (
+        client.post(target, headers=headers, json={"table": table["name"]}).status_code
+        == 200
+    )
+    rows = client.get(path + "/signups").json()
+    updated = next(row for row in rows if row["name"] == table["name"])
+    assert updated["waitlist"][-1]["id"] == player_id
+    assert not any(p["id"] == player_id for row in rows for p in row["players"])
