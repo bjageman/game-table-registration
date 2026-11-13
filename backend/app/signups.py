@@ -28,8 +28,8 @@ def publication(event: Event, closes_at: float) -> dict[str, Any]:
             f"Event: <t:{int(event.starts_at)}:F>\n"
             f"{signup_location(event.location)}"
             f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)\n\n"
-            f"{tables}\n\n"
-            f"{signup_description(event.description, CUSTOM_DESCRIPTION)}"
+            f"{signup_description(event.description, CUSTOM_DESCRIPTION)}\n\n"
+            f"{tables}"
         ),
         "allowed_mentions": {"parse": []},
         "components": [
