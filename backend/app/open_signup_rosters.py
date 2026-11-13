@@ -137,7 +137,7 @@ def roster_pages(
             {
                 "name": heading if part == 0 else f"{heading} (continued)",
                 "value": value,
-                "inline": False,
+                "inline": True,
             }
             for part, value in enumerate(chunks)
         )

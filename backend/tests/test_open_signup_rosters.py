@@ -91,7 +91,7 @@ def test_counts_unique_people_and_only_edits_changed_rosters(roster):
     assert (
         "<@1>" in embed["fields"][0]["value"] and "<@1>" in embed["fields"][1]["value"]
     )
-    assert all(field["inline"] is False for field in embed["fields"])
+    assert all(field["inline"] is True for field in embed["fields"])
     assert discord.edit_announcement.call_args.args[2]["allowed_mentions"] == {
         "parse": [],
         "users": [],

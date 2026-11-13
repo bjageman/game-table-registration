@@ -99,7 +99,7 @@ def payloads(
                         {
                             "name": header if part == 0 else f"{header} (continued)",
                             "value": "\n".join(lines) + ("\n\u200b" if spaced else ""),
-                            "inline": False,
+                            "inline": spaced,
                         },
                         ids,
                     )
@@ -114,7 +114,7 @@ def payloads(
                 {
                     "name": header if part == 0 else f"{header} (continued)",
                     "value": "\n".join(lines) + ("\n\u200b" if spaced else ""),
-                    "inline": False,
+                    "inline": spaced,
                 },
                 ids,
             )

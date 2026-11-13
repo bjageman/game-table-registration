@@ -31,5 +31,5 @@ def test_custom_description_replaces_signup_instructions():
         assert content.startswith("Bring friends\n@everyone\n\nEvent:")
         embed = publication(event("Bring friends"), 1999990000)["embeds"][0]
         assert embed["title"] == "Game Night"
-        assert all(field["inline"] is False for field in embed["fields"])
+        assert all(field["inline"] is True for field in embed["fields"])
         assert "This is a lottery entry" not in content

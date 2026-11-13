@@ -27,8 +27,8 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
     assert "[Signup message]" in messages[0]["content"]
     fields = messages[0]["embeds"][0]["fields"]
     assert [(field["name"], field["inline"]) for field in fields] == [
-        ("First (1)", False),
-        ("Second (1)", False),
+        ("First (1)", True),
+        ("Second (1)", True),
         ("Waitlist (1)", False),
     ]
     assert fields[2]["value"] == "1. <@3>"

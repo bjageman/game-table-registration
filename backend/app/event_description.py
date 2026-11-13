@@ -66,7 +66,7 @@ def signup_embed(
             {
                 "name": label,
                 "value": f"{table['capacity']} seats\n\u200b",
-                "inline": False,
+                "inline": True,
             }
             for label, table in zip(labels, event.tables, strict=True)
         ]
