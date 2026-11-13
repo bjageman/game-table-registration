@@ -301,3 +301,56 @@ def test_identity_retains_authorized_guild_from_code_exchange():
     user = api.identity("authorization-code")
     assert user["authorized_guild"] == {"id": "100"}
     assert "access_token" not in user
+
+
+def test_closing_signup_embed_keeps_title_and_tables_and_adds_footer():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    embed = {
+        "type": "rich",
+        "title": "Game Night",
+        "description": "Instructions\n\nEvent: soon",
+        "color": 0x2F6B4F,
+        "fields": [{"name": "1️⃣ A", "value": "8 seats\n\u200b", "inline": False}],
+    }
+    api.bot = Mock(return_value={"content": "", "embeds": [embed]})
+    api.close_reaction_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert payload["content"] == ""
+    saved = payload["embeds"][0]
+    assert saved["title"] == embed["title"]
+    assert saved["description"] == embed["description"]
+    assert saved["fields"] == embed["fields"]
+    assert "type" not in saved
+    assert (
+        saved["footer"]["text"] == "Signups closed. Reactions no longer change entries."
+    )
+
+
+def test_closing_regular_signup_converts_it_to_an_embed():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(
+        return_value={
+            "content": "**Legacy title**\nEvent: <t:2000000000:F>\n1️⃣ Table A · 8 seats"
+        }
+    )
+    api.close_reaction_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert payload["content"] == ""
+    embed = payload["embeds"][0]
+    assert embed["title"] == "Legacy title"
+    assert "1️⃣ Table A · 8 seats" in embed["description"]
+    assert (
+        embed["footer"]["text"] == "Signups closed. Reactions no longer change entries."
+    )
+
+
+def test_closing_poll_signup_converts_it_and_removes_controls():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(return_value={"content": "**Game Night**\nEvent: <t:2000000000:F>"})
+    api.close_signup_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert payload["content"] == ""
+    assert payload["components"] == []
+    assert payload["embeds"][0]["title"] == "Game Night"
+    assert "Event: <t:2000000000:F>" in payload["embeds"][0]["description"]
+    assert payload["embeds"][0]["footer"]["text"] == "Signups closed."

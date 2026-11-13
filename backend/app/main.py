@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import logging
-import os
 import re
 import secrets
 import time
@@ -42,7 +41,12 @@ from app.connection_settings import (
     register_settings,
 )
 from app.discord_api import DiscordAPI, DiscordRequestError
-from app.event_description import POLL_DESCRIPTION, signup_description, signup_location
+from app.event_description import (
+    POLL_DESCRIPTION,
+    signup_description,
+    signup_embed,
+    signup_location,
+)
 from app.event_threads import queue_member
 from app.event_threads import synchronize_due as synchronize_threads
 from app.gateway import SignupGateway
@@ -67,6 +71,8 @@ from app.models import (
     UserIdentity,
     UserSettings,
 )
+from app.open_signup_rosters import synchronize_due as synchronize_open_rosters
+from app.open_signup_rosters import with_initial_roster
 from app.reactions import EMOJIS
 from app.reactions import publication as reaction_publication
 from app.recurrence import fill_schedule
@@ -191,6 +197,7 @@ class AssignmentSettingsInput(BaseModel):
     announce_table_changes: bool
     post_discord_updates_to_thread: bool = False
     timezone: str | None = Field(default=None, max_length=64)
+    show_open_signup_players: bool = False
 
     @field_validator("timezone")
     @classmethod
@@ -256,17 +263,21 @@ class RetryAnnouncementInput(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or Settings()
     branding = load_branding(config.branding_config_file)
-    if settings is None and os.environ.get("TABLESIGNUP_LOCAL_AUTO_MIGRATE") == "1":
-        if not config.database_url.startswith("sqlite:"):
-            raise RuntimeError("Local automatic migrations require a SQLite database")
-        from alembic import command
-        from alembic.config import Config
-
-        command.upgrade(Config("alembic.ini"), "head")
     engine = create_engine(config.database_url, pool_pre_ping=True)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        # Direct local API starts (outside run.sh) must also upgrade SQLite
+        # before background workers issue queries against the current models.
+        # Hosted PostgreSQL deployments continue to run migrations separately.
+        if settings is None and config.database_url.startswith("sqlite:"):
+            from alembic import command
+            from alembic.config import Config
+
+            migration_config = Config("alembic.ini")
+            migration_config.set_main_option("sqlalchemy.url", config.database_url)
+            command.upgrade(migration_config, "head")
+
         stop = StopEvent()
         gateway = (
             SignupGateway(engine, config)
@@ -381,11 +392,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                     discord.close_signup_message(event["message"])
                                 elif event["mode"] == "reactions":
                                     discord.close_reaction_message(event["message"])
+                                elif event["mode"] == "poll":
+                                    discord.close_signup_message(event["message"])
                         except Exception:
                             logging.getLogger(__name__).exception(
                                 "Automatic signup closing failed for event %s",
                                 event["id"],
                             )
+                    synchronize_open_rosters(
+                        engine,
+                        lambda guild, channel: client_for(
+                            config.model_copy(
+                                update={
+                                    "discord_guild_id": guild,
+                                    "discord_channel_id": channel,
+                                }
+                            )
+                        ),
+                    )
                     synchronize_threads(
                         engine,
                         lambda guild, channel: client_for(
@@ -1150,6 +1174,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if saved
                 else False,
                 "timezone": saved.timezone if saved else None,
+                "show_open_signup_players": saved.show_open_signup_players
+                if saved
+                else False,
             }
 
     @app.put("/api/settings/assignment")
@@ -1166,6 +1193,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             previous = db.get(AssignmentPreference, key)
             if "timezone" not in body.model_fields_set and previous:
                 body.timezone = previous.timezone
+            if "show_open_signup_players" not in body.model_fields_set and previous:
+                body.show_open_signup_players = previous.show_open_signup_players
+            roster_changed = (
+                bool(previous and previous.show_open_signup_players)
+                != body.show_open_signup_players
+            )
             db.merge(
                 AssignmentPreference(
                     scope_key=assignment_scope_key(
@@ -1175,8 +1208,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     announce_table_changes=body.announce_table_changes,
                     post_discord_updates_to_thread=body.post_discord_updates_to_thread,
                     timezone=body.timezone,
+                    show_open_signup_players=body.show_open_signup_players,
                 )
             )
+            if roster_changed:
+                scope = (
+                    Event.organization_id == request.state.organization_id
+                    if request.state.organization_id
+                    else (Event.organization_id.is_(None))
+                    & (Event.created_by == session.user_id)
+                )
+                db.execute(
+                    update(Event)
+                    .where(scope, Event.status == "open")
+                    .values(signup_roster_checked_at=None)
+                )
             db.commit()
         return body.model_dump()
 
@@ -1598,6 +1644,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 override.choices = sorted(set(override.choices) | {body.table})
                 override.removed = False
             queue_member(db, event, player_id)
+            event.signup_roster_checked_at = None
             db.commit()
             return {"ok": True}
 
@@ -1663,6 +1710,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 signup = db.get(TableSignup, (event_id, player_id))
                 if signup is not None:
                     db.delete(signup)
+            event.signup_roster_checked_at = None
             db.commit()
             return {"ok": True}
 
@@ -1763,7 +1811,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "late reactions are rejected"
                     )
             if (
-                event.signup_mode == "custom"
+                event.signup_mode in ("custom", "poll")
                 and event.message_id
                 and not event.signup_deleted_at
             ):
@@ -2486,17 +2534,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if event.duration_hours
                     else None
                 )
-                message = discord.publish(
-                    reaction_publication(event, closes_at)
+                assignment_preferences = preferences_for_event(db, event)
+                include_roster = bool(
+                    assignment_preferences
+                    and assignment_preferences.show_open_signup_players
+                )
+                poll_description = signup_description(
+                    event.description, POLL_DESCRIPTION
+                )
+                payload = (
+                    reaction_publication(event, closes_at, include_roster)
                     if event.signup_mode == "reactions"
                     else {
-                        "content": (
-                            f"**{'[TEST] ' if event.test_signups else ''}"
-                            f"{event.title}**\n"
-                            f"Event: <t:{int(event.starts_at)}:F>\n"
-                            f"{signup_location(event.location)}"
-                            f"Signups open for {event.duration_hours} hours. "
-                            f"{signup_description(event.description, POLL_DESCRIPTION)}"
+                        **(
+                            {
+                                "embeds": [
+                                    signup_embed(
+                                        event,
+                                        POLL_DESCRIPTION,
+                                        "Signups open for "
+                                        f"{event.duration_hours} hours.",
+                                    )
+                                ]
+                            }
+                            if include_roster
+                            else {
+                                "content": (
+                                    f"**{'[TEST] ' if event.test_signups else ''}"
+                                    f"{event.title}**\n"
+                                    f"Event: <t:{int(event.starts_at)}:F>\n"
+                                    f"{signup_location(event.location)}"
+                                    f"Signups open for {event.duration_hours} hours. "
+                                    f"{poll_description}"
+                                )
+                            }
                         ),
                         "allowed_mentions": {"parse": []},
                         "poll": {
@@ -2514,6 +2585,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         },
                     }
                 )
+                message = discord.publish(with_initial_roster(db, event, payload))
                 event.published_at = (
                     datetime.fromisoformat(message["timestamp"]).timestamp()
                     if message.get("timestamp")

@@ -8,8 +8,9 @@ from typing import Any
 from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import clean, enqueue_refresh
+from app.announcements import enqueue_refresh
 from app.assignment_preferences import announce_changes
+from app.discord_format import clean
 from app.event_threads import queue_member
 from app.models import (
     Announcement,

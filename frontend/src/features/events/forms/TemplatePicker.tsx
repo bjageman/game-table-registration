@@ -27,7 +27,6 @@ export default function TemplatePicker({ templates, onSelect, onClose }: {
       <h2 id={heading}>Load From Template</h2>
       <button id="event-template-picker-close-button" type="button" aria-label="Close template picker" title="Close" onClick={onClose}><X size={18} aria-hidden="true" /></button>
     </ModalHeader>
-    <p>Choose a template to fill the title, signup duration, and tables. Your event date stays as it is.</p>
     <ul className="template-list">
       {templates.map((template) => <li key={template.id}>
         <button id={`event-template-select-${template.id}`} type="button" onClick={() => onSelect(template)}>

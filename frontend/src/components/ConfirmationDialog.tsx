@@ -5,7 +5,7 @@ import LoadingIndicator from "./LoadingIndicator";
 import { X } from "lucide-react";
 
 export default function ConfirmationDialog({
-  id, title, children, busy, error, status, onCancel, onConfirm,
+  id, title, children, busy, error, status, onCancel, onConfirm, showClose = true,
 }: {
   id?: string;
   title: string;
@@ -13,6 +13,7 @@ export default function ConfirmationDialog({
   busy: boolean;
   error: string;
   status?: string;
+  showClose?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -35,7 +36,7 @@ export default function ConfirmationDialog({
       onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
       <ModalHeader>
         <h2 id={heading}>{title}</h2>
-        <button id={`${dialogId}-close`} type="button" disabled={busy} aria-label="Close dialog" title="Close" onClick={onCancel}><X size={18} aria-hidden="true" /></button>
+        {showClose && <button id={`${dialogId}-close`} type="button" disabled={busy} aria-label="Close dialog" title="Close" onClick={onCancel}><X size={18} aria-hidden="true" /></button>}
       </ModalHeader>
       {children}
       {error && <p role="alert" className="error">{error}</p>}

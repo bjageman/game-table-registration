@@ -297,7 +297,6 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         ) : (
           <div className="panel">
             <h3>{titleQuery ? "No Matching Events" : events.length ? "No Active Events" : "No Events Yet"}</h3>
-            {!events.length && !titleQuery && <p>Event drafts and published signups will appear here.</p>}
           </div>
         ))}
     </section>

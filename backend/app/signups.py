@@ -7,30 +7,40 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import clean
 from app.config import Settings
+from app.discord_format import clean
 from app.event_description import (
     CUSTOM_DESCRIPTION,
-    signup_description,
-    signup_location,
+    signup_content,
+    signup_embed,
 )
 from app.event_threads import queue_member
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
-def publication(event: Event, closes_at: float) -> dict[str, Any]:
-    tables = "\n".join(
-        f"- {clean(t['name'])} · {t['capacity']} seats" for t in event.tables
-    )
+def publication(
+    event: Event, closes_at: float, include_roster: bool = True
+) -> dict[str, Any]:
+    deadline = f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
+    if include_roster:
+        payload: dict[str, Any] = {
+            "embeds": [
+                signup_embed(
+                    event,
+                    CUSTOM_DESCRIPTION,
+                    deadline,
+                    [clean(table["name"]) for table in event.tables],
+                )
+            ]
+        }
+    else:
+        rows = [
+            f"- {clean(table['name'])} · {table['capacity']} seats"
+            for table in event.tables
+        ]
+        payload = {"content": signup_content(event, CUSTOM_DESCRIPTION, deadline, rows)}
     return {
-        "content": (
-            f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
-            f"Event: <t:{int(event.starts_at)}:F>\n"
-            f"{signup_location(event.location)}"
-            f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)\n\n"
-            f"{signup_description(event.description, CUSTOM_DESCRIPTION)}\n\n"
-            f"{tables}"
-        ),
+        **payload,
         "allowed_mentions": {"parse": []},
         "components": [
             {
@@ -318,6 +328,8 @@ def handle(engine: Engine, config: Settings, payload: dict[str, Any]) -> dict[st
         }
         if action == "open":
             response["data"]["flags"] = 64
+        else:
+            event.signup_roster_checked_at = None
         db.add(
             SignupInteraction(id=interaction_id, event_id=event_id, response=response)
         )

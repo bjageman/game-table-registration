@@ -9,13 +9,50 @@ function fitTextToWidth(target: HTMLElement) {
   }
 }
 
+function fitModalTitle(container: HTMLElement, target: HTMLElement) {
+  container.style.removeProperty("--modal-badge-scale");
+  target.style.removeProperty("font-size");
+  if (container.clientWidth <= 0 || target.scrollWidth <= target.clientWidth) return;
+  const size = parseFloat(getComputedStyle(target).fontSize);
+  let lower = 0;
+  let upper = 1;
+  function apply(scale: number) {
+    container.style.setProperty("--modal-badge-scale", String(scale ** 1.5));
+    target.style.fontSize = `${size * scale}px`;
+  }
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const scale = (lower + upper) / 2;
+    apply(scale);
+    if (target.scrollWidth > target.clientWidth) upper = scale;
+    else lower = scale;
+  }
+  apply(lower * 0.995);
+}
+
+function fitDateRows(container: HTMLElement) {
+  const rows = [...container.querySelectorAll<HTMLElement>(".event-date-line")];
+  rows.forEach((row) => row.style.removeProperty("font-size"));
+  if (!window.matchMedia?.("(max-width: 600px)").matches || !rows.length) return;
+  let size = Math.min(...rows.map((row) => parseFloat(getComputedStyle(row).fontSize)));
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const scale = Math.min(1, ...rows.map((row) => row.clientWidth > 0 ? row.clientWidth / row.scrollWidth : 1));
+    if (scale >= 1) break;
+    size = Math.max(1, size * scale - 0.2);
+    rows.forEach((row) => { row.style.fontSize = `${size}px`; });
+  }
+}
+
 export default function useFittedText(ref: RefObject<HTMLElement | null>, content: unknown, selector?: string) {
   useLayoutEffect(() => {
     const container = ref.current;
     const target = selector ? container?.querySelector<HTMLElement>(selector) : container;
     if (!container || !target) return;
     function fit() {
-      if (target) fitTextToWidth(target);
+      if (!container || !target) return;
+      if (selector === ".event-date-line") fitDateRows(container);
+      else if (selector === "h2" && container.querySelector(":scope > .badge, :scope > .event-badges .badge")) {
+        fitModalTitle(container, target);
+      } else fitTextToWidth(target);
     }
     const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(fit);
     observer?.observe(container);

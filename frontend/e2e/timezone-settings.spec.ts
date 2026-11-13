@@ -37,10 +37,13 @@ test("saves the timezone and keeps all three event timestamps on single lines", 
       const bounds = row.getBoundingClientRect();
       const range = document.createRange();
       range.selectNodeContents(time);
+      if (window.innerWidth > 600) return label.bottom <= value.top && getComputedStyle(row).fontSize === "16px";
       return row.scrollWidth <= row.clientWidth + 1 && range.getClientRects().length === 1
         && Math.abs(label.left - bounds.left) < 1 && Math.abs(value.right - bounds.right) < 1
         && label.right + 5 <= value.left;
     }))).toBe(true);
+    const fontSizes = await rows.evaluateAll((elements) => elements.map((row) => getComputedStyle(row).fontSize));
+    expect(new Set(fontSizes).size).toBe(1);
     await expect(rows).not.toContainText(["EST", "EDT", "EST"]);
   }
   await page.locator("#event-close-event").click();
@@ -54,6 +57,6 @@ test("saves the timezone and keeps all three event timestamps on single lines", 
   await expect(page.locator(".event-date-line").first().locator("time")).toContainText("11:00");
   await page.locator("#event-close-event").click();
   await page.locator("#event-create-button").click();
-  await expect(page.getByText("Event times are in America/Los Angeles.")).toBeVisible();
+  await expect(page.locator("#event-form")).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -8,7 +8,10 @@ async function expectHeaderFits(dialog: Locator) {
     const closeBounds = close.getBoundingClientRect();
     const badge = header.querySelector<HTMLElement>(":scope > .event-badges, :scope > .badge");
     const badgeBounds = badge?.getBoundingClientRect();
+    const badgesSmaller = [...header.querySelectorAll(".badge")].every((item) =>
+      parseFloat(getComputedStyle(item).fontSize) < parseFloat(getComputedStyle(heading).fontSize));
     return heading.scrollWidth <= heading.clientWidth + 1
+      && badgesSmaller
       && titleBounds.right <= closeBounds.left
       && (!badgeBounds || (titleBounds.right <= badgeBounds.left && badgeBounds.right <= closeBounds.left
         && Math.abs(badgeBounds.y + badgeBounds.height / 2 - closeBounds.y - closeBounds.height / 2) < 1))

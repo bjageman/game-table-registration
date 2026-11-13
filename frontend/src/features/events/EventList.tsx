@@ -1,4 +1,4 @@
-import EventDateLine from "../../components/EventDateLine";
+import EventDateLine, { EventDateDetails } from "../../components/EventDateLine";
 import { useTimezone, formatTimestamp } from "../../lib/timezone";
 import ModalHeader from "../../components/ModalHeader";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
@@ -87,6 +87,11 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
   onDeleted: (event: EventRecord) => void;
 } & PublicationActions) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [announcementUrl, setAnnouncementUrl] = useState<string | null>(null);
+  const discordUrl = event.status === "assigned" && announcementUrl
+    ? announcementUrl : event.discord_url;
+  const discordLabel = event.status === "assigned" && announcementUrl
+    ? "View Assignment Announcement" : `View Discord signup for ${event.title}`;
   const signupOpensAt = event.published_at ?? event.scheduled_publish_at;
   const signupClosesAt = event.closes_at ?? (
     event.series_id && event.scheduled_publish_at != null
@@ -113,8 +118,8 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {event.discord_url && (
-            <DiscordLink className="button event-icon-action" url={event.discord_url} label={`View Discord signup for ${event.title}`}>
+          {discordUrl && (
+            <DiscordLink className="button event-icon-action" url={discordUrl} label={discordLabel}>
               <DiscordIcon size={18} />
             </DiscordLink>
           )}
@@ -138,12 +143,12 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
           <X size={18} aria-hidden="true" />
         </button>
       </ModalHeader>
-            <dl className="event-details">
+            <EventDateDetails>
               <EventDateLine label="Event starts" timestamp={event.starts_at} />
               {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               {signupOpensAt != null && <EventDateLine label="Signup Open" timestamp={signupOpensAt} />}
               <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
-            </dl>
+            </EventDateDetails>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
             <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
@@ -153,7 +158,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
-            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />}
+            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} onLinkChange={setAnnouncementUrl} />}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (

@@ -6,11 +6,11 @@ from typing import Any
 from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import clean
+from app.discord_format import clean
 from app.event_description import (
     REACTION_DESCRIPTION,
-    signup_description,
-    signup_location,
+    signup_content,
+    signup_embed,
 )
 from app.event_threads import queue_member
 from app.models import Event, TableSignup
@@ -21,27 +21,28 @@ GAP = (
 )
 
 
-def publication(event: Event, closes_at: float | None) -> dict[str, Any]:
-    tables = "\n".join(
-        f"{EMOJIS[i]} {clean(t['name'])} · {t['capacity']} seats"
-        for i, t in enumerate(event.tables)
-    )
+def publication(
+    event: Event, closes_at: float | None, include_roster: bool = True
+) -> dict[str, Any]:
+    labels = [f"{EMOJIS[i]} {clean(t['name'])}" for i, t in enumerate(event.tables)]
     deadline = (
         f"Signups close: <t:{int(closes_at)}:F> (<t:{int(closes_at)}:R>)"
         if closes_at is not None
         else "Signups stay open until closed manually."
     )
-    return {
-        "content": (
-            f"**{'[TEST] ' if event.test_signups else ''}{clean(event.title)}**\n"
-            f"Event: <t:{int(event.starts_at)}:F>\n"
-            f"{signup_location(event.location)}"
-            f"{deadline}\n\n"
-            f"{signup_description(event.description, REACTION_DESCRIPTION)}\n\n"
-            f"{tables}"
-        ),
-        "allowed_mentions": {"parse": []},
-    }
+    if include_roster:
+        payload: dict[str, Any] = {
+            "embeds": [signup_embed(event, REACTION_DESCRIPTION, deadline, labels)]
+        }
+    else:
+        rows = [
+            f"{EMOJIS[i]} {clean(table['name'])} · {table['capacity']} seats"
+            for i, table in enumerate(event.tables)
+        ]
+        payload = {
+            "content": signup_content(event, REACTION_DESCRIPTION, deadline, rows)
+        }
+    return {**payload, "allowed_mentions": {"parse": []}}
 
 
 def event_for(engine: Engine, guild: str, channel: str, message: str) -> str | None:
@@ -75,7 +76,7 @@ def change(
                 Event.signup_mode == "reactions",
                 (Event.closes_at.is_(None)) | (Event.closes_at > observed_at),
             )
-            .values(status=Event.status)
+            .values(status=Event.status, signup_roster_checked_at=None)
             .returning(Event.id)
         ).scalar_one_or_none()
         if claimed is None:
@@ -170,7 +171,11 @@ def replace(
                 (Event.closes_at.is_(None)) | (Event.closes_at > time.time()),
                 Event.signup_mode == "reactions",
             )
-            .values(reaction_checkpoint=started, reaction_error=None)
+            .values(
+                reaction_checkpoint=started,
+                reaction_error=None,
+                signup_roster_checked_at=None,
+            )
             .returning(Event.id)
         ).scalar_one_or_none()
         if not changed:

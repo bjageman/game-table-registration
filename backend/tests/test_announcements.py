@@ -4,6 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.announcements import deliver_event, enqueue, payloads
+from app.discord_format import TABLE_FIELD_SPACER
+from app.event_description import REACTION_DESCRIPTION, signup_embed
 from app.models import Announcement, Base, Event
 
 
@@ -23,15 +25,47 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
         event, "channel", result, {"players": [one, two, waiting], "is_test": True}
     )
     assert len(messages) == 1
-    assert "[TEST] Active Check — Table Assignments" in messages[0]["content"]
-    assert "[Signup message]" in messages[0]["content"]
-    fields = messages[0]["embeds"][0]["fields"]
+    embed = messages[0]["embeds"][0]
+    assert embed["title"] == "[TEST] Active Check"
+    assert "Table assignments are ready." in embed["description"]
+    assert "[Signup message]" in embed["description"]
+    fields = embed["fields"]
     assert [(field["name"], field["inline"]) for field in fields] == [
         ("First (1)", True),
         ("Second (1)", True),
         ("Waitlist (1)", False),
     ]
     assert fields[2]["value"] == "1. <@3>"
+    assert all(field["value"].endswith(TABLE_FIELD_SPACER) for field in fields[:2])
+
+
+def test_assignment_embed_shares_signup_title_and_event_layout():
+    event = Event(
+        id="event",
+        guild_id="guild",
+        title="Game Night",
+        description="Bring friends",
+        location="Club",
+        starts_at=2_000_000_000,
+        message_id="signup",
+        tables=[{"name": "A", "capacity": 4}],
+    )
+    assignment = payloads(
+        event,
+        "channel",
+        {"tables": [{"name": "A", "players": []}], "waitlist": []},
+        {"players": []},
+    )[0]["embeds"][0]
+    signup = signup_embed(event, REACTION_DESCRIPTION, "Signups close soon", ["1️⃣ A"])
+    assert assignment["title"] == signup["title"]
+    assert assignment["color"] == signup["color"]
+    assert assignment["description"].startswith("Bring friends\n\nEvent:")
+    assert assignment["description"].index("Event:") < assignment["description"].index(
+        "Location:"
+    )
+    assert assignment["fields"][0]["inline"] is True
+    for embed in (assignment, signup):
+        assert embed["fields"][0]["value"].endswith(TABLE_FIELD_SPACER)
 
 
 def test_large_announcements_are_complete_bounded_and_private():
@@ -80,8 +114,7 @@ def test_large_announcements_are_complete_bounded_and_private():
         assert f"<@{player['id']}>" not in content
         assert roster.count(f"<@{player['id']}>") == 1
     assert chunks == payloads(event, "channel", result, snapshot)
-    assert sum("Table Assignments" in p["content"] for p in chunks) == 1
-    assert sum("Signup message" in p["content"] for p in chunks) == 1
+    assert all("Signup message" in p["embeds"][0]["description"] for p in chunks)
 
 
 def test_expired_delivery_claim_reconciles_the_existing_message(tmp_path):

@@ -17,8 +17,11 @@ it("shows automatic Discord assignment update status without a button", async ()
     update_pending: true, update_error: null,
   })));
   vi.stubGlobal("fetch", fetchMock);
-  render(<AssignmentAnnouncement event={event} csrf="csrf" refreshToken={0} onAccessError={() => false} />);
+  const onLinkChange = vi.fn();
+  render(<AssignmentAnnouncement onLinkChange={onLinkChange} event={event} csrf="csrf" refreshToken={0} onAccessError={() => false} />);
   expect(await screen.findByText("Updating Discord assignments…")).toBeVisible();
   expect(screen.queryByRole("button", { name: "Update Discord" })).not.toBeInTheDocument();
+  expect(onLinkChange).toHaveBeenCalledWith("https://discord.com/channels/guild/channel/message");
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith("/api/events/event/announcement", expect.anything());
 });

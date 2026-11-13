@@ -183,7 +183,10 @@ export default function EventForm({
   async function saveTemplate() {
     if (inFlight.current) return;
     setError(""); setTemplateNotice("");
-    const errors = validateTemplate({ title, duration, tables });
+    const templateDuration = scheduled
+      ? String(Number(opensBefore) - Number(closesBefore))
+      : manualClosesBefore.trim() || duration;
+    const errors = validateTemplate({ title, duration: templateDuration, tables });
     setFieldErrors(errors);
     if (Object.keys(errors).length) {
       setError([...new Set(Object.values(errors))].join(" "));
@@ -197,7 +200,7 @@ export default function EventForm({
         title: title.trim(),
         description: description.trim(),
         location: location.trim(),
-        duration_hours: Number(duration),
+        duration_hours: Number(templateDuration),
         tables: tables.map((table) => ({ name: table.name.trim(), capacity: Number(table.capacity) })),
       }));
       setTemplates((current) => [saved, ...current]);
@@ -425,7 +428,6 @@ export default function EventForm({
               )}
             </div>
           </div>
-          <p className="help">Event times are in {timezone.replaceAll("_", " ")}.</p>
           <div className="event-scheduling-options">
           <label className="scheduled-event-checkbox"><input id="event-scheduled-checkbox" type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
           <div className={`event-scheduling-inputs ${!scheduled ? "single" : ""}`}>

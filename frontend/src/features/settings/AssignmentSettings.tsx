@@ -6,7 +6,7 @@ import LoadingIndicator from "../../components/LoadingIndicator";
 import { FormField } from "../../components/FormFields";
 import { browserTimezone } from "../../lib/timezone";
 
-interface Settings { automatic_weight_adjustment: boolean; announce_table_changes: boolean; post_discord_updates_to_thread: boolean; timezone?: string | null; }
+interface Settings { automatic_weight_adjustment: boolean; announce_table_changes: boolean; post_discord_updates_to_thread: boolean; timezone?: string | null; show_open_signup_players?: boolean; }
 
 export default function AssignmentSettings({ csrf, restricted = false, onAccessError, onSaved }: {
   csrf: string; restricted?: boolean; onAccessError: (error: unknown) => boolean; onSaved?: () => Promise<void>;
@@ -14,6 +14,7 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
   const [enabled, setEnabled] = useState(true);
   const [announceChanges, setAnnounceChanges] = useState(false);
   const [threadUpdates, setThreadUpdates] = useState(false);
+  const [showSignupPlayers, setShowSignupPlayers] = useState(false);
   const [timezone, setTimezone] = useState("");
   const timezones = [...new Set(["UTC", ...(Intl.supportedValuesOf?.("timeZone") ?? [browserTimezone()]), ...(timezone ? [timezone] : [])])].sort();
   const [loaded, setLoaded] = useState(false);
@@ -25,7 +26,7 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
   useEffect(() => {
     const controller = new AbortController();
     api<Settings>("/settings/assignment", { signal: controller.signal }).then((value) => {
-      if (!controller.signal.aborted) { setEnabled(value.automatic_weight_adjustment); setAnnounceChanges(value.announce_table_changes); setThreadUpdates(value.post_discord_updates_to_thread ?? false); setTimezone(value.timezone ?? ""); setLoaded(true); setError(""); }
+      if (!controller.signal.aborted) { setEnabled(value.automatic_weight_adjustment); setAnnounceChanges(value.announce_table_changes); setThreadUpdates(value.post_discord_updates_to_thread ?? false); setTimezone(value.timezone ?? ""); setShowSignupPlayers(value.show_open_signup_players ?? false); setLoaded(true); setError(""); }
     }).catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
     return () => controller.abort();
   }, [attempt, onAccessError]);
@@ -34,8 +35,8 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
     if (inFlight.current || !loaded || restricted) return;
     inFlight.current = true; setBusy(true); setSaved(false); setError("");
     try {
-      const result = await api<Settings>("/settings/assignment", { ...mutationOptions(csrf, { automatic_weight_adjustment: enabled, announce_table_changes: announceChanges, post_discord_updates_to_thread: threadUpdates, timezone: timezone || null }), method: "PUT" });
-      setEnabled(result.automatic_weight_adjustment); setAnnounceChanges(result.announce_table_changes); setThreadUpdates(result.post_discord_updates_to_thread ?? false); setTimezone(result.timezone ?? ""); await onSaved?.(); setSaved(true);
+      const result = await api<Settings>("/settings/assignment", { ...mutationOptions(csrf, { automatic_weight_adjustment: enabled, announce_table_changes: announceChanges, post_discord_updates_to_thread: threadUpdates, timezone: timezone || null, show_open_signup_players: showSignupPlayers }), method: "PUT" });
+      setEnabled(result.automatic_weight_adjustment); setAnnounceChanges(result.announce_table_changes); setThreadUpdates(result.post_discord_updates_to_thread ?? false); setTimezone(result.timezone ?? ""); setShowSignupPlayers(result.show_open_signup_players ?? false); await onSaved?.(); setSaved(true);
     } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
     finally { inFlight.current = false; setBusy(false); }
   }
@@ -49,6 +50,8 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
         onChange={(event) => { setAnnounceChanges(event.target.checked); setSaved(false); }} />} /></div>
       <div className="general-setting-option"><FormControlLabel label="Post Discord updates to a new thread" control={<Checkbox id="assignment-thread-updates" checked={threadUpdates} disabled={busy || restricted}
         onChange={(event) => { setThreadUpdates(event.target.checked); setSaved(false); }} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Show players in open Discord signups" control={<Checkbox id="general-show-signup-players" checked={showSignupPlayers} disabled={busy || restricted}
+        onChange={(event) => { setShowSignupPlayers(event.target.checked); setSaved(false); }} />} /></div>
       <div className="general-setting-option general-timezone-setting">
         <FormField id="general-timezone" select label="Timezone" value={timezone} disabled={busy || restricted}
           slotProps={{ select: { native: true } }}

@@ -206,27 +206,52 @@ class DiscordAPI:
         )
 
     def close_signup_message(self, message_id: str) -> None:
-        # Keep the event description and deadline; remove the interactive button.
-        self.bot(
-            "PATCH",
-            f"/channels/{self.settings.discord_channel_id}/messages/{message_id}",
-            json={"components": []},
-        )
+        self._close_as_embed(message_id, "Signups closed.", remove_components=True)
 
     def close_reaction_message(self, message_id: str) -> None:
+        self._close_as_embed(
+            message_id,
+            "Signups closed. Reactions no longer change entries.",
+        )
+
+    def _close_as_embed(
+        self, message_id: str, marker: str, remove_components: bool = False
+    ) -> None:
         path = f"/channels/{self.settings.discord_channel_id}/messages/{message_id}"
         message = self.bot("GET", path)
-        marker = "**Signups closed. Reactions no longer change entries.**"
-        content = str(message.get("content") or "")
-        if marker not in content:
-            content = f"{content}\n\n{marker}"
+        embeds = message.get("embeds") or []
+        if embeds:
+            embed = {
+                key: value
+                for key, value in embeds[0].items()
+                if key in {"title", "description", "color", "fields", "author"}
+            }
+        else:
+            content = str(message.get("content") or "")
+            title = None
+            description = content
+            first_line, separator, rest = content.partition("\n")
+            if first_line.startswith("**") and first_line.endswith("**"):
+                title = first_line[2:-2][:256]
+                description = rest if separator else "\u200b"
+            embed = {
+                "description": description[:4096] or "\u200b",
+                "color": 0x2F6B4F,
+            }
+            if title:
+                embed["title"] = title
+        embed["footer"] = {"text": marker}
+        payload: dict[str, Any] = {
+            "content": "",
+            "embeds": [embed],
+            "allowed_mentions": {"parse": []},
+        }
+        if remove_components:
+            payload["components"] = []
         self.bot(
             "PATCH",
             path,
-            json={
-                "content": content,
-                "allowed_mentions": {"parse": []},
-            },
+            json=payload,
         )
 
     def seed_reactions(self, message_id: str, emojis: list[str]) -> None:

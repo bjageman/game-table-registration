@@ -65,6 +65,11 @@ class Event(Base):
     reaction_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     update_thread_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     thread_sync_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    signup_roster_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signup_roster_checked_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    signup_roster_messages: Mapped[list[dict[str, str]] | None] = mapped_column(
+        JSON, nullable=True
+    )
     series_id: Mapped[str | None] = mapped_column(
         ForeignKey("recurring_series.id", ondelete="SET NULL"),
         nullable=True,
@@ -280,6 +285,7 @@ class AssignmentPreference(Base):
     announce_table_changes: Mapped[bool] = mapped_column(default=False)
     post_discord_updates_to_thread: Mapped[bool] = mapped_column(default=False)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    show_open_signup_players: Mapped[bool] = mapped_column(default=False)
 
 
 class EventThreadMember(Base):

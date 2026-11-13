@@ -201,6 +201,23 @@ it("saves a template without an event date and keeps the draft open", async () =
   expect(screen.getByRole("form", { name: "Create event" })).toBeVisible();
 });
 
+it("saves an edited draft template using its signup closing offset", async () => {
+  const starts_at = new Date("2090-06-14T19:00").getTime() / 1000;
+  const draft = { id: "existing", title: "Friday games", starts_at, duration_hours: 0,
+    closes_at: starts_at - 24 * 3600,
+    tables: [{ name: "Clocktower", capacity: 15 }], status: "draft", discord_url: null };
+  const fetchMock = vi.fn(async (path: string, options?: RequestInit) =>
+    path === "/api/templates" && options?.method === "POST"
+      ? new Response(JSON.stringify({ id: "template", title: "Friday games" }), { status: 201 })
+      : new Response("[]"));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<LocalizationProvider dateAdapter={AdapterDayjs}><EventForm {...props} event={draft} /></LocalizationProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "Template" }));
+  await waitFor(() => expect(screen.getByText("Template saved: Friday games.")).toBeVisible());
+  const call = fetchMock.mock.calls.find(([path, options]) => path === "/api/templates" && options?.method === "POST");
+  expect(JSON.parse(call?.[1]?.body as string)).toMatchObject({ duration_hours: 24 });
+});
+
 it("loads a template while preserving the selected event date", async () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
