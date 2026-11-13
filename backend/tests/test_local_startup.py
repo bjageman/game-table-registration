@@ -1,7 +1,12 @@
+import os
+import uuid
+
+import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import make_url
 
 from app.main import create_app
 from app.models import Base
@@ -128,3 +133,41 @@ def test_open_roster_migration_preserves_timezone_and_defaults_off(
             == "America/New_York"
         )
     engine.dispose()
+
+
+def test_postgres_migration_revision_fits_and_rolls_back():
+    database_url = os.environ.get("TEST_DATABASE_URL", "")
+    if not database_url.startswith("postgresql"):
+        pytest.skip("TEST_DATABASE_URL must point to PostgreSQL")
+    schema = f"migration_test_{uuid.uuid4().hex}"
+    engine = create_engine(database_url)
+    isolated_url = make_url(database_url).update_query_dict(
+        {"options": f"-csearch_path={schema}"}
+    )
+    config = Config("alembic.ini")
+    config.set_main_option(
+        "sqlalchemy.url",
+        isolated_url.render_as_string(hide_password=False).replace("%", "%%"),
+    )
+    try:
+        with engine.begin() as db:
+            db.execute(text(f'CREATE SCHEMA "{schema}"'))
+        command.upgrade(config, "head")
+        with engine.connect() as db:
+            version_column = next(
+                column
+                for column in inspect(db).get_columns("alembic_version", schema=schema)
+                if column["name"] == "version_num"
+            )
+            revision = db.execute(
+                text(f'SELECT version_num FROM "{schema}".alembic_version')
+            ).scalar_one()
+            assert len(revision) <= version_column["type"].length
+        command.upgrade(config, "head")
+        command.check(config)
+        command.downgrade(config, "base")
+        command.upgrade(config, "head")
+    finally:
+        with engine.begin() as db:
+            db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        engine.dispose()

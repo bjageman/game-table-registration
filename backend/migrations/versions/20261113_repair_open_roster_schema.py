@@ -11,7 +11,18 @@ depends_on = None
 
 
 def upgrade():
-    inspector = inspect(op.get_bind())
+    connection = op.get_bind()
+    if connection.dialect.name == "postgresql":
+        # Alembic defaults to VARCHAR(32), shorter than this revision ID.
+        # Keep the ID stable for SQLite databases that already applied it.
+        op.alter_column(
+            "alembic_version",
+            "version_num",
+            existing_type=sa.String(32),
+            type_=sa.String(64),
+            existing_nullable=False,
+        )
+    inspector = inspect(connection)
     event_columns = {column["name"] for column in inspector.get_columns("events")}
     if "signup_roster_hash" not in event_columns:
         op.add_column("events", sa.Column("signup_roster_hash", sa.String(64)))
@@ -39,4 +50,6 @@ def downgrade():
     # These columns belong to the preceding feature revision. The repair only
     # fills in columns missing from databases that already recorded that
     # revision, so reverting this marker must leave its schema intact.
+    # Keep version_num widened: Alembic updates it after downgrade() returns,
+    # so it still contains the longer revision ID during this function.
     pass
