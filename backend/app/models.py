@@ -286,6 +286,7 @@ class AssignmentPreference(Base):
     post_discord_updates_to_thread: Mapped[bool] = mapped_column(default=False)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     show_open_signup_players: Mapped[bool] = mapped_column(default=False)
+    dm_waitlist_promotions: Mapped[bool] = mapped_column(default=False)
 
 
 class EventThreadMember(Base):
@@ -295,3 +296,27 @@ class EventThreadMember(Base):
     )
     discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     added_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class PromotionDM(Base):
+    __tablename__ = "promotion_dms"
+    __table_args__ = (
+        UniqueConstraint("event_id", "discord_id"),
+        Index("ix_promotion_dm_due", "state", "next_attempt"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
+    discord_id: Mapped[str] = mapped_column(String(32))
+    table_name: Mapped[str] = mapped_column(String(35))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    state: Mapped[str] = mapped_column(String(20), default="pending")
+    attempts: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[float] = mapped_column(Float)
+    next_attempt: Mapped[float] = mapped_column(Float)
+    attempted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unknown: Mapped[bool] = mapped_column(default=False)
+    token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_until: Mapped[float | None] = mapped_column(Float, nullable=True)
+    channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)

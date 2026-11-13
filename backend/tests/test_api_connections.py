@@ -434,6 +434,7 @@ def test_organization_connection_is_independent_of_personal_and_other_orgs(clien
     assert client.get("/api/settings").json()["selection"] is None
     preferences = {
         "show_open_signup_players": False,
+        "dm_waitlist_promotions": False,
         "timezone": None,
         "automatic_weight_adjustment": False,
         "announce_table_changes": True,

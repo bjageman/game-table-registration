@@ -44,3 +44,86 @@ def client(tmp_path):
         yield test_client
     assert app.state.engine.pool.checkedout() == 0
     app.state.engine.dispose()
+
+
+@pytest.fixture
+def promotion_db(tmp_path):
+    """A saved draw with one seat and two eligible waitlisted players."""
+    import time
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.lottery import VERSION
+    from app.models import Announcement, AssignmentPreference, Event, LotteryRun
+
+    engine = create_engine(
+        os.getenv("TEST_DATABASE_URL", f"sqlite:///{tmp_path}/dm.db")
+    )
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    people = [
+        {"id": str(index), "name": name, "choices": ["Table A"], "weight": 5.0}
+        for index, name in enumerate(["Alice", "Bob", "Carol"], 1)
+    ]
+    with Session(engine) as db:
+        db.add(
+            Event(
+                id="event",
+                guild_id="guild",
+                channel_id="channel",
+                message_id="signup",
+                title="Game Night",
+                starts_at=time.time() + 7200,
+                duration_hours=24,
+                tables=[{"name": "Table A", "capacity": 1}],
+                status="assigned",
+                created_by="owner",
+            )
+        )
+        db.add(
+            AssignmentPreference(scope_key="user:owner", dm_waitlist_promotions=True)
+        )
+        db.flush()
+        db.add(
+            LotteryRun(
+                event_id="event",
+                version=VERSION,
+                seed="saved-seed",
+                created_by="owner",
+                created_at=time.time(),
+                snapshot={
+                    "tables": [{"name": "Table A", "capacity": 1}],
+                    "players": people,
+                },
+                result={
+                    "order": ["1", "2", "3"],
+                    "assignments": {"1": "Table A"},
+                    "waitlist": ["2", "3"],
+                    "tables": [
+                        {
+                            "name": "Table A",
+                            "players": [people[0]],
+                            "waitlist": people[1:],
+                        }
+                    ],
+                },
+            )
+        )
+        db.add(
+            Announcement(
+                id="assignment",
+                event_id="event",
+                part=0,
+                state="sent",
+                channel_id="channel",
+                message_id="assignment-message",
+                payload={"content": "Assignments"},
+                created_at=time.time(),
+                next_attempt=0,
+            )
+        )
+        db.commit()
+    yield engine
+    assert engine.pool.checkedout() == 0
+    engine.dispose()

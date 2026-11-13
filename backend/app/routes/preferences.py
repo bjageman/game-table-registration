@@ -39,6 +39,9 @@ def register(context: ApplicationContext) -> None:
                 if saved
                 else False,
                 "timezone": saved.timezone if saved else None,
+                "dm_waitlist_promotions": saved.dm_waitlist_promotions
+                if saved
+                else False,
                 "show_open_signup_players": saved.show_open_signup_players
                 if saved
                 else False,
@@ -60,6 +63,8 @@ def register(context: ApplicationContext) -> None:
                 body.timezone = previous.timezone
             if "show_open_signup_players" not in body.model_fields_set and previous:
                 body.show_open_signup_players = previous.show_open_signup_players
+            if "dm_waitlist_promotions" not in body.model_fields_set and previous:
+                body.dm_waitlist_promotions = previous.dm_waitlist_promotions
             roster_changed = (
                 bool(previous and previous.show_open_signup_players)
                 != body.show_open_signup_players
@@ -74,6 +79,7 @@ def register(context: ApplicationContext) -> None:
                     post_discord_updates_to_thread=body.post_discord_updates_to_thread,
                     timezone=body.timezone,
                     show_open_signup_players=body.show_open_signup_players,
+                    dm_waitlist_promotions=body.dm_waitlist_promotions,
                 )
             )
             if roster_changed:

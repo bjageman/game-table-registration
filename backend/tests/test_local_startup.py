@@ -171,3 +171,38 @@ def test_postgres_migration_revision_fits_and_rolls_back():
         with engine.begin() as db:
             db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         engine.dispose()
+
+
+def test_private_promotion_migration_defaults_off_and_rolls_back(tmp_path, monkeypatch):
+    url = f"sqlite:///{tmp_path}/private-promotions.db"
+    monkeypatch.setenv("DATABASE_URL", url)
+    config = Config("alembic.ini")
+    previous = "20261113_repair_open_roster_schema"
+    command.upgrade(config, previous)
+    engine = create_engine(url)
+    with engine.begin() as db:
+        db.execute(
+            text(
+                "INSERT INTO assignment_preferences (scope_key, timezone) "
+                "VALUES ('user:owner', 'UTC')"
+            )
+        )
+    command.upgrade(config, "head")
+    command.check(config)
+    with engine.connect() as db:
+        assert (
+            db.execute(
+                text("SELECT dm_waitlist_promotions FROM assignment_preferences")
+            ).scalar_one()
+            == 0
+        )
+    assert inspect(engine).has_table("promotion_dms")
+    command.downgrade(config, previous)
+    assert not inspect(engine).has_table("promotion_dms")
+    with engine.connect() as db:
+        assert (
+            db.execute(text("SELECT timezone FROM assignment_preferences")).scalar_one()
+            == "UTC"
+        )
+    command.upgrade(config, "head")
+    engine.dispose()

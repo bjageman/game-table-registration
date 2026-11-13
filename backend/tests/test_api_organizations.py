@@ -287,6 +287,7 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
     owner_headers = login(client)
     personal = {
         "show_open_signup_players": False,
+        "dm_waitlist_promotions": False,
         "timezone": "America/Los_Angeles",
         "automatic_weight_adjustment": False,
         "announce_table_changes": True,
@@ -311,6 +312,7 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
     )
     defaults = {
         "show_open_signup_players": False,
+        "dm_waitlist_promotions": False,
         "timezone": None,
         "automatic_weight_adjustment": True,
         "announce_table_changes": False,
@@ -319,6 +321,7 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
     assert client.get("/api/settings/assignment").json() == defaults
     shared = {
         "show_open_signup_players": True,
+        "dm_waitlist_promotions": False,
         "timezone": "Europe/London",
         "automatic_weight_adjustment": False,
         "announce_table_changes": False,

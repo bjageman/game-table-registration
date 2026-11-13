@@ -9,7 +9,7 @@ import discord
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app import reactions, withdrawals
+from app import promotion_dms, reactions, withdrawals
 from app.announcements import deliver_event
 from app.config import Settings
 from app.discord_api import DiscordAPI
@@ -323,6 +323,14 @@ class SignupGateway(discord.Client):
         data: dict[str, Any] = dict(interaction.data or {})
         custom_id = data.get("custom_id")
         if (
+            interaction.type == discord.InteractionType.component
+            and isinstance(custom_id, str)
+            and custom_id.startswith(promotion_dms.BUTTON_PREFIX)
+        ):
+            await self.promotion_withdrawal(interaction, custom_id)
+            return
+
+        if (
             interaction.type != discord.InteractionType.component
             or not isinstance(custom_id, str)
             or not custom_id.startswith("signup:")
@@ -363,6 +371,46 @@ class SignupGateway(discord.Client):
             logger.warning(
                 "Could not display signup confirmation; saved choices remain available"
             )
+
+    async def promotion_withdrawal(
+        self, interaction: discord.Interaction[discord.Client], custom_id: str
+    ) -> None:
+        message = interaction.message
+        if (
+            interaction.guild_id is not None
+            or str(interaction.application_id) != self.config.discord_client_id
+            or interaction.user.bot
+            or message is None
+            or str(message.author.id) != self.config.discord_client_id
+        ):
+            return
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.HTTPException:
+            logger.warning("Discord could not acknowledge a private withdrawal")
+            return
+        try:
+            content = await asyncio.to_thread(
+                promotion_dms.withdraw,
+                self.engine,
+                custom_id.removeprefix(promotion_dms.BUTTON_PREFIX),
+                str(interaction.user.id),
+                str(interaction.channel_id),
+                str(message.id),
+            )
+        except Exception:
+            logger.exception("Could not process a private promotion withdrawal")
+            content = (
+                "Could not process your withdrawal. "
+                "Please try again to check your seat."
+            )
+        try:
+            await interaction.edit_original_response(
+                content=content,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except discord.HTTPException:
+            logger.warning("Could not display the private withdrawal result")
 
     async def run_listener(self) -> None:
         try:
