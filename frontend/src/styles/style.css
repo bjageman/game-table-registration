@@ -122,6 +122,9 @@ p {
 .profile-button > svg {
   flex-shrink: 0;
 }
+.profile-button > .profile-icon {
+  display: none;
+}
 .profile-button > span {
   min-width: 0;
   overflow: hidden;
@@ -165,12 +168,42 @@ footer {
     padding: 0 16px;
   }
   .site-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    flex-direction: row;
-    gap: 16px;
+    gap: 4px 16px;
   }
-  .account {
-    gap: 8px;
+  .site-branding {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .site-branding .home-link {
+    max-width: 100%;
+  }
+  .site-header .account {
+    display: contents;
+  }
+  .site-header .active-organization {
+    grid-column: 1;
+    grid-row: 2;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .profile-button {
+    grid-column: 2;
+    grid-row: 1;
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+  }
+  .profile-button > .profile-icon {
+    display: block;
+  }
+  .profile-button > span,
+  .profile-button > .profile-chevron {
+    display: none;
   }
   main {
     padding: 24px 0;

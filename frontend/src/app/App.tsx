@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Menu as MenuIcon } from "lucide-react";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import {
@@ -132,7 +132,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="site-header">
-        <div>
+        <div className="site-branding">
           {branding && <h1><a className="home-link" href="/">{branding.logo_url && <img className="brand-logo" src={branding.logo_url} alt="" />}{branding.name}</a></h1>}
         </div>
         {auth.kind === "ready" && (
@@ -140,13 +140,15 @@ export default function App() {
             {auth.session.organization && <span className="active-organization">{auth.session.organization.name}</span>}
             <button
               className="profile-button"
+              aria-label={auth.session.username}
               aria-haspopup="menu"
               aria-expanded={Boolean(accountAnchor)}
               aria-controls={accountAnchor ? "account-menu" : undefined}
               onClick={(event) => setAccountAnchor(event.currentTarget)}
             >
+              <MenuIcon className="profile-icon" size={22} aria-hidden="true" />
               <span><strong>{auth.session.username}</strong></span>
-              <ChevronDown size={16} aria-hidden="true" />
+              <ChevronDown className="profile-chevron" size={16} aria-hidden="true" />
             </button>
             <Menu
               id="account-menu"
