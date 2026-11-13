@@ -59,7 +59,7 @@ def signup_embed(
     details.append(deadline)
     fields = (
         [
-            table_field(label, f"{table['capacity']} seats\n\u200b")
+            table_field(label, f"{table['capacity']} seats")
             for label, table in zip(labels, event.tables, strict=True)
         ]
         if labels is not None

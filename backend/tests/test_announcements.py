@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.announcements import deliver_event, enqueue, payloads
+from app.discord_format import TABLE_FIELD_SPACER
 from app.event_description import REACTION_DESCRIPTION, signup_embed
 from app.models import Announcement, Base, Event
 
@@ -35,7 +36,7 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
         ("Waitlist (1)", False),
     ]
     assert fields[2]["value"] == "1. <@3>"
-    assert all(field["value"].endswith("\n\u200b") for field in fields[:2])
+    assert all(field["value"].endswith(TABLE_FIELD_SPACER) for field in fields[:2])
 
 
 def test_assignment_embed_shares_signup_title_and_event_layout():
@@ -63,6 +64,8 @@ def test_assignment_embed_shares_signup_title_and_event_layout():
         "Location:"
     )
     assert assignment["fields"][0]["inline"] is True
+    for embed in (assignment, signup):
+        assert embed["fields"][0]["value"].endswith(TABLE_FIELD_SPACER)
 
 
 def test_large_announcements_are_complete_bounded_and_private():

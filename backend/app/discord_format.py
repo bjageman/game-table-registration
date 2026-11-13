@@ -6,6 +6,10 @@ from typing import Any
 from app.models import Event
 
 EMBED_COLOR = 0x2F6B4F
+# Discord has no field width setting. An invisible eight-em line gives short
+# table columns a shared minimum footprint. Zero-width anchors prevent trimming.
+TABLE_FIELD_SPACER = "\n\u200b" + "\u2002" * 16 + "\u200b"
+TABLE_FIELD_CONTENT_LIMIT = 1024 - len(TABLE_FIELD_SPACER)
 
 
 def clean(text: str) -> str:
@@ -31,4 +35,6 @@ def event_embed(
 
 
 def table_field(name: str, value: str, inline: bool = True) -> dict[str, Any]:
+    if inline:
+        value += TABLE_FIELD_SPACER
     return {"name": name, "value": value, "inline": inline}

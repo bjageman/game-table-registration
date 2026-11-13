@@ -2220,7 +2220,10 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
         for p in row[key]
     )
     assert client.get(path + "/assignments").json() == run
-    assert "[TEST]" in discord.send_announcement.call_args_list[0].args[1]["content"]
+    assert (
+        "[TEST]"
+        in discord.send_announcement.call_args_list[0].args[1]["embeds"][0]["title"]
+    )
     for call in discord.send_announcement.call_args_list:
         payload = call.args[1]
         assert "Editable test name" not in payload["content"]

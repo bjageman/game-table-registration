@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.assignment_preferences import for_event
 from app.discord_api import DiscordAPI, DiscordRequestError
-from app.discord_format import clean
+from app.discord_format import TABLE_FIELD_CONTENT_LIMIT, clean, table_field
 from app.event_description import (
     CUSTOM_DESCRIPTION,
     POLL_DESCRIPTION,
@@ -127,18 +127,14 @@ def roster_pages(
         chunks: list[str] = []
         current: list[str] = []
         for line in lines or ["No players signed up yet."]:
-            if current and len("\n".join([*current, line])) > 1022:
-                chunks.append("\n".join(current) + "\n\u200b")
+            if current and len("\n".join([*current, line])) > TABLE_FIELD_CONTENT_LIMIT:
+                chunks.append("\n".join(current))
                 current = []
             current.append(line)
         if current:
-            chunks.append("\n".join(current) + "\n\u200b")
+            chunks.append("\n".join(current))
         fields.extend(
-            {
-                "name": heading if part == 0 else f"{heading} (continued)",
-                "value": value,
-                "inline": True,
-            }
+            table_field(heading if part == 0 else f"{heading} (continued)", value)
             for part, value in enumerate(chunks)
         )
     for field in fields:

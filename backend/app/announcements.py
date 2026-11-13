@@ -13,7 +13,12 @@ from sqlalchemy.orm import Session
 
 from app.assignment_preferences import announce_changes
 from app.discord_api import DiscordAPI, DiscordRequestError
-from app.discord_format import clean, event_embed, table_field
+from app.discord_format import (
+    TABLE_FIELD_CONTENT_LIMIT,
+    clean,
+    event_embed,
+    table_field,
+)
 from app.event_description import signup_description, signup_location
 from app.event_threads import update_channel
 from app.models import Announcement, Event, LotteryRun
@@ -73,8 +78,8 @@ def payloads(
         ids: list[str] = []
         part = 0
         for line, mention in entries:
-            field_full = len("\n".join(lines)) + len(line) + 1 > 1024 - (
-                2 if spaced else 0
+            field_full = len("\n".join(lines)) + len(line) + 1 > (
+                TABLE_FIELD_CONTENT_LIMIT if spaced else 1024
             )
             mentions_full = bool(
                 notify
@@ -91,7 +96,7 @@ def payloads(
                         {
                             **table_field(
                                 header if part == 0 else f"{header} (continued)",
-                                "\n".join(lines) + ("\n\u200b" if spaced else ""),
+                                "\n".join(lines),
                                 spaced,
                             ),
                         },
@@ -108,7 +113,7 @@ def payloads(
                 {
                     **table_field(
                         header if part == 0 else f"{header} (continued)",
-                        "\n".join(lines) + ("\n\u200b" if spaced else ""),
+                        "\n".join(lines),
                         spaced,
                     ),
                 },

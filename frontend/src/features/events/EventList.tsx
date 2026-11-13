@@ -88,6 +88,10 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
 } & PublicationActions) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [announcementUrl, setAnnouncementUrl] = useState<string | null>(null);
+  const discordUrl = event.status === "assigned" && announcementUrl
+    ? announcementUrl : event.discord_url;
+  const discordLabel = event.status === "assigned" && announcementUrl
+    ? "View Assignment Announcement" : `View Discord signup for ${event.title}`;
   const signupOpensAt = event.published_at ?? event.scheduled_publish_at;
   const signupClosesAt = event.closes_at ?? (
     event.series_id && event.scheduled_publish_at != null
@@ -113,12 +117,9 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
         </span>{event.is_test && <span className="badge">Test</span>}</span>
         <div className="event-header-actions">
           {event.status === "assigned" && <SignupDownload event={event} onAccessError={actions.onAccessError} />}
-          {event.status === "assigned" && announcementUrl && <DiscordLink className="button event-icon-action" url={announcementUrl} label="View Assignment Announcement">
-            <DiscordIcon size={18} />
-          </DiscordLink>}
           {!readOnly && (event.status === "open" || event.status === "closing") && <CloseSignups event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
-          {event.discord_url && (
-            <DiscordLink className="button event-icon-action" url={event.discord_url} label={`View Discord signup for ${event.title}`}>
+          {discordUrl && (
+            <DiscordLink className="button event-icon-action" url={discordUrl} label={discordLabel}>
               <DiscordIcon size={18} />
             </DiscordLink>
           )}
