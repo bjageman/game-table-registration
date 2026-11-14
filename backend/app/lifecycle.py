@@ -23,6 +23,7 @@ from app.discord.event_threads import synchronize_due as synchronize_threads
 from app.discord.gateway import SignupGateway
 from app.discord.open_signup_rosters import synchronize_due as synchronize_open_rosters
 from app.discord.promotion_dms import dispatch_due as dispatch_promotion_dms
+from app.discord.scheduled_events import synchronize_due as synchronize_server_events
 from app.events.publication import mark_signup_closed
 from app.events.publication import publish_event as publish_event_service
 from app.events.recurrence import fill_schedule
@@ -186,6 +187,7 @@ def application_lifespan(
                         engine,
                         context.client_for_destination,
                     )
+                    synchronize_server_events(engine, context.client_for_destination)
                     dispatch_promotion_dms(engine, context.app.state.discord)
                 except Exception:
                     logging.getLogger(__name__).exception(

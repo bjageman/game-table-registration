@@ -314,6 +314,7 @@ def test_organization_discord_settings_follow_selection_and_admin_role(client):
 def test_assignment_settings_follow_selected_organization_and_admin_role(client):
     owner_headers = login(client)
     personal = {
+        "create_discord_event": False,
         "show_open_signup_players": False,
         "review_assignments_before_discord": True,
         "dm_waitlist_promotions": False,
@@ -340,6 +341,7 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
         == 200
     )
     defaults = {
+        "create_discord_event": True,
         "show_open_signup_players": True,
         "review_assignments_before_discord": True,
         "dm_waitlist_promotions": True,
@@ -350,6 +352,7 @@ def test_assignment_settings_follow_selected_organization_and_admin_role(client)
     }
     assert client.get("/api/settings/assignment").json() == defaults
     shared = {
+        "create_discord_event": True,
         "show_open_signup_players": True,
         "review_assignments_before_discord": True,
         "dm_waitlist_promotions": False,

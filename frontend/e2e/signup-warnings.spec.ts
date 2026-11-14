@@ -11,7 +11,7 @@ test("reveals closing warning inputs below event time with a one-hour default", 
   await checkbox.check();
   await expect(page.getByRole("spinbutton", { name: "Hours before close" })).toHaveValue("1");
   await expect(page.getByRole("textbox", { name: "Warning message" })).toHaveAttribute("placeholder", "Signups close soon! Don't forget to sign up.");
-  const time = await page.locator(".event-title-start-row").boundingBox();
+  const time = await page.locator(".event-date-time-row").boundingBox();
   const warning = await checkbox.boundingBox();
   expect(warning!.y).toBeGreaterThanOrEqual(time!.y + time!.height);
 });

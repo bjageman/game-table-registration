@@ -139,6 +139,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
       </ModalHeader>
             <EventDateDetails>
               <EventDateLine label="Event starts" timestamp={event.starts_at} />
+              {event.ends_at != null && <EventDateLine label="Event ends" timestamp={event.ends_at} />}
               {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               {signupOpensAt != null && <EventDateLine label="Signup Open" timestamp={signupOpensAt} />}
               <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
@@ -147,6 +148,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
             </EventDateDetails>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
             {event.status === "review" && <p role="status" className="notice">Review these assignments. Add or remove players as needed, then send the results to Discord.</p>}
+            {!readOnly && event.discord_event_error && <p role="alert" className="notice">{event.discord_event_error}</p>}
             {!readOnly && event.pairing_warnings?.map((warning) => <p key={warning} role="alert" className="notice">{warning}</p>)}
             <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">

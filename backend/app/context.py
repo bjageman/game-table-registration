@@ -183,6 +183,12 @@ class ApplicationContext:
             return session
 
     def serialize(self, event: Event) -> dict[str, Any]:
+        from app.models import DiscordScheduledEvent
+
+        session = object_session(event)
+        discord_event = (
+            session.get(DiscordScheduledEvent, event.id) if session else None
+        )
         warnings: list[str] = []
         if event.status in ("review", "assigned") and event.close_pairs:
             from app.assignments.withdrawals import current_result
@@ -199,6 +205,11 @@ class ApplicationContext:
             "description": event.description,
             "location": event.location,
             "starts_at": event.starts_at,
+            "ends_at": event.ends_at,
+            "discord_event_error": discord_event.error if discord_event else None,
+            "has_discord_event": bool(
+                discord_event and discord_event.state != "deleted"
+            ),
             "duration_hours": event.duration_hours,
             "tables": event.tables,
             "status": event.status,

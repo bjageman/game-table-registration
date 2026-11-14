@@ -1,3 +1,4 @@
+import FormFields from "../../../components/FormFields";
 import { resolveLocalTime, useTimezone } from "../../../lib/timezone";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Plus, Save } from "lucide-react";
@@ -73,6 +74,16 @@ export default function EventForm({
   const [startsAtLocal, setStartsAtLocal] = useState(
     draft ? dayjs.unix(draft.starts_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : "",
   );
+  const [createDiscordEvent, setCreateDiscordEvent] = useState(true);
+  const [endOverride, setEndOverride] = useState<string | null>(
+    draft?.ends_at && draft.ends_at - draft.starts_at !== 4 * 3600
+      ? dayjs.unix(draft.ends_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : null,
+  );
+  const startDate = resolveLocalTime(startsAtLocal, timezone).date;
+  const endsAtLocal = endOverride ?? (startDate
+    ? dayjs(new Date(startDate.getTime() + 4 * 3600000)).tz(timezone).format("YYYY-MM-DDTHH:mm") : "");
+  const endValue = endsAtLocal ? dayjs.tz(endsAtLocal, timezone) : null;
+  const [mobileEndTime, setMobileEndTime] = useState(() => initialTime(timezone));
   const [mobileDate, setMobileDate] = useState<Dayjs | null>(
     draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
   );
@@ -105,6 +116,13 @@ export default function EventForm({
   const [choosingTemplate, setChoosingTemplate] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const isMobile = useMediaQuery("(max-width: 600px)");
+  useEffect(() => {
+    const controller = new AbortController();
+    api<{ create_discord_event?: boolean }>("/settings/assignment", { signal: controller.signal })
+      .then((value) => { if (!controller.signal.aborted) setCreateDiscordEvent(value.create_discord_event ?? true); })
+      .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    return () => controller.abort();
+  }, [onAccessError]);
   useEffect(() => {
     const controller = new AbortController();
     api<EventTemplateRecord[]>("/templates", { signal: controller.signal })
@@ -257,6 +275,11 @@ export default function EventForm({
       return;
     }
     const start = resolveLocalTime(startsAtLocal, timezone).date!;
+    const end = resolveLocalTime(endsAtLocal, timezone).date;
+    if (createDiscordEvent && (!end || end.getTime() <= start.getTime())) {
+      setError("Choose an event end time after its start time.");
+      return;
+    }
     const hours = scheduled ? Number(opensBefore) - Number(closesBefore) : 0;
     if (postWarning && !scheduled && !manualClosesBefore.trim()) {
       setError("Set a signup closing time to post a warning message.");
@@ -264,8 +287,14 @@ export default function EventForm({
     }
     if (!scheduled && manualClosesBefore.trim()) {
       const close = Number(manualClosesBefore);
-      if (!Number.isInteger(close) || close < 1 || close > 767 || start.getTime() - close * 3600000 <= Date.now()) {
+      if (!Number.isInteger(close) || close < 1 || close > 767) {
         setError("Choose whole hours before the event so the signup closing time is still in the future.");
+        return;
+      }
+      if (start.getTime() - close * 3600000 <= Date.now()) {
+        const closingTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: timezone })
+          .format(new Date(start.getTime() - close * 3600000));
+        setError(`The signups will close before the current time (${closingTime}). Reduce the hours before the event close or clear the field to close manually.`);
         return;
       }
     }
@@ -296,6 +325,7 @@ export default function EventForm({
             description: description.trim(),
             location: location.trim(),
             starts_at: start.toISOString(),
+            ends_at: createDiscordEvent ? end?.toISOString() : draft?.ends_at ? new Date(draft.ends_at * 1000).toISOString() : null,
             duration_hours: hours,
             ...(scheduled ? { opens_before_hours: Number(opensBefore), closes_before_hours: Number(closesBefore) } : { closes_before_hours: manualClosesBefore.trim() ? Number(manualClosesBefore) : null }),
             ...(frequency !== "once" ? {
@@ -355,7 +385,8 @@ export default function EventForm({
       >
         <fieldset disabled={saving}>
           <legend className="sr-only">Event details</legend>
-          <div className="event-title-start-row">
+          <FormFields>
+          <div className={`event-date-time-row${createDiscordEvent ? "" : " single"}`}>
           <TextField
             id={`${prefix}-title`}
             error={Boolean(fieldErrors.title)}
@@ -367,6 +398,7 @@ export default function EventForm({
             autoFocus
             fullWidth
             variant="outlined"
+            margin="none"
             slotProps={{
               inputLabel: { shrink: true },
               htmlInput: { maxLength: 100 },
@@ -380,6 +412,7 @@ export default function EventForm({
                     label="Event starts"
                     slotProps={{
                       textField: {
+                        margin: "none",
                         id: `${prefix}-start`,
                         error: Boolean(fieldErrors.start),
                         helperText: fieldErrors.start,
@@ -405,6 +438,7 @@ export default function EventForm({
                     }}
                     slotProps={{
                       textField: {
+                        margin: "none",
                         id: `${prefix}-time`,
                         fullWidth: true,
                         required: true,
@@ -444,6 +478,7 @@ export default function EventForm({
                       },
                     },
                     textField: {
+                      margin: "none",
                       id: `${prefix}-start`,
                       fullWidth: true,
                       required: true,
@@ -455,7 +490,30 @@ export default function EventForm({
                 />
               )}
             </div>
+          {createDiscordEvent && (isMobile ? <div className="mobile-date-time-fields">
+            <DatePicker timezone={timezone} label="Event ends" value={endValue}
+              onChange={(value) => {
+                const time = endValue ?? mobileEndTime;
+                setEndOverride(value?.isValid() ? value.hour(time.hour()).minute(time.minute()).format("YYYY-MM-DDTHH:mm") : "");
+              }}
+              format="MMMM D, YYYY"
+              slotProps={{ textField: { margin: "none", id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }} />
+            <TimePicker timezone={timezone} label="Event end time" value={endValue ?? mobileEndTime}
+              onChange={(value) => {
+                if (!value?.isValid()) return;
+                setMobileEndTime(value);
+                if (endValue) setEndOverride(endValue.hour(value.hour()).minute(value.minute()).format("YYYY-MM-DDTHH:mm"));
+              }}
+              ampm minutesStep={15} viewRenderers={{ hours: renderTimeViewClock, minutes: renderTimeViewClock }}
+              slotProps={{ textField: { margin: "none", id: `${prefix}-end-time`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }} />
+          </div> : <DateTimePicker
+            timezone={timezone} label="Event ends" value={endValue}
+            onChange={(value) => setEndOverride(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "")}
+            format="MMMM D, YYYY h:mm A" ampm minutesStep={15}
+            slotProps={{ textField: { margin: "none", id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }}
+          />)}
           </div>
+          </FormFields>
           <SignupWarningFields enabled={postWarning} hours={warningHours} message={warningMessage}
             onEnabled={setPostWarning} onHours={setWarningHours} onMessage={setWarningMessage}
             error={fieldErrors.warning_hours_before_close} />

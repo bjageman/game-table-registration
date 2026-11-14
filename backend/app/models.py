@@ -65,6 +65,7 @@ class Event(SignupWarningSettings, Base):
     location: Mapped[str] = mapped_column(String(200), default="")
     channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     starts_at: Mapped[float] = mapped_column(Float)
+    ends_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     duration_hours: Mapped[int]
     tables: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(32), default="draft")
@@ -129,6 +130,7 @@ class RecurringSeries(SignupWarningSettings, Base):
     first_local: Mapped[str] = mapped_column(String(16))
     time_zone: Mapped[str] = mapped_column(String(100))
     frequency: Mapped[str] = mapped_column(String(16))
+    event_length_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     opens_before_hours: Mapped[int]
     closes_before_hours: Mapped[int]
     active: Mapped[bool] = mapped_column(default=True)
@@ -327,6 +329,9 @@ class GuildSettings(Base):
 
 
 class AssignmentPreference(Base):
+    create_discord_event: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
     __tablename__ = "assignment_preferences"
     scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     automatic_weight_adjustment: Mapped[bool] = mapped_column(
@@ -390,3 +395,15 @@ class EventTableRemoval(Base):
     )
     discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     table_name: Mapped[str] = mapped_column(String(35), primary_key=True)
+
+
+class DiscordScheduledEvent(Base):
+    __tablename__ = "discord_scheduled_events"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    state: Mapped[str] = mapped_column(String(16), default="pending")
+    payload_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    checked_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)

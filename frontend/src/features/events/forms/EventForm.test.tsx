@@ -78,6 +78,7 @@ it.each([24, null])("creates a draft with closing offset %s, capacities, and CSR
     description: "",
     location: "",
     starts_at: new Date("2090-06-14T19:00").toISOString(),
+    ends_at: new Date(new Date("2090-06-14T19:00").getTime() + 4 * 3600000).toISOString(),
     duration_hours: 0,
     closes_before_hours: offset,
     tables: [{ name: "Clocktower", capacity: 15 }],
@@ -322,4 +323,23 @@ it("edits one scheduled occurrence without changing its opening and closing offs
   expect(call[1].method).toBe("PUT");
   expect(JSON.parse(call[1].body as string)).toMatchObject({ opens_before_hours: 72, closes_before_hours: 24, duration_hours: 48 });
   expect(JSON.parse(call[1].body as string)).not.toHaveProperty("frequency");
+});
+
+it("defaults the end to four hours later and preserves a manually chosen end", () => {
+  renderForm();
+  fill();
+  expect(screen.getByLabelText("Event ends")).toHaveValue("June 14, 2090 11:00 PM");
+  fireEvent.change(screen.getByLabelText("Event starts"), { target: { value: "June 14, 2090 8:00 PM" } });
+  expect(screen.getByLabelText("Event ends")).toHaveValue("June 15, 2090 12:00 AM");
+  fireEvent.change(screen.getByLabelText("Event ends"), { target: { value: "June 15, 2090 1:00 AM" } });
+  fireEvent.change(screen.getByLabelText("Event starts"), { target: { value: "June 14, 2090 9:00 PM" } });
+  expect(screen.getByLabelText("Event ends")).toHaveValue("June 15, 2090 1:00 AM");
+});
+
+it("hides the end time when Discord event creation is disabled", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(
+    path === "/api/settings/assignment" ? { create_discord_event: false } : [],
+  ))));
+  renderForm();
+  await waitFor(() => expect(screen.queryByLabelText("Event ends")).not.toBeInTheDocument());
 });
