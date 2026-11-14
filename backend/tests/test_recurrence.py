@@ -1,8 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from app.events.recurrence import occurrence
 from app.models import RecurringSeries
-from app.recurrence import occurrence
 
 
 def series(first: str, frequency: str) -> RecurringSeries:

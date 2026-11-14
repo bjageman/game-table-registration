@@ -2,8 +2,8 @@
 
 from typing import Any
 
-from app.discord_format import clean
-from app.event_description import (
+from app.discord.discord_format import clean
+from app.events.event_description import (
     CUSTOM_DESCRIPTION,
     POLL_DESCRIPTION,
     REACTION_DESCRIPTION,

@@ -8,15 +8,15 @@ from fastapi import HTTPException
 from sqlalchemy import update
 from sqlalchemy.orm import Session as DBSession
 
-from app.assignment_preferences import for_event as preferences_for_event
 from app.context import ApplicationContext
-from app.discord_api import DiscordAPI
+from app.discord.discord_api import DiscordAPI
+from app.discord.open_signup_rosters import with_initial_roster
+from app.discord.reactions import publication as reaction_publication
+from app.discord.signup_messages import EMOJIS, signup_body
 from app.models import (
     Event,
 )
-from app.open_signup_rosters import with_initial_roster
-from app.reactions import publication as reaction_publication
-from app.signup_messages import EMOJIS, signup_body
+from app.settings.assignment_preferences import for_event as preferences_for_event
 
 
 def publish_event(

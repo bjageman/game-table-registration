@@ -21,7 +21,7 @@ def active_pairs(snapshot: dict[str, Any]) -> dict[str, str]:
 
 
 def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
-    from app.lottery import GuaranteeConflict
+    from app.assignments.lottery import GuaranteeConflict
 
     people = {p["id"]: p for p in snapshot["players"]}
     capacities = {t["name"]: t["capacity"] for t in snapshot["tables"]}

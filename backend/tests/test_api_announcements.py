@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session as DBSession
 
 
 def test_close_immediately_announces_assignments_without_duplicate_delivery(client):
-    from app.announcements import dispatch_due
+    from app.discord.announcements import dispatch_due
     from app.models import Announcement
 
     headers, event, path, _ = closing_event(client)
@@ -31,8 +31,8 @@ def test_close_immediately_announces_assignments_without_duplicate_delivery(clie
 
 
 def test_announcement_failure_retries_without_redrawing(client):
-    from app.announcements import dispatch_due
-    from app.discord_api import DiscordRequestError
+    from app.discord.announcements import dispatch_due
+    from app.discord.discord_api import DiscordRequestError
     from app.models import Announcement
 
     headers, event, path, _ = closing_event(client)
@@ -56,8 +56,8 @@ def test_announcement_failure_retries_without_redrawing(client):
 
 
 def test_ambiguous_announcement_is_reconciled_without_blind_repost(client):
-    from app.announcements import dispatch_due
-    from app.discord_api import DiscordRequestError
+    from app.discord.announcements import dispatch_due
+    from app.discord.discord_api import DiscordRequestError
     from app.models import Announcement
 
     headers, event, path, _ = closing_event(client)
@@ -79,8 +79,8 @@ def test_ambiguous_announcement_is_reconciled_without_blind_repost(client):
 
 
 def test_unconfirmed_delivery_requires_explicit_repost_confirmation(client):
-    from app.announcements import dispatch_due
-    from app.discord_api import DiscordRequestError
+    from app.discord.announcements import dispatch_due
+    from app.discord.discord_api import DiscordRequestError
     from app.models import Announcement
 
     headers, event, path, _ = closing_event(client)

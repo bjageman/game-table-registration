@@ -6,9 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.branding import load_branding
 from app.config import Settings
-from app.connection_settings import register_settings
 from app.context import ApplicationContext
-from app.discord_api import DiscordAPI
+from app.discord.discord_api import DiscordAPI
 from app.lifecycle import application_lifespan
 from app.models import Event
 from app.routes import (
@@ -21,6 +20,7 @@ from app.routes import (
     preferences,
     signups,
 )
+from app.settings.connection_settings import register_settings
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

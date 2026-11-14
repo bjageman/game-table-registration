@@ -415,7 +415,7 @@ def test_add_known_player_after_assignment_updates_discord_without_redrawing(
 ):
     from copy import deepcopy
 
-    from app.announcements import dispatch_due
+    from app.discord.announcements import dispatch_due
     from app.models import Announcement, Event, LotteryRun, PlayerProfile
 
     headers, event, path, _ = closing_event(client)

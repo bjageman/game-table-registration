@@ -6,9 +6,9 @@ from typing import Any
 from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
-from app.event_threads import queue_member
+from app.discord.event_threads import queue_member
+from app.discord.signup_messages import EMOJIS, signup_body
 from app.models import Event, TableSignup
-from app.signup_messages import EMOJIS, signup_body
 
 GAP = (
     "Reaction signups need synchronization. Keep the bot connected before the deadline."

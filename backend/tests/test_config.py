@@ -31,7 +31,7 @@ def test_shared_app_does_not_require_a_default_server():
 
 
 def test_test_signup_allowlist_defaults_to_owner_and_supports_additional_ids():
-    from app.test_signups import allowed
+    from app.events.test_signups import allowed
 
     config = Settings(
         _env_file=None, owner_discord_id="owner", test_signup_user_ids="second, third "

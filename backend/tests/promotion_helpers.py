@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import withdrawals
+from app.assignments import withdrawals
 from app.models import PromotionDM
 
 

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from app.discord_format import clean, event_embed, table_field
+from app.discord.discord_format import clean, event_embed, table_field
 from app.models import Event
 
 REACTION_DESCRIPTION = (

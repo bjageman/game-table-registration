@@ -7,14 +7,14 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import enqueue
+from app.discord.announcements import enqueue
 from app.models import Event, LotteryRun, PlayerProfile
-from app.player_profiles import for_event as player_scope_for_event
+from app.players.player_profiles import for_event as player_scope_for_event
 
 
 def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -> None:
     """Called only by the transaction that owns the event's state transition."""
-    from app.withdrawals import current_result
+    from app.assignments.withdrawals import current_result
 
     snapshot: dict[str, Any] = run.snapshot
     result: dict[str, Any] = current_result(db, run)

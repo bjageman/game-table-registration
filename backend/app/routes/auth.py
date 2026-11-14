@@ -11,12 +11,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import delete
 from sqlalchemy.orm import Session as DBSession
 
-from app.assignment_preferences import scope_key as assignment_scope_key
-from app.connection_settings import (
-    POLL_PERMISSIONS,
-    SIGNUP_PERMISSIONS,
-)
 from app.context import ApplicationContext
+from app.events.test_signups import (
+    allowed as test_users_allowed,
+)
 from app.models import (
     AssignmentPreference,
     LoginState,
@@ -28,8 +26,10 @@ from app.models import (
     UserSettings,
 )
 from app.security import digest
-from app.test_signups import (
-    allowed as test_users_allowed,
+from app.settings.assignment_preferences import scope_key as assignment_scope_key
+from app.settings.connection_settings import (
+    POLL_PERMISSIONS,
+    SIGNUP_PERMISSIONS,
 )
 
 

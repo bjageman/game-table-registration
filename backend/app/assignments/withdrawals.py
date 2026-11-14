@@ -8,10 +8,10 @@ from typing import Any
 from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session
 
-from app.announcements import enqueue_refresh
-from app.assignment_preferences import announce_changes
-from app.discord_format import clean
-from app.event_threads import queue_member
+from app.discord.announcements import enqueue_refresh
+from app.discord.discord_format import clean
+from app.discord.event_threads import queue_member
+from app.discord.promotion_dms import enqueue as enqueue_promotion_dm
 from app.models import (
     Announcement,
     Event,
@@ -21,8 +21,8 @@ from app.models import (
     EventWithdrawal,
     LotteryRun,
 )
-from app.player_profiles import for_event as player_scope_for_event
-from app.promotion_dms import enqueue as enqueue_promotion_dm
+from app.players.player_profiles import for_event as player_scope_for_event
+from app.settings.assignment_preferences import announce_changes
 
 
 def announcement_event(
@@ -276,7 +276,7 @@ def replace_with_waitlist(
     table_name: str,
     changed_at: float,
 ) -> list[str]:
-    from app.pair_promotions import replacements
+    from app.assignments.pair_promotions import replacements
 
     chosen = replacements(event, current, table_name)
     record_withdrawal(

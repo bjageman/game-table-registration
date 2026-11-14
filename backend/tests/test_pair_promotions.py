@@ -3,6 +3,8 @@ from copy import deepcopy
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.assignments.waitlists import add_player
+from app.assignments.withdrawals import current_result, manager_add, manager_remove
 from app.models import (
     Announcement,
     AssignmentPreference,
@@ -11,8 +13,6 @@ from app.models import (
     PlayerProfile,
     PromotionDM,
 )
-from app.waitlists import add_player
-from app.withdrawals import current_result, manager_add, manager_remove
 
 
 def pair_waitlist(engine, *, capacity=1, split=False):

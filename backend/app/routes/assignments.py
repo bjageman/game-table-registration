@@ -10,18 +10,18 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
-from app.announcements import (
+from app.assignments.assignment_finalization import approve
+from app.assignments.withdrawals import current_result
+from app.context import ApplicationContext
+from app.discord.announcements import (
     deliver_event,
     enqueue,
     enqueue_instructions,
 )
-from app.announcements import (
+from app.discord.announcements import (
     status as announcement_status,
 )
-from app.assignment_finalization import approve
-from app.assignment_preferences import for_event as preferences_for_event
-from app.context import ApplicationContext
-from app.message_cleanup import remove_signup_message
+from app.discord.message_cleanup import remove_signup_message
 from app.models import (
     Announcement,
     Event,
@@ -30,7 +30,7 @@ from app.models import (
 from app.schemas import (
     RetryAnnouncementInput,
 )
-from app.withdrawals import current_result
+from app.settings.assignment_preferences import for_event as preferences_for_event
 
 
 def register(context: ApplicationContext) -> None:

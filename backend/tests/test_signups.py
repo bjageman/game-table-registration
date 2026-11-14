@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.events.signups import handle
 from app.main import create_app
 from app.models import (
     Base,
@@ -25,7 +26,6 @@ from app.models import (
     SignupInteraction,
     TableSignup,
 )
-from app.signups import handle
 
 
 @pytest.fixture
@@ -255,7 +255,7 @@ def test_closed_or_unpublished_events_reject_all_changes(custom_client, state):
 
 
 def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
-    from app.announcements import dispatch_due
+    from app.discord.announcements import dispatch_due
 
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
@@ -389,7 +389,7 @@ def test_signups_and_receipts_survive_application_restart(custom_client):
 
 
 def test_closing_claim_rejects_late_choices_before_snapshot(custom_client, monkeypatch):
-    import app.closing as closing
+    import app.assignments.closing as closing
 
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)

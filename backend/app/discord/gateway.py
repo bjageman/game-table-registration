@@ -9,14 +9,15 @@ import discord
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app import promotion_dms, reactions, withdrawals
-from app.announcements import deliver_event
+from app.assignments import withdrawals
 from app.config import Settings
-from app.discord_api import DiscordAPI
-from app.event_threads import queue_member
+from app.discord import promotion_dms, reactions
+from app.discord.announcements import deliver_event
+from app.discord.discord_api import DiscordAPI
+from app.discord.event_threads import queue_member
+from app.discord.signup_messages import EMOJIS
+from app.events.signups import handle
 from app.models import Event
-from app.signup_messages import EMOJIS
-from app.signups import handle
 
 logger = logging.getLogger("uvicorn.error")
 

@@ -2,7 +2,7 @@ import itertools
 
 import pytest
 
-from app.lottery import assign
+from app.assignments.lottery import assign
 
 
 def snapshot(choices, capacities=(1, 1), weights=None):
@@ -120,7 +120,7 @@ def test_guaranteed_players_can_move_between_their_selected_tables():
 
 
 def test_conflicting_guarantees_rejected():
-    from app.lottery import GuaranteeConflict
+    from app.assignments.lottery import GuaranteeConflict
 
     data = snapshot([["A"], ["A"]])
     for p in data["players"]:
@@ -137,7 +137,7 @@ def test_table_guarantee_seats_player_at_that_specific_table():
 
 
 def test_conflicting_table_guarantees_rejected():
-    from app.lottery import GuaranteeConflict
+    from app.assignments.lottery import GuaranteeConflict
 
     data = snapshot([["A", "B"], ["A"]])
     data["players"][0]["guaranteed_table"] = "A"

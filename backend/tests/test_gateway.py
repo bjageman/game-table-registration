@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from test_signups import custom_client as custom_client
 from test_signups import publish
 
-from app.gateway import SignupGateway
+from app.discord.gateway import SignupGateway
 from app.main import create_app
 from app.models import Event, TableSignup
 
@@ -123,7 +123,9 @@ def test_defer_failure_does_not_save_a_selection(custom_client):
 def test_gateway_reports_database_failure_privately(custom_client, monkeypatch):
     client, _, config = custom_client
     _, event, _ = publish(custom_client)
-    monkeypatch.setattr("app.gateway.handle", Mock(side_effect=RuntimeError("DB down")))
+    monkeypatch.setattr(
+        "app.discord.gateway.handle", Mock(side_effect=RuntimeError("DB down"))
+    )
 
     async def check():
         gateway = SignupGateway(client.app.state.engine, config)

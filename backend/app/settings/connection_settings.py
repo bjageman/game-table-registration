@@ -7,7 +7,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import Settings
-from app.discord_api import DiscordAPI, DiscordRequestError
+from app.discord.discord_api import DiscordAPI, DiscordRequestError
 from app.models import (
     Organization,
     OrganizationMember,

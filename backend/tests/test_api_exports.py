@@ -150,7 +150,7 @@ def test_signup_csv_quotes_spreadsheet_formulas():
     import csv
     import io
 
-    from app.signup_exports import event_csv
+    from app.events.signup_exports import event_csv
 
     content = event_csv(
         [
@@ -172,7 +172,7 @@ def test_pdf_fits_full_tables_on_one_portrait_page(table_count):
     import re
     from types import SimpleNamespace
 
-    from app.signup_exports import event_pdf
+    from app.events.signup_exports import event_pdf
 
     tables = [
         {"name": f"Table {index}", "capacity": 15} for index in range(table_count)

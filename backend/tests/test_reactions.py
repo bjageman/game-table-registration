@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from test_signups import custom_client as custom_client
 from test_signups import publish
 
-from app import reactions
-from app.gateway import SignupGateway
+from app.discord import reactions
+from app.discord.gateway import SignupGateway
 from app.models import Event, LotteryRun, TableSignup
 
 
@@ -217,7 +217,7 @@ def test_gateway_recovery_uses_rest_then_marks_healthy(custom_client, monkeypatc
     api.reaction_players.return_value = [
         {"id": "1", "name": "Player", "choices": ["B"]}
     ]
-    monkeypatch.setattr("app.gateway.DiscordAPI", Mock(return_value=api))
+    monkeypatch.setattr("app.discord.gateway.DiscordAPI", Mock(return_value=api))
 
     async def check():
         gateway = SignupGateway(client.app.state.engine, config)

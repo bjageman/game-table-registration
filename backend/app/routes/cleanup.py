@@ -9,10 +9,12 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
-from app.message_cleanup import (
+from app.discord.message_cleanup import (
     delete_discord_messages_batch as delete_discord_messages_batch_service,
 )
-from app.message_cleanup import remove_signup_message as remove_signup_message_service
+from app.discord.message_cleanup import (
+    remove_signup_message as remove_signup_message_service,
+)
 from app.models import (
     Announcement,
     Event,
