@@ -321,6 +321,9 @@ test("edits a draft and requires confirmation before deleting it", async ({
   await signIn(page);
   let current = { ...draft };
   let deletions = 0;
+  await page.route("**/api/events/event-1/signups", (route) =>
+    route.fulfill({ json: current.tables.map((table) => ({ name: table.name, players: [] })) }),
+  );
   await page.route("**/api/events", (route) =>
     route.fulfill({ json: [current] }),
   );

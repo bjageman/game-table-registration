@@ -9,6 +9,7 @@ from app.assignments.mutations import locked_assignment
 from app.assignments.withdrawals import current_result, result_players
 from app.discord.announcements import enqueue_refresh
 from app.discord.event_threads import queue_member
+from app.events.table_membership import set_removed
 from app.models import (
     EventWaitlistAddition,
 )
@@ -61,6 +62,7 @@ def add_player(
         else:
             addition.discord_name = name
             addition.added_at = time.time()
+        set_removed(db, event_id, player_id, table_name, False)
         queue_member(db, event, player_id)
         if event.status == "assigned":
             enqueue_refresh(db, event)

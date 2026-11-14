@@ -11,16 +11,15 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.closing import close_and_assign
-from app.assignments.waitlists import add_player as add_waitlist_player
-from app.assignments.withdrawals import current_result, manager_add, manager_remove
+from app.assignments.withdrawals import current_result
 from app.context import ApplicationContext
 from app.discord.announcements import (
     deliver_event,
 )
-from app.discord.event_threads import queue_member
 from app.discord.message_cleanup import (
     remove_signup_message as remove_signup_message_service,
 )
+from app.events.player_edits import edit_player
 from app.events.publication import mark_signup_closed
 from app.events.signup_exports import event_csv, event_pdf, summary_csv
 from app.events.signups import apply_manager_signups, table_rows
@@ -35,7 +34,6 @@ from app.events.test_signups import (
 )
 from app.models import (
     Event,
-    EventManagerSignup,
     EventPlayerSetting,
     LotteryRun,
     PlayerProfile,
@@ -164,147 +162,85 @@ def register(context: ApplicationContext) -> None:
             },
         )
 
-    @router.put("/api/events/{event_id}/manager-players/{player_id}")
-    def add_manager_player(
-        event_id: str, player_id: str, body: ManagerSignupInput, request: Request
+    def edit_table_player(
+        event_id: str,
+        player_id: str,
+        table: str,
+        request: Request,
+        *,
+        adding: bool,
+        waitlist: bool = False,
+        name: str = "",
+        allow_known: bool = True,
     ) -> dict[str, Any]:
         authenticated(request, True)
         valid_player_id(player_id)
         with DBSession(engine) as db:
-            assigned_event = db.get(Event, event_id)
-            assigned_guild = (
-                assigned_event.guild_id
-                if assigned_event is not None
-                and matches_destination(assigned_event, request)
-                and assigned_event.status in ("assigned", "review")
-                else None
-            )
-        if assigned_guild:
-            if not manager_add(
-                engine,
-                assigned_guild,
-                event_id,
-                player_id,
-                body.table,
-                allow_known_player=True,
-            ):
-                raise HTTPException(409, "Player is already assigned or unavailable")
-            return {"ok": True}
-        with DBSession(engine) as db:
-            claimed = db.execute(
-                update(Event)
-                .where(
-                    Event.id == event_id,
-                    *event_scope(request),
-                    Event.status.in_(["draft", "scheduled", "open"]),
-                )
-                .values(status=Event.status)
-                .returning(Event.id)
-            ).scalar_one_or_none()
-            if not claimed:
-                raise HTTPException(409, "Only draft or open signups can be changed")
             event = context.scoped_event(db, event_id, request)
-            if body.table not in {table["name"] for table in event.tables}:
-                raise HTTPException(422, "Unknown table")
-            profile = player_scope_for_event(event).get(db, player_id)
-            if player_id.startswith("test-") and (
-                profile is None or not profile.is_test
-            ):
-                raise HTTPException(404, "Player not found")
-            override = db.get(EventManagerSignup, (event_id, player_id))
-            if override is None:
-                override = EventManagerSignup(
-                    event_id=event_id,
-                    discord_id=player_id,
-                    discord_name=body.name.strip(),
-                    choices=[body.table],
-                    removed=False,
-                )
-                db.add(override)
-            else:
-                override.discord_name = body.name.strip()
-                override.choices = sorted(set(override.choices) | {body.table})
-                override.removed = False
-            queue_member(db, event, player_id)
-            event.signup_roster_checked_at = None
-            db.commit()
-            return {"ok": True}
+            guild_id = event.guild_id
+        edit_player(
+            engine,
+            guild_id,
+            event_id,
+            player_id,
+            table,
+            adding=adding,
+            waitlist=waitlist,
+            name=name,
+            allow_known=allow_known,
+        )
+        return {"ok": True}
+
+    @router.put("/api/events/{event_id}/manager-players/{player_id}")
+    def add_manager_player(
+        event_id: str, player_id: str, body: ManagerSignupInput, request: Request
+    ) -> dict[str, Any]:
+        return edit_table_player(
+            event_id, player_id, body.table, request, adding=True, name=body.name
+        )
 
     @router.post("/api/events/{event_id}/waitlisted-players/{player_id}")
     def add_waitlisted_player(
         event_id: str, player_id: str, body: AssignedAddInput, request: Request
     ) -> dict[str, Any]:
-        authenticated(request, True)
-        valid_player_id(player_id)
-        with DBSession(engine) as db:
-            event = context.scoped_event(db, event_id, request)
-            guild_id = event.guild_id
-        if not add_waitlist_player(engine, guild_id, event_id, player_id, body.table):
-            raise HTTPException(409, "Player cannot be added to this waitlist")
-        return {"ok": True}
+        return edit_table_player(
+            event_id, player_id, body.table, request, adding=True, waitlist=True
+        )
 
     @router.post("/api/events/{event_id}/assigned-players/{player_id}")
     def add_assigned_player(
         event_id: str, player_id: str, body: AssignedAddInput, request: Request
     ) -> dict[str, Any]:
-        authenticated(request, True)
-        valid_player_id(player_id)
-        with DBSession(engine) as db:
-            event = context.scoped_event(db, event_id, request)
-            guild_id = event.guild_id
-        if not manager_add(engine, guild_id, event_id, player_id, body.table):
-            raise HTTPException(409, "Player is not available on this table's waitlist")
-        return {"ok": True}
+        return edit_table_player(
+            event_id, player_id, body.table, request, adding=True, allow_known=False
+        )
 
     @router.delete("/api/events/{event_id}/manager-players/{player_id}")
     def remove_manager_player(
-        event_id: str, player_id: str, request: Request
+        event_id: str,
+        player_id: str,
+        request: Request,
+        table: str | None = None,
+        waitlist: bool = False,
     ) -> dict[str, Any]:
         authenticated(request, True)
         valid_player_id(player_id)
-        with DBSession(engine) as db:
-            event = context.scoped_event(db, event_id, request)
-            assigned_guild = (
-                event.guild_id if event.status in ("assigned", "review") else None
-            )
-        if assigned_guild:
-            if not manager_remove(engine, assigned_guild, event_id, player_id):
-                raise HTTPException(409, "Player is not currently assigned")
-            return {"ok": True}
-        with DBSession(engine) as db:
-            claimed = db.execute(
-                update(Event)
-                .where(
-                    Event.id == event_id,
-                    *event_scope(request),
-                    Event.status.in_(["draft", "scheduled", "open"]),
+        if table is None:
+            candidates = [
+                row["name"]
+                for row in event_signups(event_id, request)
+                if any(
+                    p["id"] == player_id
+                    for key in ("players", "waitlist")
+                    for p in row.get(key, [])
                 )
-                .values(status=Event.status)
-                .returning(Event.id)
-            ).scalar_one_or_none()
-            if not claimed:
-                raise HTTPException(409, "Only draft or open signups can be changed")
-            event = context.scoped_event(db, event_id, request)
-            override = db.get(EventManagerSignup, (event_id, player_id))
-            if override is None:
-                override = EventManagerSignup(
-                    event_id=event_id,
-                    discord_id=player_id,
-                    discord_name="",
-                    choices=[],
-                    removed=True,
-                )
-                db.add(override)
-            else:
-                override.choices = []
-                override.removed = True
-            if event.signup_mode in ("custom", "reactions"):
-                signup = db.get(TableSignup, (event_id, player_id))
-                if signup is not None:
-                    db.delete(signup)
-            event.signup_roster_checked_at = None
-            db.commit()
-            return {"ok": True}
+            ]
+            if len(candidates) != 1:
+                raise HTTPException(422, "Select the table to remove the player from")
+            table = candidates[0]
+        return edit_table_player(
+            event_id, player_id, table, request, adding=False, waitlist=waitlist
+        )
 
     @router.put("/api/events/{event_id}/players/{player_id}/settings")
     def save_event_player_setting(
