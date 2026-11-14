@@ -43,7 +43,12 @@ test("reviews a saved draw before confirming its publication to Discord", async 
   await expect(review).toBeVisible();
   expect(approvals).toBe(0);
   await page.getByRole("button", { name: "Send to Discord" }).click();
-  await expect(review).not.toBeVisible();
+  const confirmation = page.getByRole("dialog", { name: "Send assignments to Discord?" });
+  await expect(confirmation).toContainText("Are you sure you want to send these assignments?");
+  await confirmation.getByRole("checkbox", { name: "Also delete the signup message on Discord" }).check();
+  await confirmation.getByRole("button", { name: "Confirm" }).click();
+  await expect(review).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send to Discord" })).not.toBeVisible();
   await expect(page.getByRole("button", { name: "Add Player", exact: true })).toBeVisible();
   expect(approvals).toBe(1);
 });

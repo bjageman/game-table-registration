@@ -21,6 +21,7 @@ from app.announcements import (
 from app.assignment_finalization import approve
 from app.assignment_preferences import for_event as preferences_for_event
 from app.context import ApplicationContext
+from app.message_cleanup import remove_signup_message
 from app.models import (
     Announcement,
     Event,
@@ -41,10 +42,15 @@ def register(context: ApplicationContext) -> None:
     scoped_discord = context.scoped_discord
 
     @router.post("/api/events/{event_id}/assignments/approve")
-    def approve_assignments(event_id: str, request: Request) -> dict[str, Any]:
+    def approve_assignments(
+        event_id: str, request: Request, delete_signup_message: bool = False
+    ) -> dict[str, Any]:
         authenticated(request, True)
         with DBSession(engine) as db:
-            context.scoped_event(db, event_id, request)
+            event = context.scoped_event(db, event_id, request)
+            if delete_signup_message:
+                remove_signup_message(context, db, event, request)
+                db.commit()
         approve(engine, event_id, destination(request).discord_channel_id)
         try:
             deliver_event(engine, scoped_discord(request), event_id)

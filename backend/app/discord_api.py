@@ -425,6 +425,10 @@ class DiscordAPI:
             self.bot("PATCH", f"/channels/{thread_id}", json={"archived": False})
             self.bot("PUT", f"/channels/{thread_id}/thread-members/{user_id}")
 
+    def delete_thread(self, thread_id: str) -> None:
+        """Delete an event thread; repeated deletes are safe because 404 is ignored."""
+        self.bot("DELETE", f"/channels/{thread_id}")
+
     def open_dm(self, user_id: str) -> str:
         channel = self.bot(
             "POST", "/users/@me/channels", json={"recipient_id": user_id}, timeout=8

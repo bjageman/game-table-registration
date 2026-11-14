@@ -186,12 +186,17 @@ def test_test_profiles_reused_after_clear_and_event_deletion(client):
 
 
 def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
+    from app.models import Event
+
     headers, event, path, _ = closing_event(client)
     assert client.post(path + "/archive", headers=headers).status_code == 409
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     run = client.get(path + "/assignments").json()
     signups = client.get(path + "/signups").json()
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).update_thread_id = "event-thread"
+        db.commit()
     calls = list(client.app.state.discord.mock_calls)
     assert client.post(path + "/archive").status_code == 403
     archived = client.post(path + "/archive", headers=headers)
@@ -199,6 +204,7 @@ def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
     assert archived.json()["archived_at"] > 0
     assert archived.json()["status"] == "assigned"
     assert client.post(path + "/archive", headers=headers).json() == archived.json()
+    client.app.state.discord.delete_thread.assert_called_with("event-thread")
     assert client.get(path + "/assignments").json() == run
     assert client.get(path + "/signups").json() == signups
     assert any(
@@ -210,8 +216,6 @@ def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
         c[0] == "send_announcement" for c in client.app.state.discord.mock_calls
     ) == sum(c[0] == "send_announcement" for c in calls)
     client.app.state.discord.delete_poll.assert_not_called()
-    from app.models import Event
-
     with DBSession(client.app.state.engine) as db:
         db.get(Event, event["id"]).channel_id = "another-channel"
         db.commit()

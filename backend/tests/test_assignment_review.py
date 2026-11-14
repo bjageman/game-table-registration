@@ -88,6 +88,21 @@ def test_approval_publishes_exact_preview_and_adjusts_weights_once(client):
         assert list(db.scalars(select(Announcement.id))) == announcements
 
 
+def test_approval_can_delete_signup_message_before_publishing(client):
+    headers, event, path = prepared(client)
+    assert client.post(path + "/close", headers=headers).json()["status"] == "review"
+
+    approved = client.post(
+        path + "/assignments/approve?delete_signup_message=true", headers=headers
+    )
+
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "assigned"
+    client.app.state.discord.at.return_value.delete_poll.assert_called_once_with(
+        "message"
+    )
+
+
 def test_review_blocks_mutations_and_public_bypasses(client):
     headers, event, path = prepared(client)
     event_id = event["id"]

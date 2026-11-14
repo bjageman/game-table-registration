@@ -54,10 +54,12 @@ def register(context: ApplicationContext) -> None:
         event_id: str, request: Request, delete_discord_messages: bool = False
     ) -> dict[str, Any]:
         authenticated(request, True)
+        thread_id = None
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
             if event.status != "assigned" or db.get(LotteryRun, event_id) is None:
                 raise HTTPException(409, "Only assigned events can be archived")
+            thread_id = event.update_thread_id
             db.execute(
                 update(Event)
                 .where(
@@ -69,6 +71,8 @@ def register(context: ApplicationContext) -> None:
                 .values(archived_at=time.time())
             )
             db.commit()
+        if thread_id:
+            scoped_discord(request).delete_thread(thread_id)
         return delete_discord_messages_batch(
             event_id, request, promotions_only=not delete_discord_messages
         )
