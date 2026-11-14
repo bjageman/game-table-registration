@@ -506,3 +506,38 @@ def test_partial_roster_cleanup_failure_retains_event_for_retry(client):
     assert [call.args[0] for call in discord.delete_poll.call_args_list].count(
         "overflow"
     ) == 2
+
+
+@pytest.mark.parametrize("delete_messages", [False, True])
+def test_deleting_open_signups_always_deletes_event_thread(client, delete_messages):
+    from app.models import Event
+
+    headers, event, path, _ = closing_event(client)
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).update_thread_id = "open-event-thread"
+        db.commit()
+    suffix = "?delete_poll=true" if delete_messages else ""
+    assert client.delete(path + suffix, headers=headers).status_code == 204
+    client.app.state.discord.delete_thread.assert_called_once_with("open-event-thread")
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]) is None
+
+
+def test_open_event_deletion_can_retry_after_thread_cleanup_fails(client):
+    from app.discord.discord_api import DiscordRequestError
+    from app.models import Event
+
+    headers, event, path, _ = closing_event(client)
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).update_thread_id = "open-event-thread"
+        db.commit()
+    discord = client.app.state.discord
+    discord.delete_thread.side_effect = DiscordRequestError(403)
+    assert client.delete(path, headers=headers).status_code == 502
+    with DBSession(client.app.state.engine) as db:
+        saved = db.get(Event, event["id"])
+        assert saved.status == "open"
+        assert saved.update_thread_id == "open-event-thread"
+    discord.delete_thread.side_effect = None
+    assert client.delete(path, headers=headers).status_code == 204
+    assert discord.delete_thread.call_count == 2

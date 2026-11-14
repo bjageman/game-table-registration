@@ -353,7 +353,8 @@ def deliver_event(
                     continue
             if (
                 row is not None
-                and row.kind in ("promotion", "instructions", "refresh")
+                and row.kind
+                in ("promotion", "instructions", "refresh", "thread_starter")
                 and event
                 and (
                     event.archived_at

@@ -9,6 +9,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
+from app.discord.event_threads import delete_event_thread
 from app.discord.message_cleanup import (
     delete_discord_messages_batch as delete_discord_messages_batch_service,
 )
@@ -117,7 +118,7 @@ def register(context: ApplicationContext) -> None:
                 for warning in db.scalars(
                     select(Announcement).where(
                         Announcement.event_id == event_id,
-                        Announcement.kind == "warning",
+                        Announcement.kind.in_(["warning", "thread_starter"]),
                     )
                 ):
                     client = scoped_discord(request).at(
@@ -139,6 +140,8 @@ def register(context: ApplicationContext) -> None:
                     ids.append(changed.message_id)
                 for message_id in dict.fromkeys(ids):
                     scoped_discord(request).delete_poll(message_id)
+            event = context.scoped_event(db, event_id, request)
+            delete_event_thread(event, scoped_discord(request))
             db.execute(delete(Announcement).where(Announcement.event_id == event_id))
             db.execute(delete(LotteryRun).where(LotteryRun.event_id == event_id))
             db.execute(delete(Event).where(Event.id == event_id))
