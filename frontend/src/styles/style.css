@@ -417,6 +417,9 @@ dd {
 .scheduled-event-row + .scheduled-event-row { border-top: 1px solid #dce3d9; padding-top: 10px; }
 .scheduled-event-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 @media (max-width: 600px) {
+  .scheduled-event-group summary { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  .scheduled-event-group summary > span { min-width: 0; overflow-wrap: anywhere; }
+  .scheduled-event-group summary > .scheduled-event-actions { grid-column: 1 / -1; justify-self: end; margin-left: 0; }
   .scheduled-event-row { flex-wrap: nowrap; align-items: center; }
   .scheduled-event-times { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
   .scheduled-event-time-separator { display: none; }
