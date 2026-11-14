@@ -388,8 +388,8 @@ dd {
   column-gap: 12px;
   align-items: start;
 }
-.event-date-time-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
-.event-date-time-row.single { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.event-date-time-row { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.event-date-time-row.single { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 .scheduled-event-checkbox { display: flex; align-items: center; gap: 8px; margin: 20px 0; }
 .event-scheduling-inputs { min-width: 0; }
 .signup-warning-inputs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
