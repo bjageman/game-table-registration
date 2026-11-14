@@ -79,14 +79,14 @@ def test_approval_publishes_exact_preview_and_adjusts_weights_once(client):
             weight == (4.5 if player_id in run.result["assignments"] else 5.5)
             for player_id, weight in weights.items()
         )
-        announcements = list(db.scalars(select(Announcement.id)))
+        announcements = set(db.scalars(select(Announcement.id)))
         assert announcements
     assert client.post(target, headers=headers).json()["status"] == "assigned"
     with Session(engine) as db:
         assert {
             p.discord_id: p.weighting for p in db.scalars(select(PlayerProfile))
         } == weights
-        assert list(db.scalars(select(Announcement.id))) == announcements
+        assert set(db.scalars(select(Announcement.id))) == announcements
 
 
 def test_approval_can_delete_signup_message_before_publishing(client):
