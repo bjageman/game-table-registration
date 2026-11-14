@@ -12,6 +12,7 @@ import reportlab
 from reportlab.graphics.shapes import Drawing, Rect
 from reportlab.graphics.shapes import Path as CheckPath
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
@@ -108,7 +109,7 @@ def event_pdf(
     )
     font_size = 10.5 if expanded else 8
     leading = 10.5 if expanded else 8
-    row_padding = 2 if expanded else 0.75
+    row_padding = 2.25 if expanded else 0.85
     name_style = ParagraphStyle(
         "SignupName",
         fontName="SignupVera",
@@ -120,6 +121,7 @@ def event_pdf(
         fontName="SignupVeraBold",
         fontSize=font_size,
         leading=leading,
+        alignment=TA_CENTER,
     )
     title_style = ParagraphStyle(
         "SignupTableTitle",
