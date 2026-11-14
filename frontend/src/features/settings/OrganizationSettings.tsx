@@ -6,6 +6,7 @@ import { api, errorMessage, mutationOptions } from "../../lib/api";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
+import EditOrganization from "./EditOrganization";
 
 interface Organization { id: string; name: string; created_by: string; role: "user" | "editor" | "admin" }
 interface Member { user_id: string; username: string; role: Organization["role"] }
@@ -19,6 +20,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   const [members, setMembers] = useState<Member[]>([]);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [createError, setCreateError] = useState("");
   const createDialog = useDialog(creating);
   const [query, setQuery] = useState("");
@@ -151,6 +153,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
     </select>
     <div className="form-actions">
       <button id="organization-create-button" type="button" disabled={busy} onClick={() => { setCreateError(""); setCreating(true); }}>Create</button>
+      {selected?.role === "admin" && <button id="organization-edit-button" type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>}
       {selected && <button id={selected.created_by === userId ? "organization-delete-button" : "organization-leave-button"} type="button" disabled={busy} onClick={() => {
         if (selected.created_by === userId) { setDeleteError(""); setConfirmingDelete(true); }
         else void remove();
@@ -172,6 +175,11 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       </form>
     </dialog>}
     {selected && <>
+      {editing && selected.role === "admin" && <EditOrganization organization={selected} csrf={csrf} onAccessError={onAccessError}
+        onClose={() => setEditing(false)} onSaved={async (name) => {
+          setOrganizations((current) => current.map((org) => org.id === selected.id ? { ...org, name } : org));
+          await onSaved();
+        }} />}
       <h3>{selected.name}</h3>
       <div className="organization-member-table-wrap"><table className="organization-member-table">
         <thead><tr><th scope="col">Username</th><th scope="col">Permission</th><th scope="col">Delete</th></tr></thead>

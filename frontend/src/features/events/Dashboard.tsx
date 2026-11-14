@@ -16,6 +16,7 @@ import EventList, { EventDetails } from "./EventList";
 import EventForm from "./forms/EventForm";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { download } from "../../lib/download";
+import ConfirmationDialog from "../../components/ConfirmationDialog";
 
 export interface DashboardProps {
   session: ModeratorSession;
@@ -43,6 +44,10 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [showScheduled, setShowScheduled] = useState(true);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [series, setSeries] = useState<RecurringSeriesRecord[]>([]);
+  const [deletingSchedule, setDeletingSchedule] = useState<RecurringSeriesRecord>();
+  const [deletingScheduleBusy, setDeletingScheduleBusy] = useState(false);
+  const [deleteScheduleError, setDeleteScheduleError] = useState("");
+  const stoppingSchedule = useRef(false);
   const [scheduledDetails, setScheduledDetails] = useState<EventRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -120,11 +125,16 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   }
 
   async function stopSchedule(row: RecurringSeriesRecord) {
+    if (stoppingSchedule.current) return;
+    stoppingSchedule.current = true;
+    setDeletingScheduleBusy(true); setDeleteScheduleError("");
     try {
       await api(`/recurring-series/${row.id}/stop`, mutationOptions(session.csrf));
+      setDeletingSchedule(undefined);
       setNotice(`Stopped ${row.title}. Upcoming unposted events were removed.`);
       setAttempt((value) => value + 1);
-    } catch (failure) { if (!onAccessError(failure)) setNotice(errorMessage(failure)); }
+    } catch (failure) { if (!onAccessError(failure)) setDeleteScheduleError(errorMessage(failure)); }
+    finally { stoppingSchedule.current = false; setDeletingScheduleBusy(false); }
   }
 
 
@@ -238,7 +248,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           <h3>Scheduled Events</h3>
           {series.map((row) => <details className="scheduled-event-group" key={row.id}>
             <summary><span>{row.title} - {row.frequency}</span>
-              {session.organization_role !== "user" && <button id={`schedule-delete-${row.id}`} type="button" className="delete-schedule-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void stopSchedule(row); }}>Delete</button>}
+              {session.organization_role !== "user" && <button id={`schedule-delete-${row.id}`} type="button" className="delete-schedule-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setDeleteScheduleError(""); setDeletingSchedule(row); }}>Delete</button>}
             </summary>
             <div className="scheduled-event-occurrences">
               {events.filter((event) => event.status === "scheduled" && event.series_id === row.id).sort((a, b) => a.starts_at - b.starts_at).slice(0, 4).map((event) => <div key={event.id} className="scheduled-event-row">
@@ -257,6 +267,11 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           </details>)}
         </div>
       </section>}
+      {deletingSchedule && <ConfirmationDialog id="schedule-delete-dialog" title="Delete recurring event?"
+        busy={deletingScheduleBusy} error={deleteScheduleError} status="Deleting…"
+        onCancel={() => setDeletingSchedule(undefined)} onConfirm={() => void stopSchedule(deletingSchedule)}>
+        <p>Are you sure you want to delete {deletingSchedule.title}? Its recurring schedule and upcoming unposted events will be removed.</p>
+      </ConfirmationDialog>}
       {scheduledDetails && <EventDetails
         event={scheduledDetails}
         canPopulateTestUsers={Boolean(session.can_populate_test_users)}
