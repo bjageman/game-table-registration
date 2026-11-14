@@ -1,6 +1,6 @@
 import { useTimezone, formatTimestamp } from "../../lib/timezone";
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownWideNarrow, Download, RefreshCw, Search, Eye, Trash2, Pencil } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, RefreshCw, Search, Eye, Trash2, Pencil } from "lucide-react";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -25,19 +25,18 @@ export interface DashboardProps {
 }
 
 const sortOptions = [
-  { value: "date-asc", label: "Event Date: Earliest First" },
-  { value: "date-desc", label: "Event Date: Latest First" },
-  { value: "title-asc", label: "Title: A–Z" },
-  { value: "title-desc", label: "Title: Z–A" },
+  { value: "title", label: "Event Name" },
+  { value: "date", label: "Event Date" },
+  { value: "created", label: "Creation Date" },
 ] as const;
-type SortOrder = typeof sortOptions[number]["value"];
+type SortField = typeof sortOptions[number]["value"];
 const titleOrder = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
 export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const timezone = useTimezone();
   const scheduleTime = new Intl.DateTimeFormat(undefined, { timeZone: timezone, month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortOrder>("date-asc");
+  const [sort, setSort] = useState<{ field: SortField; descending: boolean }>({ field: "date", descending: false });
   const [sortAnchor, setSortAnchor] = useState<HTMLElement | null>(null);
   const [exporting, setExporting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -158,9 +157,12 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   ).sort((a, b) => {
     const byTitle = titleOrder.compare(a.title, b.title);
     const byDate = a.starts_at - b.starts_at;
-    const primary = sort === "date-asc" ? byDate : sort === "date-desc" ? -byDate
-      : sort === "title-asc" ? byTitle : -byTitle;
-    return primary || byTitle || byDate || a.id.localeCompare(b.id);
+    if (sort.field === "created" && (a.created_at == null) !== (b.created_at == null)) {
+      return a.created_at == null ? 1 : -1;
+    }
+    const primary = sort.field === "date" ? byDate : sort.field === "created"
+      ? (a.created_at ?? 0) - (b.created_at ?? 0) : byTitle;
+    return (sort.descending ? -primary : primary) || byTitle || byDate || a.id.localeCompare(b.id);
   });
 
   return (
@@ -186,8 +188,16 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             }}><Download size={18} aria-hidden="true" /></button>
           <Menu id="event-sort-menu" anchorEl={sortAnchor} open={Boolean(sortAnchor)} onClose={() => setSortAnchor(null)}
             slotProps={{ list: { "aria-label": "Sort events" } }}>
-            {sortOptions.map((option) => <MenuItem id={`events-sort-${option.value}`} key={option.value} role="menuitemradio" aria-checked={sort === option.value}
-              selected={sort === option.value} onClick={() => { setSort(option.value); setSortAnchor(null); }}>{option.label}</MenuItem>)}
+            {sortOptions.map((option) => <MenuItem id={`events-sort-${option.value}`} key={option.value} role="menuitemradio" aria-label={option.label} aria-checked={sort.field === option.value}
+              selected={sort.field === option.value} onClick={() => {
+                setSort((current) => ({ field: option.value, descending: current.field === option.value ? !current.descending : true }));
+                setSortAnchor(null);
+              }}>
+              {option.label}
+              {sort.field === option.value && <span className="event-sort-direction" role="img" aria-label={sort.descending ? "Descending" : "Ascending"}>
+                {sort.descending ? <ArrowDownWideNarrow size={16} aria-hidden="true" /> : <ArrowUpWideNarrow size={16} aria-hidden="true" />}
+              </span>}
+            </MenuItem>)}
           </Menu>
         </div>
         <div className="form-actions">

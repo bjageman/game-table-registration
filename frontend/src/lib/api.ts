@@ -105,6 +105,7 @@ export interface RecurringSeriesRecord extends SignupWarningSettings {
 }
 
 export interface EventRecord extends SignupWarningSettings {
+  created_at?: number | null;
   id: string;
   title: string;
   description?: string;

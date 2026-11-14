@@ -105,19 +105,22 @@ it("passes expired-session errors to the auth boundary", async () => {
 
 it("searches titles and sorts by title/date while respecting archived events", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
-    { ...draft, id: "a", title: "Alpha Night", starts_at: 2000000300 },
-    { ...draft, id: "z", title: "Zebra Night", starts_at: 2000000100 },
-    { ...draft, id: "b", title: "Beta Night", starts_at: 2000000200 },
-    { ...draft, id: "archived", title: "Alpha Archived", starts_at: 2000000400, archived_at: 2000000000 },
+    { ...draft, id: "a", title: "Alpha Night", starts_at: 2000000300, created_at: 100 },
+    { ...draft, id: "z", title: "Zebra Night", starts_at: 2000000100, created_at: 300 },
+    { ...draft, id: "b", title: "Beta Night", starts_at: 2000000200, created_at: 200 },
+    { ...draft, id: "archived", title: "Alpha Archived", starts_at: 2000000400, created_at: 50, archived_at: 2000000000 },
   ]))));
   render(<Dashboard {...props} />);
   await screen.findByRole("button", { name: /^Alpha Night/ });
   const titles = () => within(screen.getByRole("list")).getAllByRole("button").map((button) => button.querySelector(".event-list-title")?.textContent);
   expect(titles()).toEqual(["Zebra Night", "Beta Night", "Alpha Night"]);
   for (const [label, expected] of [
-    ["Title: A–Z", ["Alpha Night", "Beta Night", "Zebra Night"]],
-    ["Title: Z–A", ["Zebra Night", "Beta Night", "Alpha Night"]],
-    ["Event Date: Latest First", ["Alpha Night", "Beta Night", "Zebra Night"]],
+    ["Event Name", ["Zebra Night", "Beta Night", "Alpha Night"]],
+    ["Event Name", ["Alpha Night", "Beta Night", "Zebra Night"]],
+    ["Event Date", ["Alpha Night", "Beta Night", "Zebra Night"]],
+    ["Event Date", ["Zebra Night", "Beta Night", "Alpha Night"]],
+    ["Creation Date", ["Zebra Night", "Beta Night", "Alpha Night"]],
+    ["Creation Date", ["Alpha Night", "Beta Night", "Zebra Night"]],
   ] as const) {
     fireEvent.click(screen.getByRole("button", { name: "Sort events" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: label }));
@@ -202,4 +205,25 @@ it.each([
     const row = within(dialog).getByText("Warning Message").parentElement!;
     expect(row.querySelector("time")).toHaveAttribute("datetime", new Date(expected * 1000).toISOString());
   }
+});
+
+it("shows the sort direction and keeps unknown creation dates last", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
+    { ...draft, id: "old", title: "Old", created_at: 10 },
+    { ...draft, id: "new", title: "New", created_at: 20 },
+    { ...draft, id: "unknown", title: "Unknown", created_at: null },
+  ]))));
+  render(<Dashboard {...props} />);
+  await screen.findByRole("button", { name: /^Unknown/ });
+  const titles = () => Array.from(document.querySelectorAll(".event-list-title"), (element) => element.textContent);
+  fireEvent.click(screen.getByRole("button", { name: "Sort events" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Creation Date" }));
+  expect(titles()).toEqual(["New", "Old", "Unknown"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort events" }));
+  const choice = screen.getByRole("menuitemradio", { name: "Creation Date" });
+  expect(within(choice).getByRole("img", { name: "Descending" })).toBeVisible();
+  fireEvent.click(choice);
+  expect(titles()).toEqual(["Old", "New", "Unknown"]);
+  fireEvent.click(screen.getByRole("button", { name: "Sort events" }));
+  expect(within(screen.getByRole("menuitemradio", { name: "Creation Date" })).getByRole("img", { name: "Ascending" })).toBeVisible();
 });

@@ -217,6 +217,7 @@ class ApplicationContext:
             "description": event.description,
             "location": event.location,
             "starts_at": event.starts_at,
+            "created_at": event.created_at,
             "ends_at": event.ends_at,
             "discord_event_error": discord_event.error if discord_event else None,
             "has_discord_event": bool(
