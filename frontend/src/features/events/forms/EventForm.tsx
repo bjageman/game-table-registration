@@ -73,6 +73,14 @@ export default function EventForm({
   const [startsAtLocal, setStartsAtLocal] = useState(
     draft ? dayjs.unix(draft.starts_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : "",
   );
+  const [createDiscordEvent, setCreateDiscordEvent] = useState(true);
+  const [endOverride, setEndOverride] = useState<string | null>(
+    draft?.ends_at && draft.ends_at - draft.starts_at !== 4 * 3600
+      ? dayjs.unix(draft.ends_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : null,
+  );
+  const startDate = resolveLocalTime(startsAtLocal, timezone).date;
+  const endsAtLocal = endOverride ?? (startDate
+    ? dayjs(new Date(startDate.getTime() + 4 * 3600000)).tz(timezone).format("YYYY-MM-DDTHH:mm") : "");
   const [mobileDate, setMobileDate] = useState<Dayjs | null>(
     draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
   );
@@ -105,6 +113,13 @@ export default function EventForm({
   const [choosingTemplate, setChoosingTemplate] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const isMobile = useMediaQuery("(max-width: 600px)");
+  useEffect(() => {
+    const controller = new AbortController();
+    api<{ create_discord_event?: boolean }>("/settings/assignment", { signal: controller.signal })
+      .then((value) => { if (!controller.signal.aborted) setCreateDiscordEvent(value.create_discord_event ?? true); })
+      .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    return () => controller.abort();
+  }, [onAccessError]);
   useEffect(() => {
     const controller = new AbortController();
     api<EventTemplateRecord[]>("/templates", { signal: controller.signal })
@@ -257,6 +272,11 @@ export default function EventForm({
       return;
     }
     const start = resolveLocalTime(startsAtLocal, timezone).date!;
+    const end = resolveLocalTime(endsAtLocal, timezone).date;
+    if (createDiscordEvent && (!end || end.getTime() <= start.getTime())) {
+      setError("Choose an event end time after its start time.");
+      return;
+    }
     const hours = scheduled ? Number(opensBefore) - Number(closesBefore) : 0;
     if (postWarning && !scheduled && !manualClosesBefore.trim()) {
       setError("Set a signup closing time to post a warning message.");
@@ -296,6 +316,7 @@ export default function EventForm({
             description: description.trim(),
             location: location.trim(),
             starts_at: start.toISOString(),
+            ends_at: createDiscordEvent ? end?.toISOString() : draft?.ends_at ? new Date(draft.ends_at * 1000).toISOString() : null,
             duration_hours: hours,
             ...(scheduled ? { opens_before_hours: Number(opensBefore), closes_before_hours: Number(closesBefore) } : { closes_before_hours: manualClosesBefore.trim() ? Number(manualClosesBefore) : null }),
             ...(frequency !== "once" ? {
@@ -456,6 +477,12 @@ export default function EventForm({
               )}
             </div>
           </div>
+          {createDiscordEvent && <DateTimePicker
+            timezone={timezone} label="Event ends" value={endsAtLocal ? dayjs.tz(endsAtLocal, timezone) : null}
+            onChange={(value) => setEndOverride(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "")}
+            format="MMMM D, YYYY h:mm A" ampm minutesStep={15}
+            slotProps={{ textField: { id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }}
+          />}
           <SignupWarningFields enabled={postWarning} hours={warningHours} message={warningMessage}
             onEnabled={setPostWarning} onHours={setWarningHours} onMessage={setWarningMessage}
             error={fieldErrors.warning_hours_before_close} />

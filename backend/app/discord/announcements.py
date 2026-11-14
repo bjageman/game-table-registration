@@ -22,7 +22,7 @@ from app.discord.discord_format import (
 from app.discord.event_threads import update_channel
 from app.events.event_description import signup_description, signup_location
 from app.events.signup_warnings import can_send as can_send_warning
-from app.models import Announcement, Event, LotteryRun
+from app.models import Announcement, DiscordScheduledEvent, Event, LotteryRun
 from app.settings.assignment_preferences import announce_changes
 
 
@@ -477,6 +477,15 @@ def deliver_event(
                         unknown=False,
                     )
                 )
+                if row_kind == "assignment":
+                    db.execute(
+                        update(DiscordScheduledEvent)
+                        .where(
+                            DiscordScheduledEvent.event_id == event_id,
+                            DiscordScheduledEvent.state != "creating",
+                        )
+                        .values(checked_at=None)
+                    )
                 db.commit()
         except Exception as failure:
             if row_kind == "refresh":

@@ -22,6 +22,7 @@ def event_values(body: EventInput) -> dict[str, Any]:
         "location": body.location.strip(),
         "tables": [table.model_dump() for table in body.tables],
         "starts_at": start,
+        "ends_at": body.ends_at.timestamp() if body.ends_at else None,
         "scheduled_publish_at": start - body.opens_before_hours * 3600
         if body.opens_before_hours is not None
         else None,
@@ -36,10 +37,14 @@ def event_values(body: EventInput) -> dict[str, Any]:
 
 def series_values(body: RecurringInput) -> dict[str, Any]:
     values = event_values(body)
+    values.pop("ends_at")
     for field in ("starts_at", "scheduled_publish_at", "closes_at", "duration_hours"):
         values.pop(field)
     return {
         **values,
+        "event_length_seconds": (body.ends_at - body.starts_at).total_seconds()
+        if body.ends_at
+        else None,
         "first_local": body.starts_at.astimezone(ZoneInfo(body.time_zone)).strftime(
             "%Y-%m-%dT%H:%M"
         ),
@@ -80,6 +85,9 @@ def serialize_series(db: Session, series: RecurringSeries) -> dict[str, Any]:
         "location": series.location,
         "tables": series.tables,
         "starts_at": start,
+        "ends_at": start + series.event_length_seconds
+        if start is not None and series.event_length_seconds
+        else None,
         "duration_hours": series.opens_before_hours - series.closes_before_hours,
         "frequency": series.frequency,
         "time_zone": series.time_zone,

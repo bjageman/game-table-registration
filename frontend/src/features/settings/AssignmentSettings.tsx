@@ -7,6 +7,7 @@ import { FormField } from "../../components/FormFields";
 import { browserTimezone } from "../../lib/timezone";
 
 interface Settings {
+  create_discord_event: boolean;
   review_assignments_before_discord: boolean;
   automatic_weight_adjustment: boolean;
   announce_table_changes: boolean;
@@ -17,6 +18,7 @@ interface Settings {
 }
 
 const DEFAULTS: Settings = {
+  create_discord_event: true,
   review_assignments_before_discord: true,
   automatic_weight_adjustment: true,
   announce_table_changes: true,
@@ -84,6 +86,8 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
     {!loaded && !error && <p><LoadingIndicator label="Loading assignment settings…" /></p>}
     {error && <p role="alert" className="error">{error}{!loaded && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry</button>}</p>}
     {loaded && <form id="assignment-settings-form" aria-label="Assignment settings" onSubmit={(event) => event.preventDefault()}>
+      <div className="general-setting-option"><FormControlLabel label="Create an event when a signup is published" control={<Checkbox id="general-create-discord-event" checked={settings.create_discord_event} disabled={busy || restricted}
+        onChange={(event) => toggle("create_discord_event", event.target.checked)} />} /></div>
       <div className="general-setting-option"><FormControlLabel label="Review assignments before sending to Discord" control={<Checkbox id="general-review-assignments" checked={settings.review_assignments_before_discord} disabled={busy || restricted}
         onChange={(event) => toggle("review_assignments_before_discord", event.target.checked)} />} /></div>
       <div className="general-setting-option"><FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox id="assignment-auto-weights" checked={settings.automatic_weight_adjustment} disabled={busy || restricted}

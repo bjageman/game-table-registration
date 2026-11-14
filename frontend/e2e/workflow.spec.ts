@@ -39,7 +39,7 @@ async function setDateTime(
     ["Minutes", minutes],
     ["Meridiem", meridiem],
   ]) {
-    await page.getByRole("spinbutton", { name, exact: true }).fill(value);
+    await page.locator(".date-time-fields").getByRole("spinbutton", { name, exact: true }).fill(value);
   }
 }
 
@@ -77,7 +77,7 @@ test("completes login, draft creation, publication, refresh, and logout", async 
       expect(body.starts_at).toMatch(/Z$/);
       expect(body.tables).toEqual([{ name: "Clocktower", capacity: 15 }]);
       events = [
-        { ...draft, ...body, starts_at: Date.parse(body.starts_at) / 1000 },
+        { ...draft, ...body, ends_at: body.ends_at ? Date.parse(body.ends_at) / 1000 : null, starts_at: Date.parse(body.starts_at) / 1000 },
       ];
       return route.fulfill({ status: 201, json: events[0] });
     }
@@ -334,7 +334,7 @@ test("edits a draft and requires confirmation before deleting it", async ({
       current = {
         ...current,
         ...body,
-        starts_at: Date.parse(body.starts_at) / 1000,
+        ends_at: body.ends_at ? Date.parse(body.ends_at) / 1000 : null, starts_at: Date.parse(body.starts_at) / 1000,
       };
       return route.fulfill({ json: current });
     }

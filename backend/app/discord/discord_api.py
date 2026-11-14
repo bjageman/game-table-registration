@@ -81,6 +81,27 @@ class DiscordAPI:
             **kwargs,
         )
 
+    def scheduled_events(self) -> list[dict[str, Any]]:
+        return self.bot_items(
+            f"/guilds/{self.settings.discord_guild_id}/scheduled-events"
+        )
+
+    def create_scheduled_event(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.bot(
+            "POST",
+            f"/guilds/{self.settings.discord_guild_id}/scheduled-events",
+            json=payload,
+        )
+
+    def update_scheduled_event(
+        self, event_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.bot(
+            "PATCH",
+            f"/guilds/{self.settings.discord_guild_id}/scheduled-events/{event_id}",
+            json=payload,
+        )
+
     def identity(self, code: str) -> dict[str, Any]:
         token = self.request(
             "POST",

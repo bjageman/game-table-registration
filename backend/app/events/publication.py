@@ -14,6 +14,7 @@ from app.discord.open_signup_rosters import with_initial_roster
 from app.discord.reactions import publication as reaction_publication
 from app.discord.signup_messages import EMOJIS, signup_body
 from app.models import (
+    DiscordScheduledEvent,
     Event,
 )
 from app.settings.assignment_preferences import for_event as preferences_for_event
@@ -135,6 +136,11 @@ def publish_event(
                     or datetime.fromisoformat(message["poll"]["expiry"]).timestamp()
                 )
             event.status = "open"
+            if (
+                assignment_preferences.create_discord_event
+                and db.get(DiscordScheduledEvent, event.id) is None
+            ):
+                db.add(DiscordScheduledEvent(event_id=event.id))
             db.commit()
         except Exception:
             db.rollback()

@@ -86,6 +86,9 @@ def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
                 description=series.description,
                 location=series.location,
                 starts_at=start,
+                ends_at=start + series.event_length_seconds
+                if series.event_length_seconds
+                else None,
                 duration_hours=series.opens_before_hours - series.closes_before_hours,
                 tables=series.tables,
                 status="scheduled",

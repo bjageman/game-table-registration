@@ -9,6 +9,7 @@ export async function mockApiDefaults(page: Page) {
       "/api/setup": { configured: true },
       "/api/recurring-series": [],
       "/api/templates": [],
+      "/api/settings/assignment": { create_discord_event: true },
       "/api/settings/guilds": { guilds: [{ id: "100", name: "Server" }, { id: "200", name: "Chosen Server" }] },
     };
     if (route.request().method() === "GET" && /^\/api\/events\/[^/]+\/signups$/.test(path)) {
