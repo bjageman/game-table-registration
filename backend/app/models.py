@@ -1,3 +1,4 @@
+import time
 from typing import Any
 
 from sqlalchemy import (
@@ -64,6 +65,9 @@ class Event(SignupWarningSettings, Base):
     description: Mapped[str] = mapped_column(String(300), default="")
     location: Mapped[str] = mapped_column(String(200), default="")
     channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[float | None] = mapped_column(
+        Float, default=time.time, nullable=True
+    )
     starts_at: Mapped[float] = mapped_column(Float)
     ends_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     duration_hours: Mapped[int]

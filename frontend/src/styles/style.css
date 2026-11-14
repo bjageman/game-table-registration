@@ -687,3 +687,5 @@ dd {
 @media (max-width: 600px) {
   .event-search-controls { flex-basis: 100%; }
 }
+
+.event-sort-direction { display: inline-flex; margin-left: auto; padding-left: 16px; }
