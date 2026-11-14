@@ -140,6 +140,8 @@ def publish_event(
                 assignment_preferences.create_discord_event
                 and db.get(DiscordScheduledEvent, event.id) is None
             ):
+                if event.ends_at is None:
+                    event.ends_at = event.starts_at + 4 * 3600
                 db.add(DiscordScheduledEvent(event_id=event.id))
             db.commit()
         except Exception:

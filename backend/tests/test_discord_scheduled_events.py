@@ -131,6 +131,8 @@ def test_publication_respects_scoped_setting(client, enabled):
     )
     with Session(client.app.state.engine) as db:
         assert bool(db.get(DiscordScheduledEvent, event["id"])) == enabled
+        saved = db.get(Event, event["id"])
+        assert saved.ends_at == (saved.starts_at + 4 * 3600 if enabled else None)
 
 
 def test_end_time_validation_and_round_trip(client):
