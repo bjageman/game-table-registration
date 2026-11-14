@@ -196,7 +196,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
       canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingToWaitlist(false); setAddingTable(table); }}
       onAddToWaitlist={(table) => { setPlayersLoading(true); setActionError(""); setAddingToWaitlist(true); setAddingTable(table); }} onRemovePlayer={(player, willPromote) => setRemoving({ player, willPromote })}
-      onAssignWaitlisted={!readOnly && event.status === "assigned" ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}
+      onAssignWaitlisted={!readOnly && (event.status === "assigned" || event.status === "review") ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}
       editingWeight={editingWeight} weight={weight} saving={saving} readOnly={readOnly} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 5)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
