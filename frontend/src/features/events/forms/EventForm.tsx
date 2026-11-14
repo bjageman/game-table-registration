@@ -384,6 +384,7 @@ export default function EventForm({
         <fieldset disabled={saving}>
           <legend className="sr-only">Event details</legend>
           <FormFields>
+          <div className={`event-date-time-row${createDiscordEvent ? "" : " single"}`}>
           <TextField
             id={`${prefix}-title`}
             error={Boolean(fieldErrors.title)}
@@ -401,7 +402,6 @@ export default function EventForm({
               htmlInput: { maxLength: 100 },
             }}
           />
-          <div className={`event-date-time-row${createDiscordEvent ? "" : " single"}`}>
             <div className="date-time-fields" ref={scheduleFields}>
               {isMobile ? (
                 <div className="mobile-date-time-fields">
