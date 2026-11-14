@@ -4,7 +4,7 @@ import hashlib
 import math
 from typing import Any
 
-VERSION = "paired-weighted-matching-v4"
+VERSION = "paired-weighted-matching-v5"
 
 
 class GuaranteeConflict(ValueError):
