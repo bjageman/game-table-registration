@@ -4,6 +4,34 @@ from fastapi import HTTPException
 from flow_helpers import connect_test_organization, event_body, login
 
 
+def test_admin_can_rename_organization_with_unique_nonblank_name(client):
+    from sqlalchemy.orm import Session
+
+    from app.models import OrganizationMember
+
+    headers = login(client)
+    org = client.post(
+        "/api/organizations", headers=headers, json={"name": "Crew"}
+    ).json()
+    client.post("/api/organizations", headers=headers, json={"name": "Other Crew"})
+    path = f"/api/organizations/{org['id']}"
+    assert client.put(path, json={"name": "Renamed"}).status_code == 403
+    assert client.put(path, headers=headers, json={"name": "  "}).status_code == 422
+    assert (
+        client.put(path, headers=headers, json={"name": "OTHER CREW"}).status_code
+        == 409
+    )
+    renamed = client.put(path, headers=headers, json={"name": " Renamed Crew "})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Renamed Crew"
+    assert renamed.json()["id"] == org["id"]
+    with Session(client.app.state.engine) as db:
+        member = db.get(OrganizationMember, (org["id"], "owner"))
+        member.role = "editor"
+        db.commit()
+    assert client.put(path, headers=headers, json={"name": "No"}).status_code == 403
+
+
 def test_organizations_share_selected_events_and_enforce_member_roles(client):
     owner_headers = login(client)
     personal = client.post(

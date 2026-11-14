@@ -64,9 +64,7 @@ def register(context: ApplicationContext) -> None:
         body: OrganizationInput, request: Request
     ) -> dict[str, Any]:
         session = authenticated(request, True, require_destination=False)
-        name = body.name.strip()
-        if not name or len(name.casefold()) > 100:
-            raise HTTPException(422, "Choose a name of up to 100 characters")
+        name = organization_name(body)
         with DBSession(engine) as db:
             org = Organization(
                 id=str(uuid.uuid4()),
@@ -151,6 +149,30 @@ def register(context: ApplicationContext) -> None:
         if org is None or member is None or member.role != "admin":
             raise HTTPException(403, "Organization admin access required")
         return org
+
+    def organization_name(body: OrganizationInput) -> str:
+        name = body.name.strip()
+        if not name or len(name.casefold()) > 100:
+            raise HTTPException(422, "Choose a name of up to 100 characters")
+        return name
+
+    @router.put("/api/organizations/{org_id}")
+    def rename_organization(
+        org_id: str, body: OrganizationInput, request: Request
+    ) -> dict[str, Any]:
+        session = authenticated(request, True, require_destination=False)
+        with DBSession(engine) as db:
+            org = require_org_admin(db, org_id, session.user_id)
+            name = organization_name(body)
+            org.name = name
+            org.normalized_name = name.casefold()
+            try:
+                db.commit()
+            except IntegrityError:
+                raise HTTPException(
+                    409, "Organization name is already in use"
+                ) from None
+            return organization_data(db, org, session.user_id)
 
     @router.get("/api/organizations/{org_id}/members")
     def organization_members(org_id: str, request: Request) -> list[dict[str, str]]:

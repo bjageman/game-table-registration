@@ -128,3 +128,26 @@ it("searches titles and sorts by title/date while respecting archived events", a
   fireEvent.change(screen.getByRole("searchbox", { name: "Search events" }), { target: { value: "Clocktower" } });
   expect(screen.getByText("No Matching Events")).toBeVisible();
 });
+
+it("confirms recurring event deletion and allows cancellation", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify(
+    url === "/api/recurring-series" ? [{ id: "series", title: "Weekly games", frequency: "weekly", time_zone: "UTC" }] : [],
+  )));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Dashboard {...props} />);
+  const trigger = await screen.findByRole("button", { name: "Delete" });
+  fireEvent.click(trigger);
+  let dialog = screen.getByRole("dialog", { name: "Delete recurring event?" });
+  expect(dialog).toHaveTextContent("Are you sure you want to delete Weekly games?");
+  expect(fetchMock).not.toHaveBeenCalledWith("/api/recurring-series/series/stop", expect.anything());
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(dialog).not.toBeInTheDocument();
+  fireEvent.click(trigger);
+  dialog = screen.getByRole("dialog", { name: "Delete recurring event?" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  await screen.findByText("Stopped Weekly games. Upcoming unposted events were removed.");
+  expect(dialog).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/recurring-series/series/stop", expect.objectContaining({ method: "POST" }));
+});

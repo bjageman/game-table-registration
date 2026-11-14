@@ -122,3 +122,32 @@ it("confirms before deleting an organization member", async () => {
   ));
   await waitFor(() => expect(screen.queryByRole("cell", { name: "Mary" })).not.toBeInTheDocument());
 });
+
+it("opens the organization name in an edit modal and saves it", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  const onSaved = vi.fn(async () => {});
+  const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/organizations/org" && options?.method === "PUT")
+      return new Response(JSON.stringify({ name: "New Crew" }));
+    if (url.endsWith("/members")) return new Response("[]");
+    return new Response(JSON.stringify({ selected_id: "org", organizations: [
+      { id: "org", name: "Friday Crew", created_by: "owner", role: "admin" },
+    ] }));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<OrganizationSettings csrf="csrf" userId="owner" onSaved={onSaved} onAccessError={() => false} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  const dialog = screen.getByRole("dialog", { name: "Edit organization" });
+  const name = within(dialog).getByRole("textbox", { name: "Organization name" });
+  expect(name).toHaveValue("Friday Crew");
+  fireEvent.change(name, { target: { value: "New Crew" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  expect(screen.getByRole("heading", { name: "New Crew" })).toBeVisible();
+  expect(onSaved).toHaveBeenCalledOnce();
+  expect(fetchMock).toHaveBeenCalledWith("/api/organizations/org", expect.objectContaining({
+    method: "PUT", body: JSON.stringify({ name: "New Crew" }),
+    headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }),
+  }));
+});
