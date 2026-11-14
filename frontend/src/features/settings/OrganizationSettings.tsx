@@ -129,7 +129,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   async function remove() {
     if (!selected || busy) return;
     const creator = selected.created_by === userId;
-    if (creator && !confirmingDelete) return;
+    if (!confirmingDelete) return;
     const path = creator ? `/organizations/${selected.id}` : `/organizations/${selected.id}/members/me`;
     setBusy(true); setError(""); setDeleteError("");
     try {
@@ -138,8 +138,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       setSelectedId(""); setRevision((value) => value + 1); await onSaved();
     } catch (failure) {
       if (!onAccessError(failure)) {
-        if (creator) setDeleteError(errorMessage(failure));
-        else setError(errorMessage(failure));
+        setDeleteError(errorMessage(failure));
       }
     }
     finally { setBusy(false); }
@@ -155,8 +154,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       <button id="organization-create-button" type="button" disabled={busy} onClick={() => { setCreateError(""); setCreating(true); }}>Create</button>
       {selected?.role === "admin" && <button id="organization-edit-button" type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>}
       {selected && <button id={selected.created_by === userId ? "organization-delete-button" : "organization-leave-button"} type="button" disabled={busy} onClick={() => {
-        if (selected.created_by === userId) { setDeleteError(""); setConfirmingDelete(true); }
-        else void remove();
+        setDeleteError(""); setConfirmingDelete(true);
       }}>{selected.created_by === userId ? "Delete" : "Leave organization"}</button>}
     </div>
     {creating && <dialog id="organization-create-dialog" ref={createDialog} aria-labelledby="organization-create-heading"
@@ -221,9 +219,11 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
         <div className="form-actions"><button type="submit" className="primary" disabled={busy || !newUser}>{busy ? "Adding…" : "Add User"}</button></div>
         </form>
       </dialog>}
-      {confirmingDelete && <ConfirmationDialog id="organization-delete-dialog" title="Delete organization?" busy={busy} error={deleteError}
+      {confirmingDelete && <ConfirmationDialog id={selected.created_by === userId ? "organization-delete-dialog" : "organization-leave-dialog"} title={selected.created_by === userId ? "Delete organization?" : "Leave organization?"} busy={busy} error={deleteError}
         onCancel={() => { setConfirmingDelete(false); setDeleteError(""); }} onConfirm={() => void remove()}>
-        <p>Are you sure you want to delete {selected.name}? This cannot be undone.</p>
+        <p>{selected.created_by === userId
+          ? `Are you sure you want to delete ${selected.name}? This cannot be undone.`
+          : `Are you sure you want to leave ${selected.name}?`}</p>
       </ConfirmationDialog>}
     </>}
   </div>;

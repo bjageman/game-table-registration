@@ -82,3 +82,17 @@ General → Send private messages for waitlist promotions defaults off and is sc
 Each message names the event, table, and start time and includes a **Give up my seat** button. The Gateway verifies the application, private message, and intended recipient, then uses the same locked withdrawal service as channel reactions. Repeated clicks cannot release another player's seat or promote anyone twice. Withdrawals stop when the event starts or is archived. The saved lottery draw remains unchanged.
 
 `promotion_dms` is a separate durable delivery queue. The assignment commits before Discord is contacted; blocked inboxes never revoke a seat. Temporary errors and rate limits retry, while ambiguous sends are reconciled with message history before any further action. Unconfirmed delivery is recorded for review rather than blindly reposted. Archived events, expired events, disabled preferences, and players who no longer hold the promoted seat cancel pending notices. Public assignment updates continue independently. The existing Gateway listener must be running for DM buttons to work; no extra privileged intent is required.
+
+## Live updates
+
+Authenticated browsers connect to `/api/live`; shared assignment pages use
+`/api/public/live/{token}`. Streams contain empty invalidations, never roster or
+organization data. Clients reload their normal scoped APIs after an update.
+Access is checked at connection time and again on updates and 15-second
+heartbeats. Commits trigger notifications; rollbacks and unchanged ORM values
+do not. Discord poll additions and removals also request a refresh.
+
+SQLite broadcasts within the local API process. PostgreSQL uses transactional
+LISTEN/NOTIFY to reach other API workers, with one dedicated listener connection
+per process. External proxies must allow streaming without response buffering;
+the bundled nginx configuration does so. No schema migration is needed.
