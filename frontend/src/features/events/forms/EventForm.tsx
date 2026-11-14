@@ -74,6 +74,7 @@ export default function EventForm({
   const [startsAtLocal, setStartsAtLocal] = useState(
     draft ? dayjs.unix(draft.starts_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : "",
   );
+  const [createDiscordEvent, setCreateDiscordEvent] = useState(true);
   const [endOverride, setEndOverride] = useState<string | null>(
     draft?.ends_at && draft.ends_at - draft.starts_at !== 4 * 3600
       ? dayjs.unix(draft.ends_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : null,
@@ -113,6 +114,13 @@ export default function EventForm({
   const [choosingTemplate, setChoosingTemplate] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const isMobile = useMediaQuery("(max-width: 600px)");
+  useEffect(() => {
+    const controller = new AbortController();
+    api<{ create_discord_event?: boolean }>("/settings/assignment", { signal: controller.signal })
+      .then((value) => { if (!controller.signal.aborted) setCreateDiscordEvent(value.create_discord_event ?? true); })
+      .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    return () => controller.abort();
+  }, [onAccessError]);
   useEffect(() => {
     const controller = new AbortController();
     api<EventTemplateRecord[]>("/templates", { signal: controller.signal })
@@ -266,7 +274,7 @@ export default function EventForm({
     }
     const start = resolveLocalTime(startsAtLocal, timezone).date!;
     const end = resolveLocalTime(endsAtLocal, timezone).date;
-    if (!end || end.getTime() <= start.getTime()) {
+    if (createDiscordEvent && (!end || end.getTime() <= start.getTime())) {
       setError("Choose an event end time after its start time.");
       return;
     }
@@ -278,7 +286,7 @@ export default function EventForm({
     if (!scheduled && manualClosesBefore.trim()) {
       const close = Number(manualClosesBefore);
       if (!Number.isInteger(close) || close < 1 || close > 767) {
-        setError("Signups Close Before Event must be a whole number from 1 to 767 hours, or blank for manual closing.");
+        setError("Choose whole hours before the event so the signup closing time is still in the future.");
         return;
       }
       if (start.getTime() - close * 3600000 <= Date.now()) {
@@ -315,7 +323,7 @@ export default function EventForm({
             description: description.trim(),
             location: location.trim(),
             starts_at: start.toISOString(),
-            ends_at: end.toISOString(),
+            ends_at: createDiscordEvent ? end?.toISOString() : draft?.ends_at ? new Date(draft.ends_at * 1000).toISOString() : null,
             duration_hours: hours,
             ...(scheduled ? { opens_before_hours: Number(opensBefore), closes_before_hours: Number(closesBefore) } : { closes_before_hours: manualClosesBefore.trim() ? Number(manualClosesBefore) : null }),
             ...(frequency !== "once" ? {
@@ -393,7 +401,7 @@ export default function EventForm({
               htmlInput: { maxLength: 100 },
             }}
           />
-          <div className="event-date-time-row">
+          <div className={`event-date-time-row${createDiscordEvent ? "" : " single"}`}>
             <div className="date-time-fields" ref={scheduleFields}>
               {isMobile ? (
                 <div className="mobile-date-time-fields">
@@ -480,12 +488,12 @@ export default function EventForm({
                 />
               )}
             </div>
-          <DateTimePicker
+          {createDiscordEvent && <DateTimePicker
             timezone={timezone} label="Event ends" value={endsAtLocal ? dayjs.tz(endsAtLocal, timezone) : null}
             onChange={(value) => setEndOverride(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "")}
             format="MMMM D, YYYY h:mm A" ampm minutesStep={15}
             slotProps={{ textField: { margin: "none", id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }}
-          />
+          />}
           </div>
           </FormFields>
           <SignupWarningFields enabled={postWarning} hours={warningHours} message={warningMessage}
