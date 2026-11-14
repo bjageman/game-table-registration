@@ -470,3 +470,80 @@ def test_mixed_real_and_manual_test_players_publish_in_both_modes(client, review
         for user in payload["allowed_mentions"]["users"]
     )
     assert all("<@test-" not in payload["content"] for payload in sent)
+
+
+@pytest.mark.parametrize("rejoined", [False, True])
+def test_review_promotions_notify_after_publication_and_dm_withdraws(client, rejoined):
+    from promotion_helpers import discord_client
+
+    from app.discord import promotion_dms
+    from app.discord.discord_api import DiscordRequestError
+    from app.models import PromotionDM
+
+    headers, event, path = prepared(client)
+    client.post(path + "/close", headers=headers)
+    engine = client.app.state.engine
+    with Session(engine) as db:
+        run = db.get(LotteryRun, event["id"])
+        if rejoined:
+            pid, table = next(iter(run.result["assignments"].items()))
+        else:
+            table = next(row for row in run.result["tables"] if row["waitlist"])
+            pid, table = table["waitlist"][0]["id"], table["name"]
+    if rejoined:
+        assert (
+            client.delete(
+                path + f"/manager-players/{pid}",
+                headers=headers,
+                params={"table": table},
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                path + f"/waitlisted-players/{pid}",
+                headers=headers,
+                json={"table": table},
+            ).status_code
+            == 200
+        )
+    assert (
+        client.post(
+            path + f"/assigned-players/{pid}", headers=headers, json={"table": table}
+        ).status_code
+        == 200
+    )
+    discord = client.app.state.discord
+    discord.send_announcement.side_effect = DiscordRequestError(400)
+    assert (
+        client.post(path + "/assignments/approve", headers=headers).json()["status"]
+        == "review"
+    )
+    with Session(engine) as db:
+        assert list(db.scalars(select(PromotionDM))) == []
+    discord.send_announcement.side_effect = None
+    assert (
+        client.post(path + "/assignments/approve", headers=headers).json()["status"]
+        == "assigned"
+    )
+    assert (
+        client.post(path + "/assignments/approve", headers=headers).json()["status"]
+        == "assigned"
+    )
+    with Session(engine) as db:
+        notices = list(
+            db.scalars(select(PromotionDM).where(PromotionDM.discord_id == pid))
+        )
+        assert len(notices) == 1
+        assert notices[0].table_name == table
+        notice_id = notices[0].id
+    promotion_dms.dispatch_due(engine, discord_client())
+    message = promotion_dms.withdraw(
+        engine, notice_id, pid, "private-channel", "private-message"
+    )
+    assert "You have withdrawn" in message
+    with Session(engine) as db:
+        assert (
+            pid
+            not in current_result(db, db.get(LotteryRun, event["id"]))["assignments"]
+        )

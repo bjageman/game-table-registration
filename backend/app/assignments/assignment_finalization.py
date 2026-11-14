@@ -8,7 +8,13 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app.discord.announcements import enqueue
-from app.models import Announcement, Event, LotteryRun, PlayerProfile
+from app.models import (
+    Announcement,
+    Event,
+    EventWaitlistAddition,
+    LotteryRun,
+    PlayerProfile,
+)
 from app.players.player_profiles import for_event as player_scope_for_event
 
 
@@ -83,6 +89,19 @@ def complete_review_delivery(db: Session, event_id: str) -> None:
         run = db.get(LotteryRun, event_id)
         if event and run:
             adjust_weights(db, event, run)
+            from app.assignments.withdrawals import current_result, notify_promoted
+
+            # Review edits defer notifications until the roster is public.
+            # Include players manually re-added to a waitlist after the draw.
+            waiting = set(run.result.get("waitlist", [])) | set(
+                db.scalars(
+                    select(EventWaitlistAddition.discord_id).where(
+                        EventWaitlistAddition.event_id == event_id
+                    )
+                )
+            )
+            assignments = current_result(db, run)["assignments"]
+            notify_promoted(db, event, run, sorted(waiting.intersection(assignments)))
 
 
 def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
