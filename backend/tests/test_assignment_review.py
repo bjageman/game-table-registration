@@ -124,15 +124,19 @@ def test_approval_posts_edited_assignments_and_waitlists(client):
         == 200
     )
     rows = client.get(path + "/signups").json()
-    waiting = next(
-        player["id"]
+    waiting_table = next(
+        row
         for row in rows
-        for player in row["waitlist"]
-        if player["id"] != removed
+        if any(player["id"] != removed for player in row["waitlist"])
+    )
+    waiting = next(
+        player["id"] for player in waiting_table["waitlist"] if player["id"] != removed
     )
     assert (
         client.post(
-            path + f"/assigned-players/{waiting}", headers=headers, json={"table": "B"}
+            path + f"/assigned-players/{waiting}",
+            headers=headers,
+            json={"table": waiting_table["name"]},
         ).status_code
         == 200
     )

@@ -4,6 +4,7 @@ import PlayerProfile from "./PlayerProfile";
 import { api, errorMessage, type ModeratorSession } from "../../lib/api";
 import { FormField } from "../../components/FormFields";
 import LoadingIndicator from "../../components/LoadingIndicator";
+import useRememberedCheckbox from "../../hooks/useRememberedCheckbox";
 
 interface Player { discord_id: string; discord_name: string; real_name: string; weighting: number; guaranteed_seat: boolean; is_test: boolean; }
 type SortKey = "guaranteed_seat" | "discord_name" | "real_name" | "weighting" | "is_test";
@@ -23,6 +24,7 @@ export default function PlayerLookup({ session, onAccessError }: {
 }) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [query, setQuery] = useState("");
+  const [hideTestUsers, setHideTestUsers] = useRememberedCheckbox("player-lookup-hide-test-users");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -40,7 +42,7 @@ export default function PlayerLookup({ session, onAccessError }: {
 
   const normalized = query.trim().toLocaleLowerCase();
   const visible = players.filter((player) =>
-    `${player.discord_name} ${player.real_name} ${player.discord_id}`
+    (!hideTestUsers || !player.is_test) && `${player.discord_name} ${player.real_name} ${player.discord_id}`
       .toLocaleLowerCase().includes(normalized),
   );
   const sorted = [...visible].sort((left, right) => {
@@ -62,13 +64,14 @@ export default function PlayerLookup({ session, onAccessError }: {
   }
 
   return <section id="player-lookup" className="panel" aria-labelledby="player-lookup-heading">
-    <div className="section-heading"><h2 id="player-lookup-heading">Player Lookup</h2></div>
+    <div className="section-heading"><h2 id="player-lookup-heading">Player Lookup{!loading && !error && ` (${visible.length} ${visible.length === 1 ? "Player" : "Players"})`}</h2></div>
     <FormField id="player-lookup-search" type="search" label="Search players" placeholder="Search by name or Discord ID"
       value={query} onChange={(event) => setQuery(event.target.value)} />
+    <label className="archive-filter"><input id="player-lookup-hide-test-users" type="checkbox" checked={hideTestUsers}
+      onChange={(event) => setHideTestUsers(event.target.checked)} /> Hide test users</label>
     {loading && <p><LoadingIndicator label="Loading players…" /></p>}
     {error && <p role="alert" className="error">Could not load players. {error} <button type="button" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Retry</button></p>}
     {!loading && !error && <>
-      <p>{visible.length} {visible.length === 1 ? "player" : "players"}</p>
       {visible.length ? <div className="player-lookup-table">
         <div className="player-lookup-columns">{sortHeaders.map(({ key, label }) => <button id={`player-lookup-sort-${key}`} key={key}
           type="button" className={`player-lookup-sort${key === "weighting" ? " player-lookup-sort-weight" : ""}`} aria-pressed={sort.key === key}
@@ -85,7 +88,7 @@ export default function PlayerLookup({ session, onAccessError }: {
           <span className="player-lookup-test">{player.is_test && <span className="badge">Test User</span>}</span>
         </button>
       </li>)}</ul>
-      </div> : <p>{players.length ? "No players match your search." : "No players have signed up yet."}</p>}
+      </div> : <p>{players.length ? "No players match your filters." : "No players have signed up yet."}</p>}
     </>}
     {selected && <PlayerProfile key={selected.discord_id} player={{ id: selected.discord_id, name: selected.discord_name }}
       csrf={session.csrf} onClose={() => setSelected(undefined)} onAccessError={onAccessError}
