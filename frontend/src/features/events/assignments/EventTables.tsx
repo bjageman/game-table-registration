@@ -50,7 +50,6 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [removing, setRemoving] = useState<{ player: SignupPlayer; willPromote: boolean; fromWaitlist?: boolean; table?: string }>();
   const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
   const addDialog = useDialog(Boolean(addingTable));
-  const hasSignups = event.status === "open" || event.status === "closing" || event.status === "review" || event.status === "assigned" || Boolean(event.discord_url) || Boolean(event.is_test);
   const canEditSignups = !readOnly && !event.archived_at && (event.status === "draft" || event.status === "scheduled" || event.status === "open" || event.status === "assigned" || event.status === "review");
   const canRemoveSignups = !readOnly && (canEditSignups || event.status === "assigned");
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
@@ -79,7 +78,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     try {
       await api(`/events/${encodeURIComponent(event.id)}/${addingToWaitlist ? "waitlisted-players" : "manager-players"}/${encodeURIComponent(player.discord_id)}`,
         { ...mutationOptions(csrf, { table: addingTable, ...(addingToWaitlist ? {} : { name: player.discord_name }) }), method: addingToWaitlist ? "POST" : "PUT" });
-      const signupPlayer = { id: player.discord_id, name: player.discord_name };
+      const signupPlayer = { id: player.discord_id, name: player.discord_name, display_name: player.real_name || undefined };
       setRows((current) => {
         const value: TableSignups[] = current ?? event.tables.map((table) => ({ name: table.name, players: [] }));
         return value.map((row) => {
@@ -138,7 +137,6 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     } finally { setSaving(false); }
   }
   useEffect(() => {
-    if (!hasSignups) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
@@ -157,7 +155,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     }
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, hasSignups, attempt, refreshToken, onAccessError, onRefreshingChange]);
+  }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, attempt, refreshToken, onAccessError, onRefreshingChange]);
   return <>
     {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf} readOnly={readOnly}
       onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
@@ -199,7 +197,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     </p>}
     {weightNotice && <p role="status" className="notice">{weightNotice}</p>}
     {actionError && !assigning && !addingTable && <p role="alert" className="error">{actionError}</p>}
-    <TableColumns event={event} rows={hasSignups ? rows : rows ?? event.tables.map((t) => ({ name: t.name, players: [] }))} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
+    <TableColumns event={event} rows={rows} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
       canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingToWaitlist(false); setAddingTable(table); }}
       onAddToWaitlist={(table) => { setPlayersLoading(true); setActionError(""); setAddingToWaitlist(true); setAddingTable(table); }} onRemovePlayer={(player, willPromote, fromWaitlist, table) => setRemoving({ player, willPromote, fromWaitlist, table })}
       onAssignWaitlisted={!readOnly && (event.status === "assigned" || event.status === "review") ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}

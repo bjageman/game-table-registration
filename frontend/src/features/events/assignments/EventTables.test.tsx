@@ -10,7 +10,7 @@ const event: EventRecord = {
 };
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it.each(["open", "assigned"])("suggests known players and adds the selected player during %s", async (status) => {
+it.each(["draft", "open", "review", "assigned"])("suggests known players and adds the selected player during %s", async (status) => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   let added = false;
@@ -20,10 +20,10 @@ it.each(["open", "assigned"])("suggests known players and adds the selected play
       { discord_id: "456", discord_name: "dan", real_name: "Daniel" },
     ]));
     if (url.includes("/manager-players/123") && options?.method === "PUT") { added = true; return new Response("{}", { status: 200 }); }
-    return new Response(JSON.stringify([{ name: "Table A", players: added ? [{ id: "123", name: "mary" }] : [] }, { name: "Table B", players: [] }]));
+    return new Response(JSON.stringify([{ name: "Table A", players: added ? [{ id: "123", name: "mary", display_name: "Mary Jones" }] : [] }, { name: "Table B", players: [] }]));
   });
   vi.stubGlobal("fetch", fetchMock);
-  render(<EventTables csrf="csrf" event={{ ...event, status }} onAccessError={() => false} />);
+  render(<EventTables csrf="csrf" event={{ ...event, status, discord_url: status === "draft" ? null : event.discord_url }} onAccessError={() => false} />);
   fireEvent.click(screen.getAllByRole("button", { name: "Add Player" })[0]);
   const search = screen.getByRole("combobox", { name: "Search players" });
   fireEvent.change(search, { target: { value: "mar" } });
@@ -34,7 +34,7 @@ it.each(["open", "assigned"])("suggests known players and adds the selected play
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
     "/api/events/event/manager-players/123", expect.objectContaining({ method: "PUT" }),
   ));
-  expect(await screen.findByRole("button", { name: "mary" })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "Mary Jones" })).toBeVisible();
 });
 
 it("closes the add player dialog with Cancel and a backdrop click", () => {
