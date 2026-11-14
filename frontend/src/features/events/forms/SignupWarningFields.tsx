@@ -13,10 +13,10 @@ export default function SignupWarningFields({ enabled, hours, message, onEnabled
   onEnabled: (value: boolean) => void; onHours: (value: string) => void; onMessage: (value: string) => void;
   error?: string;
 }) {
-  return <div className="signup-warning-fields">
+  return <div className="signup-warning-fields event-scheduling-options">
     <label className="scheduled-event-checkbox"><input id="event-post-warning-message" type="checkbox" checked={enabled}
-      onChange={(event) => onEnabled(event.target.checked)} /> Post Warning Message</label>
-    {enabled && <div className="form-grid">
+      onChange={(event) => onEnabled(event.target.checked)} /> Warning Message</label>
+    {enabled && <div className="event-scheduling-inputs signup-warning-inputs">
       <FormField id="event-form-warning_hours_before_close" label="Hours before close" type="number" value={hours}
         onChange={(event) => onHours(event.target.value)} error={Boolean(error)} helperText={error}
         slotProps={{ htmlInput: { min: 1, max: 767, step: 1 } }} />

@@ -267,7 +267,7 @@ it("reveals warning settings with a one-hour default and saves a custom message"
   vi.stubGlobal("fetch", fetchMock);
   renderForm(); fill();
   expect(screen.queryByRole("spinbutton", { name: "Hours before close" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("checkbox", { name: "Post Warning Message" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Warning Message" }));
   const hours = screen.getByRole("spinbutton", { name: "Hours before close" });
   expect(hours).toHaveValue(1);
   const message = screen.getByRole("textbox", { name: "Warning message" });

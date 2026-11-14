@@ -5,7 +5,7 @@ test("reveals closing warning inputs below event time with a one-hour default", 
   await page.route("**/api/events", route => route.fulfill({ json: [] }));
   await page.goto("/");
   await page.locator("#event-create-button").click();
-  const checkbox = page.getByRole("checkbox", { name: "Post Warning Message" });
+  const checkbox = page.getByRole("checkbox", { name: "Warning Message" });
   await expect(checkbox).not.toBeChecked();
   await expect(page.getByRole("textbox", { name: "Warning message" })).toHaveCount(0);
   await checkbox.check();
