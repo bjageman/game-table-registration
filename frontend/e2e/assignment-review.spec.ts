@@ -19,6 +19,7 @@ test("reviews a saved draw before confirming its publication to Discord", async 
       return route.fulfill({ json: event() });
     }
     const json = path === "/api/me" ? { username: "organizer", csrf: "csrf" }
+      : path === "/api/settings/assignment" ? { review_assignments_before_discord: true }
       : path === "/api/events" ? [event()]
       : path.endsWith("/signups") ? [{ name: "Table A", players: [{ id: "1", name: "Alice" }],
         waitlist: status === "open" ? [] : [{ id: "2", name: "Bob" }] }]
@@ -29,8 +30,8 @@ test("reviews a saved draw before confirming its publication to Discord", async 
   await page.goto("/");
   await page.locator("#event-open-event").click();
   await page.getByRole("button", { name: "Close Signups", exact: true }).click();
-  await page.getByRole("dialog", { name: "Close signups for Review Night?" }).getByRole("button", { name: "Confirm", exact: true }).click();
   const review = page.locator("#event-dialog-event");
+  await expect(review.getByText("Awaiting review", { exact: true })).toBeVisible();
   await expect(review).toBeVisible();
   await expect(page.getByText("Alice", { exact: true })).toBeVisible();
   await expect(page.getByRole("list", { name: "Waitlist for Table A" })).toHaveText("Bob");

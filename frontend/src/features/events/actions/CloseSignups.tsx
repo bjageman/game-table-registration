@@ -14,9 +14,10 @@ export default function CloseSignups({ event, csrf, onUpdated, onAccessError }: 
   const [error, setError] = useState("");
   const [deleteMessage, setDeleteMessage] = useRememberedCheckbox("delete-discord-signup-on-close");
   const inFlight = useRef(false);
+  const checkingPreference = useRef(false);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
-  async function close() {
+  async function close(deleteSignupMessage: boolean) {
     if (inFlight.current) return;
     inFlight.current = true;
     const operation = new AbortController();
@@ -25,7 +26,7 @@ export default function CloseSignups({ event, csrf, onUpdated, onAccessError }: 
     try {
       for (let attempt = 0; attempt < 15; attempt++) {
         if (operation.signal.aborted) return;
-        const result = await api<EventRecord>(`/events/${encodeURIComponent(event.id)}/close${deleteMessage ? "?delete_signup_message=true" : ""}`, {
+        const result = await api<EventRecord>(`/events/${encodeURIComponent(event.id)}/close${deleteSignupMessage && deleteMessage ? "?delete_signup_message=true" : ""}`, {
           ...mutationOptions(csrf), signal: operation.signal,
         });
         if (result.status === "assigned" || result.status === "review") {
@@ -46,11 +47,33 @@ export default function CloseSignups({ event, csrf, onUpdated, onAccessError }: 
       if (!operation.signal.aborted) setBusy(false);
     }
   }
+  async function beginClose() {
+    if (checkingPreference.current || inFlight.current) return;
+    checkingPreference.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const settings = await api<{ review_assignments_before_discord?: boolean }>(
+        "/settings/assignment",
+      );
+      if (settings.review_assignments_before_discord ?? true) {
+        await close(false);
+      } else {
+        setConfirming(true);
+      }
+    } catch (failure) {
+      if (!onAccessError(failure)) setError(errorMessage(failure));
+    } finally {
+      checkingPreference.current = false;
+      if (!inFlight.current) setBusy(false);
+    }
+  }
   return <>
-    <button id={`event-close-signups-${event.id}`} type="button" className="primary" onClick={() => { setError(""); setConfirming(true); }}>Close Signups</button>
+    {error && !confirming && <p role="alert" className="error">{error}</p>}
+    <button id={`event-close-signups-${event.id}`} type="button" className="primary" disabled={busy} onClick={() => void beginClose()}>Close Signups</button>
     {confirming && <ConfirmationDialog id={`event-close-signups-dialog-${event.id}`} title={`Close signups for ${event.title}?`}
       busy={busy} error={error} status="Closing signups and determining placement…"
-      onCancel={() => setConfirming(false)} onConfirm={() => void close()}>
+      onCancel={() => setConfirming(false)} onConfirm={() => void close(true)}>
       {event.discord_url && <label className="delete-poll-option"><input type="checkbox" checked={deleteMessage} disabled={busy}
         onChange={(change) => setDeleteMessage(change.target.checked)} /> Also delete the signup message on Discord</label>}
     </ConfirmationDialog>}
