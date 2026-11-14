@@ -551,7 +551,7 @@ dd {
 .table-waitlist { margin-top: 20px; }
 .table-waitlist h4, .table-waitlist h5 { font-weight: 650; margin-bottom: 8px; }
 .table-waitlist ul { list-style: none; padding-left: 0; }
-.table-waitlist li { display: flex; align-items: center; gap: 4px; padding-right: 2px; }
+.table-waitlist li { display: grid; grid-template-columns: 26px minmax(0, 1fr) 26px; align-items: center; gap: 5px; padding-right: 2px; }
 .add-waitlisted-player { flex: none; padding: 2px; border: 0; border-radius: 4px; background: transparent; color: #287343; cursor: pointer; }
 .add-waitlisted-player:hover, .add-waitlisted-player:focus-visible { background: #e8f2ea; }
 

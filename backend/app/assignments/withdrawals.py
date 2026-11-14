@@ -383,7 +383,22 @@ def manager_remove(
         current = current_result(db, run)
         table_name = current["assignments"].get(player_id)
         if table_name is None:
-            return False
+            table_name = next(
+                (
+                    table["name"]
+                    for table in current["tables"]
+                    if any(player["id"] == player_id for player in table["waitlist"])
+                ),
+                None,
+            )
+            if table_name is None:
+                return False
+            removed_at = time.time()
+            record_withdrawal(db, event.id, player_id, table_name, removed_at, None)
+            if event.status == "assigned":
+                enqueue_refresh(db, event)
+            db.commit()
+            return True
         removed_at = time.time()
         promoted_ids = replace_with_waitlist(
             db, event, run, current, player_id, table_name, removed_at
