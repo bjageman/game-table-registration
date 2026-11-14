@@ -22,10 +22,7 @@ from app.discord.message_cleanup import (
 from app.events.player_edits import edit_player
 from app.events.publication import mark_signup_closed
 from app.events.signup_exports import event_csv, event_pdf, summary_csv
-from app.events.signups import apply_manager_signups, table_rows
-from app.events.test_signups import (
-    add_to_rows,
-)
+from app.events.signups import current_signup_rows
 from app.events.test_signups import (
     allowed as test_users_allowed,
 )
@@ -37,7 +34,6 @@ from app.models import (
     EventPlayerSetting,
     LotteryRun,
     PlayerProfile,
-    TableSignup,
 )
 from app.players.player_profiles import for_event as player_scope_for_event
 from app.players.player_profiles import remember_poll_players
@@ -66,7 +62,6 @@ def register(context: ApplicationContext) -> None:
     @router.get("/api/events/{event_id}/signups")
     def event_signups(event_id: str, request: Request) -> list[dict[str, Any]]:
         authenticated(request)
-        custom_result: list[dict[str, Any]] | None = None
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
             if event.status in ("assigned", "review"):
@@ -75,24 +70,7 @@ def register(context: ApplicationContext) -> None:
                     raise HTTPException(503, "Saved placements are unavailable")
                 rows: list[dict[str, Any]] = current_result(db, run)["tables"]
                 return list_names(rows, event_id, include_settings=False)
-            message_id = event.message_id
-            tables = event.tables
-            population = event.test_signups
-            if event.signup_mode in ("custom", "reactions"):
-                custom_result = apply_manager_signups(
-                    db, event, add_to_rows(table_rows(db, event), population)
-                )
-                db.rollback()
-        if custom_result is not None:
-            return list_names(custom_result, event_id)
-        rows = (
-            scoped_discord(request).table_signups(message_id, tables)
-            if message_id
-            else [{"name": table["name"], "players": []} for table in tables]
-        )
-        with DBSession(engine) as db:
-            event = context.scoped_event(db, event_id, request)
-            rows = apply_manager_signups(db, event, add_to_rows(rows, population))
+            rows = current_signup_rows(db, event, scoped_discord(request))
             remember_poll_players(db, event, rows)
             db.commit()
         return list_names(rows, event_id)
@@ -270,22 +248,10 @@ def register(context: ApplicationContext) -> None:
                 }:
                     raise HTTPException(422, "Unknown table")
                 signed_up = any(
-                    p["id"] == player_id and body.guaranteed_table in p["choices"]
-                    for p in (event.test_signups or {}).get("players", [])
+                    row["name"] == body.guaranteed_table
+                    and any(player["id"] == player_id for player in row["players"])
+                    for row in current_signup_rows(db, event, scoped_discord(request))
                 )
-                if event.signup_mode in ("custom", "reactions"):
-                    signup = db.get(TableSignup, (event_id, player_id))
-                    signed_up = signed_up or bool(
-                        signup and body.guaranteed_table in signup.choices
-                    )
-                elif event.message_id and not signed_up:
-                    signed_up = any(
-                        row["name"] == body.guaranteed_table
-                        and any(p["id"] == player_id for p in row["players"])
-                        for row in scoped_discord(request).table_signups(
-                            event.message_id, event.tables
-                        )
-                    )
                 if not signed_up:
                     raise HTTPException(422, "Player is not signed up for that table")
             setting = db.get(EventPlayerSetting, (event_id, player_id))

@@ -133,3 +133,61 @@ def test_adding_after_legacy_removal_does_not_revive_generated_choices(promotion
         assert event.test_signups["players"][0]["choices"] == []
         players = apply_manager_players(db, event, event.test_signups["players"])
         assert players[0]["choices"] == ["A"]
+
+
+@pytest.mark.parametrize("mode", ["poll", "reactions"])
+def test_guarantee_uses_the_same_roster_as_the_table_view(client, mode):
+    from flow_helpers import event_body, login
+
+    headers = login(client)
+    body = {
+        **event_body(),
+        "tables": [{"name": name, "capacity": 8} for name in ("A", "B")],
+    }
+    event = client.post("/api/events", headers=headers, json=body).json()
+    path = f"/api/events/{event['id']}"
+    assert (
+        client.post(
+            path + "/test-users", headers=headers, json={"players": 1}
+        ).status_code
+        == 200
+    )
+    with Session(client.app.state.engine) as db:
+        saved = db.get(Event, event["id"])
+        pid = saved.test_signups["players"][0]["id"]
+        saved.test_signups = {
+            **saved.test_signups,
+            "players": [{**saved.test_signups["players"][0], "choices": ["A"]}],
+        }
+        saved.status = "open"
+        saved.signup_mode = mode
+        db.commit()
+    assert (
+        client.put(
+            path + f"/manager-players/{pid}",
+            headers=headers,
+            json={"table": "B", "name": "Test Player 001"},
+        ).status_code
+        == 200
+    )
+    rows = client.get(path + "/signups").json()
+    assert any(player["id"] == pid for player in rows[1]["players"])
+    target = path + f"/players/{pid}/settings"
+    assert (
+        client.put(target, headers=headers, json={"guaranteed_table": "B"}).status_code
+        == 200
+    )
+    assert (
+        client.delete(
+            path + f"/manager-players/{pid}", headers=headers, params={"table": "B"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(target, headers=headers, json={"guaranteed_table": "B"}).status_code
+        == 422
+    )
+    assert (
+        client.put(target, headers=headers, json={"guaranteed_table": "A"}).status_code
+        == 200
+    )

@@ -8,10 +8,12 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.discord.discord_api import DiscordAPI
 from app.discord.discord_format import clean
 from app.discord.event_threads import queue_member
 from app.discord.signup_messages import signup_body
 from app.events.table_membership import filter_rows, removals
+from app.events.test_signups import add_to_rows
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
@@ -72,6 +74,20 @@ def table_rows(db: Session, event: Event) -> list[dict[str, Any]]:
         }
         for table in event.tables
     ]
+
+
+def current_signup_rows(
+    db: Session, event: Event, discord: DiscordAPI
+) -> list[dict[str, Any]]:
+    """The roster used by both the signup view and membership validation."""
+    rows = (
+        table_rows(db, event)
+        if event.signup_mode in ("custom", "reactions")
+        else discord.table_signups(event.message_id, event.tables)
+        if event.message_id
+        else [{"name": table["name"], "players": []} for table in event.tables]
+    )
+    return apply_manager_signups(db, event, add_to_rows(rows, event.test_signups))
 
 
 def apply_manager_signups(
