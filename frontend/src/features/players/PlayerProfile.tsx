@@ -41,6 +41,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
   const [savingWeight, setSavingWeight] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [pairError, setPairError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const dialog = useDialog();
   useEffect(() => () => clearTimeout(nameFeedbackTimer.current), []);
@@ -116,14 +117,14 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
   }
   function saveGuarantee() {
     if (profileRef.current && guaranteedSeat !== submitted.current.guaranteed_seat) {
-      void saveChange({ guaranteed_seat: guaranteedSeat }, "Guaranteed seat saved.");
+      void saveChange({ guaranteed_seat: guaranteedSeat });
     }
   }
   function saveWeight(): boolean {
     if (!profileRef.current) return true;
     const entered = Number(weighting);
     const value = Math.min(10, Math.max(0.1, entered));
-    const message = entered > 10 ? "The maximum weight is 10. Weight set to 10." : entered < 0.1 ? "The minimum weight is 0.1. Weight set to 0.1." : "Global weighting saved.";
+    const message = entered > 10 ? "The maximum weight is 10. Weight set to 10." : entered < 0.1 ? "The minimum weight is 0.1. Weight set to 0.1." : "";
     if (!weighting.trim() || !Number.isFinite(entered)) {
       setError("Choose a weighting from 0.1 to 10.");
       return false;
@@ -165,10 +166,12 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
       {profile?.is_test && <span className="badge">Test User</span>}
       <button id={`player-profile-close-${player.id}`} type="button" aria-label="Close player information" title="Close" onClick={() => void close()} autoFocus><X size={18} aria-hidden="true" /></button>
     </ModalHeader>
+    {error && <p role="alert" className="player-profile-feedback">{error}</p>}
+    {pairError && <p role="alert" className="player-profile-feedback">{pairError}</p>}
+    {notice && <p role="status" className="player-profile-feedback">{notice}</p>}
+    {!profile && error && <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button>}
     <dl className="player-discord-name"><dt>Discord Name</dt><dd>{profile?.discord_name ?? player.name}</dd></dl>
     {!profile && !error && <p><LoadingIndicator label="Loading player information…" /></p>}
-    {error && <p role="alert" className="error">{error}</p>}
-    {!profile && error && <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button>}
     {profile && <div aria-label="Player information">
       <FormFields>
       <FormField id={nameField} label="Display Name" value={realName} fullWidth disabled={readOnly}
@@ -180,14 +183,13 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
         onBlur={() => { saveWeight(); }}
         slotProps={{ htmlInput: { min: 0.1, max: 10, step: 0.1 } }} />
       </div>
-      <PlayerPairEditor playerId={player.id} partner={profile.partner ?? null} csrf={csrf} readOnly={readOnly} onAccessError={onAccessError}
+      <PlayerPairEditor playerId={player.id} partner={profile.partner ?? null} csrf={csrf} readOnly={readOnly} onAccessError={onAccessError} onError={setPairError}
         onBusy={(busy) => { pairingBusy.current = busy; }} onChanged={(partner) => {
           setProfile((current) => current ? { ...current, partner } : current);
           onSaved?.();
         }} />
       <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat} disabled={readOnly}
-        onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }, "Guaranteed seat saved."); }} />} />
-      {notice && <p role="status">{notice}</p>}
+        onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }); }} />} />
       </FormFields>
 
     </div>}

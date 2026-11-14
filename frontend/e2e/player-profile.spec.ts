@@ -65,8 +65,14 @@ test("test profile fields have space for labels and guarantees use selected tabl
   await profile.screenshot({ path: `/tmp/tablesignup-profile-spacing-${testInfo.project.name}.png` });
   await profile.getByLabel("Display Name").fill("Volunteer");
   await profile.getByLabel("Global Weighting").fill("2.5");
+  const weightSaved = page.waitForResponse((response) =>
+    response.url().includes("/api/players/test-123") && response.request().method() === "PUT"
+      && response.request().postDataJSON().weighting === 2.5,
+  );
   await profile.getByLabel("Global Weighting").blur();
-  await expect(profile.getByRole("status").filter({ hasText: "Global weighting saved." })).toBeVisible();
+  await weightSaved;
+  await expect(profile.getByLabel("Global Weighting")).toBeEnabled();
+  await expect(profile.getByText(/Global weighting saved\.|Guaranteed seat saved\./)).toHaveCount(0);
   expect(saved.guaranteed_seat).toBe(true);
   expect(saved.weighting).toBe(2.5);
 });

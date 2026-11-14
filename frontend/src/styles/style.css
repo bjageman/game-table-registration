@@ -336,6 +336,15 @@ dd {
   padding: 12px 16px;
   background: #fcf5e7;
 }
+.player-profile-feedback {
+  border: 1px solid #e9b949;
+  border-left: 4px solid #d38b16;
+  border-radius: 6px;
+  padding: 12px 16px;
+  background: #fff3cd;
+  color: #704600;
+  overflow-wrap: anywhere;
+}
 .form-panel {
   margin-bottom: 24px;
 }

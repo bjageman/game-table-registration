@@ -61,6 +61,7 @@ it("keeps the player dialog open when Enter finds an invalid weighting", async (
   fireEvent.change(weight, { target: { value: "" } });
   fireEvent.keyDown(weight, { key: "Enter" });
   expect(screen.getByRole("alert")).toHaveTextContent("Choose a weighting from 0.1 to 10.");
+  expectFeedbackAboveDiscordName(screen.getByRole("alert"));
   expect(onClose).not.toHaveBeenCalled();
 });
 
@@ -76,6 +77,7 @@ it("saves global weighting on blur in 0.1 steps", async () => {
   expect(weight).toHaveValue(2.5);
   expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ weighting: 2.5 });
   expect(onSaved).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
 });
 
 it.each([[11, 10, "maximum weight is 10"], [-1, 0.1, "minimum weight is 0.1"]])("clamps %s to %s and explains the limit", async (entered, expected, message) => {
@@ -86,7 +88,9 @@ it.each([[11, 10, "maximum weight is 10"], [-1, 0.1, "minimum weight is 0.1"]])(
   fireEvent.blur(weight);
   await waitFor(() => expect(profile.weighting).toBe(expected));
   expect(weight).toHaveValue(expected);
-  expect(await screen.findByRole("status")).toHaveTextContent(String(message));
+  const feedback = await screen.findByRole("status");
+  expect(feedback).toHaveTextContent(String(message));
+  expectFeedbackAboveDiscordName(feedback);
 });
 
 it("saves a checkbox toggle immediately and serializes rapid changes", async () => {
@@ -99,6 +103,7 @@ it("saves a checkbox toggle immediately and serializes rapid changes", async () 
   expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ guaranteed_seat: true });
   expect(JSON.parse(fetchMock.mock.calls[2][1].body as string)).toEqual({ guaranteed_seat: false });
   expect(profile.guaranteed_seat).toBe(false);
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
 });
 
 it("serializes name and weight edits without overwriting either", async () => {
@@ -138,4 +143,21 @@ it("supports test players and waits for a pending save before closing", async ()
   finishSave!(new Response(JSON.stringify(profile)));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(profile.weighting).toBe(3);
+});
+
+
+function expectFeedbackAboveDiscordName(feedback: HTMLElement) {
+  expect(feedback).toHaveClass("player-profile-feedback");
+  expect(feedback.compareDocumentPosition(screen.getByText("Discord Name")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+}
+
+it("shows linked-player lookup errors above Discord Name", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => url === "/api/players"
+    ? new Response(JSON.stringify({ detail: "Could not load linked players." }), { status: 502 })
+    : new Response(JSON.stringify(baseProfile))));
+  render(<PlayerProfile player={player} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} />);
+  fireEvent.focus(await screen.findByRole("combobox", { name: "Linked Player" }));
+  const feedback = await screen.findByRole("alert");
+  expect(feedback).toHaveTextContent("Could not load linked players.");
+  expectFeedbackAboveDiscordName(feedback);
 });
