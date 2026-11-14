@@ -4,13 +4,13 @@ import time
 import uuid
 from functools import partial
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
+from app.event_scheduling import event_values, serialize_series, series_values
 from app.models import (
     CanceledOccurrence,
     Event,
@@ -99,23 +99,10 @@ def register(context: ApplicationContext) -> None:
         session = authenticated(request, True)
         with DBSession(engine) as db:
             event = Event(
-                **warning_settings(body),
+                **event_values(body),
                 id=str(uuid.uuid4()),
                 guild_id=destination(request).discord_guild_id,
                 channel_id=destination(request).discord_channel_id,
-                title=body.title.strip(),
-                description=body.description.strip(),
-                location=body.location.strip(),
-                starts_at=body.starts_at.timestamp(),
-                scheduled_publish_at=body.starts_at.timestamp()
-                - body.opens_before_hours * 3600
-                if body.opens_before_hours is not None
-                else None,
-                closes_at=body.starts_at.timestamp() - body.closes_before_hours * 3600
-                if body.closes_before_hours is not None
-                else None,
-                duration_hours=body.duration_hours,
-                tables=[table.model_dump() for table in body.tables],
                 created_by=session.user_id,
                 organization_id=request.state.organization_id,
                 status="draft",
@@ -140,17 +127,7 @@ def register(context: ApplicationContext) -> None:
                     RecurringSeries.active,
                 )
             )
-            return [
-                {
-                    "id": row.id,
-                    "title": row.title,
-                    "frequency": row.frequency,
-                    "time_zone": row.time_zone,
-                    "opens_before_hours": row.opens_before_hours,
-                    "closes_before_hours": row.closes_before_hours,
-                }
-                for row in rows
-            ]
+            return [serialize_series(db, row) for row in rows]
 
     @router.post("/api/recurring-series", status_code=201)
     def create_recurring_series(
@@ -160,23 +137,12 @@ def register(context: ApplicationContext) -> None:
         target = destination(request)
         with DBSession(engine) as db:
             series = RecurringSeries(
-                **warning_settings(body),
+                **series_values(body),
                 id=str(uuid.uuid4()),
                 created_by=session.user_id,
                 organization_id=request.state.organization_id,
                 guild_id=target.discord_guild_id,
                 channel_id=target.discord_channel_id,
-                title=body.title.strip(),
-                description=body.description.strip(),
-                location=body.location.strip(),
-                tables=[table.model_dump() for table in body.tables],
-                first_local=body.starts_at.astimezone(
-                    ZoneInfo(body.time_zone)
-                ).strftime("%Y-%m-%dT%H:%M"),
-                time_zone=body.time_zone,
-                frequency=body.frequency,
-                opens_before_hours=body.opens_before_hours,
-                closes_before_hours=body.closes_before_hours,
                 active=True,
             )
             db.add(series)
@@ -184,27 +150,62 @@ def register(context: ApplicationContext) -> None:
             db.commit()
             return {"id": series.id, "title": series.title}
 
+    def scoped_series(
+        db: DBSession, series_id: str, request: Request
+    ) -> RecurringSeries:
+        target = destination(request)
+        series = db.scalar(
+            select(RecurringSeries)
+            .where(RecurringSeries.id == series_id)
+            .with_for_update()
+        )
+        if (
+            not series
+            or not series.active
+            or series.organization_id != request.state.organization_id
+            or (
+                series.organization_id is None
+                and series.created_by != request.state.user_id
+            )
+            or series.guild_id != target.discord_guild_id
+            or series.channel_id != target.discord_channel_id
+        ):
+            raise HTTPException(404, "Schedule not found")
+        return series
+
+    @router.put("/api/recurring-series/{series_id}")
+    def edit_recurring_series(
+        series_id: str, body: RecurringInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            series = scoped_series(db, series_id, request)
+            # Once signup opening arrives, retain the occurrence for publication.
+            db.execute(
+                delete(Event).where(
+                    Event.series_id == series_id,
+                    Event.status == "scheduled",
+                    Event.scheduled_publish_at > time.time(),
+                )
+            )
+            for field, value in series_values(body).items():
+                setattr(series, field, value)
+            db.flush()
+            fill_schedule(db, series, time.time())
+            db.commit()
+            return serialize_series(db, series)
+
     @router.post("/api/recurring-series/{series_id}/stop")
     def stop_recurring_series(series_id: str, request: Request) -> Response:
         authenticated(request, True)
-        target = destination(request)
         with DBSession(engine) as db:
-            series = db.get(RecurringSeries, series_id)
-            if (
-                not series
-                or series.organization_id != request.state.organization_id
-                or (
-                    series.organization_id is None
-                    and series.created_by != request.state.user_id
-                )
-                or series.guild_id != target.discord_guild_id
-                or series.channel_id != target.discord_channel_id
-            ):
-                raise HTTPException(404, "Schedule not found")
+            series = scoped_series(db, series_id, request)
             series.active = False
             db.execute(
                 delete(Event).where(
-                    Event.series_id == series_id, Event.status == "scheduled"
+                    Event.series_id == series_id,
+                    Event.status == "scheduled",
+                    Event.scheduled_publish_at > time.time(),
                 )
             )
             db.commit()
@@ -221,19 +222,20 @@ def register(context: ApplicationContext) -> None:
                 raise HTTPException(
                     409, "Only unposted scheduled events can be canceled"
                 )
+            series = scoped_series(db, event.series_id, request)
             removed = db.execute(
                 delete(Event)
                 .where(Event.id == event_id, Event.status == "scheduled")
-                .returning(Event.series_id, Event.starts_at)
+                .returning(Event.series_id, Event.starts_at, Event.series_slot_at)
             ).first()
             if not removed or not removed.series_id:
                 raise HTTPException(409, "This event has already started publishing")
             db.add(
                 CanceledOccurrence(
-                    series_id=removed.series_id, starts_at=removed.starts_at
+                    series_id=removed.series_id,
+                    starts_at=removed.series_slot_at or removed.starts_at,
                 )
             )
-            series = db.get(RecurringSeries, removed.series_id)
             db.flush()
             if series:
                 fill_schedule(db, series, time.time())
@@ -244,30 +246,39 @@ def register(context: ApplicationContext) -> None:
     def edit_event(event_id: str, body: EventInput, request: Request) -> dict[str, Any]:
         authenticated(request, True)
         with DBSession(engine) as db:
+            event = db.scalar(
+                select(Event).where(Event.id == event_id, *event_scope(request))
+            )
+            if not event:
+                raise HTTPException(404, "Event not found")
+            if event.status == "scheduled" and (
+                body.opens_before_hours is None
+                or body.starts_at.timestamp() - body.opens_before_hours * 3600
+                <= time.time()
+            ):
+                raise HTTPException(400, "Scheduled signups must open in the future")
+            if event.series_id and db.scalar(
+                select(Event.id).where(
+                    Event.series_id == event.series_id,
+                    Event.id != event_id,
+                    Event.starts_at == body.starts_at.timestamp(),
+                )
+            ):
+                raise HTTPException(
+                    409, "Another occurrence already uses this event time"
+                )
             changed = db.execute(
                 update(Event)
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "scheduled"]),
+                    (Event.status == "draft")
+                    | (
+                        (Event.status == "scheduled")
+                        & (Event.scheduled_publish_at > time.time())
+                    ),
                 )
-                .values(
-                    **warning_settings(body),
-                    title=body.title.strip(),
-                    description=body.description.strip(),
-                    location=body.location.strip(),
-                    starts_at=body.starts_at.timestamp(),
-                    scheduled_publish_at=body.starts_at.timestamp()
-                    - body.opens_before_hours * 3600
-                    if body.opens_before_hours is not None
-                    else None,
-                    closes_at=body.starts_at.timestamp()
-                    - body.closes_before_hours * 3600
-                    if body.closes_before_hours is not None
-                    else None,
-                    duration_hours=body.duration_hours,
-                    tables=[table.model_dump() for table in body.tables],
-                )
+                .values(**event_values(body))
                 .returning(Event.id)
             ).scalar_one_or_none()
             if not changed:

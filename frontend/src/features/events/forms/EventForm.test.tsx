@@ -279,3 +279,47 @@ it("reveals warning settings with a one-hour default and saves a custom message"
   const request = fetchMock.mock.calls.find(([path]) => path === "/api/events");
   expect(JSON.parse(request?.[1]?.body as string)).toMatchObject({ post_warning_message: true, warning_hours_before_close: 2, warning_message: "Last call!" });
 });
+
+const recurring = {
+  id: "series", title: "Weekly games", description: "Bring friends", location: "Game Store",
+  starts_at: dayjs("2090-06-14T23:00:00Z").unix(), duration_hours: 48,
+  tables: [{ name: "Clocktower", capacity: 15 }], frequency: "weekly",
+  time_zone: "America/New_York", opens_before_hours: 72, closes_before_hours: 24,
+  post_warning_message: true, warning_hours_before_close: 2, warning_message: "Last chance!",
+};
+
+it("edits the recurring schedule with the shared form and its saved timezone", async () => {
+  const onScheduled = vi.fn();
+  const fetchMock = vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/templates" ? [] : recurring)));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<LocalizationProvider dateAdapter={AdapterDayjs}><TimezoneContext.Provider value="UTC">
+    <EventForm {...props} series={recurring} onScheduled={onScheduled} />
+  </TimezoneContext.Provider></LocalizationProvider>);
+  expect(screen.getByRole("heading", { name: "Edit Recurring Event" })).toBeVisible();
+  expect(screen.getByLabelText("Scheduled Event")).toBeDisabled();
+  expect(screen.getByRole("spinbutton", { name: "Open before event (hours)" })).toHaveValue(72);
+  expect(screen.getByRole("spinbutton", { name: "Close before event (hours)" })).toHaveValue(24);
+  expect(screen.getByLabelText(/^Event starts/)).toHaveValue("June 14, 2090 7:00 PM");
+  fireEvent.change(screen.getByLabelText(/^Event title/), { target: { value: "Wednesday games" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Edit recurring event" }));
+  await waitFor(() => expect(onScheduled).toHaveBeenCalledWith(recurring.title));
+  const call = fetchMock.mock.calls.find(([path]) => path === "/api/recurring-series/series") as unknown as [string, RequestInit];
+  expect(call[1].method).toBe("PUT");
+  expect(JSON.parse(call[1].body as string)).toMatchObject({ title: "Wednesday games", frequency: "weekly", time_zone: "America/New_York", starts_at: "2090-06-14T23:00:00.000Z", opens_before_hours: 72, closes_before_hours: 24, warning_message: "Last chance!" });
+});
+
+it("edits one scheduled occurrence without changing its opening and closing offsets", async () => {
+  const event = { ...recurring, id: "occurrence", discord_url: null, status: "scheduled", series_id: "series", closes_at: recurring.starts_at - 24 * 3600, scheduled_publish_at: recurring.starts_at - 72 * 3600 };
+  const fetchMock = vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/templates" ? [] : event)));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<LocalizationProvider dateAdapter={AdapterDayjs}><EventForm {...props} event={event} /></LocalizationProvider>);
+  expect(screen.getByRole("heading", { name: "Edit Scheduled Event" })).toBeVisible();
+  expect(screen.getByLabelText("Scheduled Event")).toBeDisabled();
+  expect(screen.queryByLabelText("Repeat")).not.toBeInTheDocument();
+  fireEvent.submit(screen.getByRole("form", { name: "Edit event" }));
+  await waitFor(() => expect(props.onCreated).toHaveBeenCalledWith(event));
+  const call = fetchMock.mock.calls.find(([path]) => path === "/api/events/occurrence") as unknown as [string, RequestInit];
+  expect(call[1].method).toBe("PUT");
+  expect(JSON.parse(call[1].body as string)).toMatchObject({ opens_before_hours: 72, closes_before_hours: 24, duration_hours: 48 });
+  expect(JSON.parse(call[1].body as string)).not.toHaveProperty("frequency");
+});

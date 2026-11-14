@@ -397,7 +397,7 @@ dd {
 .scheduled-event-group summary { display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 650; }
 .scheduled-event-group summary::before { content: "▸"; }
 .scheduled-event-group[open] > summary::before { content: "▾"; }
-.scheduled-event-group summary > button { margin-left: auto; flex-shrink: 0; }
+.scheduled-event-group summary > .scheduled-event-actions { margin-left: auto; flex-shrink: 0; }
 .delete-schedule-button { color: #b42318; border-color: #b42318; }
 .delete-schedule-button:hover { background: #fef3f2; }
 .scheduled-event-occurrences { display: grid; gap: 10px; margin-top: 14px; }

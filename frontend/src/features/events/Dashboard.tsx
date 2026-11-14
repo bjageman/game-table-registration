@@ -1,6 +1,6 @@
 import { useTimezone, formatTimestamp } from "../../lib/timezone";
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownWideNarrow, Download, RefreshCw, Search, Eye, Trash2 } from "lucide-react";
+import { ArrowDownWideNarrow, Download, RefreshCw, Search, Eye, Trash2, Pencil } from "lucide-react";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -10,6 +10,7 @@ import {
   errorMessage,
   mutationOptions,
   type EventRecord,
+  type RecurringSeriesRecord,
   type ModeratorSession,
 } from "../../lib/api";
 import EventList, { EventDetails } from "./EventList";
@@ -31,7 +32,6 @@ const sortOptions = [
 ] as const;
 type SortOrder = typeof sortOptions[number]["value"];
 const titleOrder = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
-interface RecurringSeriesRecord { id: string; title: string; frequency: string; time_zone: string; opens_before_hours: number; closes_before_hours: number }
 
 export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const timezone = useTimezone();
@@ -54,6 +54,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [editingSeries, setEditingSeries] = useState<RecurringSeriesRecord>();
   const [editing, setEditing] = useState<EventRecord | undefined>();
   const [notice, setNotice] = useState("");
   const noticeElement = useRef<HTMLParagraphElement>(null);
@@ -71,8 +72,9 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
     );
     setCreating(false);
     setEditing(undefined);
+    setEditingSeries(undefined);
     setNotice(
-      `Draft saved: ${event.title}. Nothing has been posted to Discord.`,
+      `${event.status === "scheduled" ? "Scheduled event" : "Draft"} saved: ${event.title}. Nothing has been posted to Discord.`,
     );
   }
 
@@ -196,6 +198,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             className="primary"
             onClick={() => {
               setEditing(undefined);
+              setEditingSeries(undefined);
               setCreating(true);
               setNotice("");
             }}
@@ -226,14 +229,16 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
       )}
       {creating && (
         <EventForm
-          key={editing?.id ?? "new"}
+          key={editingSeries?.id ?? editing?.id ?? "new"}
           event={editing}
+          series={editingSeries}
           csrf={session.csrf}
           onCreated={created}
-          onScheduled={(title) => { setCreating(false); setNotice(`Recurring schedule created: ${title}.`); setAttempt((value) => value + 1); }}
+          onScheduled={(title) => { setCreating(false); setNotice(`Recurring schedule ${editingSeries ? "updated" : "created"}: ${title}.`); setEditingSeries(undefined); setAttempt((value) => value + 1); }}
           onCancel={() => {
             setCreating(false);
             setEditing(undefined);
+            setEditingSeries(undefined);
             requestAnimationFrame(() => createButton.current?.focus());
           }}
           onAccessError={onAccessError}
@@ -253,7 +258,9 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           <h3>Scheduled Events</h3>
           {series.map((row) => <details className="scheduled-event-group" key={row.id}>
             <summary><span>{row.title} - {row.frequency}</span>
-              {session.organization_role !== "user" && <button id={`schedule-delete-${row.id}`} type="button" className="delete-schedule-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setScheduleError(""); setDeletingSchedule(row); }}>Delete</button>}
+              {session.organization_role !== "user" && <div className="scheduled-event-actions">
+                <button id={`schedule-edit-${row.id}`} type="button" disabled={creating} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setEditing(undefined); setEditingSeries(row); setCreating(true); setNotice(""); }}>Edit</button>
+                <button id={`schedule-delete-${row.id}`} type="button" className="delete-schedule-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setScheduleError(""); setDeletingSchedule(row); }}>Delete</button></div>}
             </summary>
             <div className="scheduled-event-occurrences">
               {events.filter((event) => event.status === "scheduled" && event.series_id === row.id).sort((a, b) => a.starts_at - b.starts_at).slice(0, 4).map((event) => <div key={event.id} className="scheduled-event-row">
@@ -264,10 +271,10 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
                 </span>
                 <div className="scheduled-event-actions">
                   <button id={`scheduled-event-view-${event.id}`} type="button" className="event-icon-action" aria-label="View scheduled event" title="View scheduled event" onClick={() => setScheduledDetails(event)}><Eye size={18} aria-hidden="true" /></button>
+                  {session.organization_role !== "user" && <button id={`scheduled-event-edit-${event.id}`} type="button" className="event-icon-action" disabled={creating} aria-label="Edit scheduled event" title="Edit scheduled event" onClick={() => { setEditingSeries(undefined); setEditing(event); setCreating(true); setNotice(""); }}><Pencil size={18} aria-hidden="true" /></button>}
                   {session.organization_role !== "user" && <button id={`scheduled-event-cancel-${event.id}`} type="button" className="event-icon-action" aria-label="Cancel scheduled event" title="Cancel scheduled event" onClick={() => { setScheduleError(""); setCancelingScheduled(event); }}><Trash2 size={18} aria-hidden="true" /></button>}
                 </div>
               </div>)}
-              <div className="scheduled-event-row"><span>Timezone: {row.time_zone}</span></div>
             </div>
           </details>)}
         </div>
@@ -287,7 +294,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
         canPopulateTestUsers={Boolean(session.can_populate_test_users)}
         readOnly={session.organization_role === "user"}
         onClose={() => setScheduledDetails(null)}
-        onEdit={(event) => { setScheduledDetails(null); setEditing(event); setCreating(true); }}
+        onEdit={(event) => { setScheduledDetails(null); setEditingSeries(undefined); setEditing(event); setCreating(true); }}
         onDeleted={(event) => { setScheduledDetails(null); setEvents((rows) => rows.filter((row) => row.id !== event.id)); }}
         csrf={session.csrf}
         onUpdated={(event) => { updated(event); setScheduledDetails(null); }}
@@ -302,6 +309,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             canPopulateTestUsers={Boolean(session.can_populate_test_users)}
             events={visibleEvents}
             onEdit={(event) => {
+              setEditingSeries(undefined);
               setEditing(event);
               setCreating(true);
               setNotice("");
@@ -310,6 +318,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
               setEvents((rows) => rows.filter((row) => row.id !== event.id));
               if (editing?.id === event.id) {
                 setEditing(undefined);
+                setEditingSeries(undefined);
                 setCreating(false);
               }
               setNotice(`Draft deleted: ${event.title}.`);

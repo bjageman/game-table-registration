@@ -34,8 +34,18 @@ def occurrence(series: RecurringSeries, index: int) -> float | None:
 
 
 def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
+    # Refresh after acquiring the lock: a worker may have loaded the old schedule.
+    db.flush()
+    db.refresh(series, with_for_update=True)
     if not series.active:
         return
+    occupied = set(
+        db.scalars(
+            select(Event.series_slot_at)
+            .where(Event.source_series_id == series.id)
+            .union(select(Event.starts_at).where(Event.source_series_id == series.id))
+        )
+    )
     future = set(
         db.scalars(
             select(Event.starts_at).where(
@@ -56,7 +66,7 @@ def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
     while len(future) < 4 and index < 20000:
         start = occurrence(series, index)
         index += 1
-        if start is None or start <= now or start in future or start in canceled:
+        if start is None or start <= now or start in occupied or start in canceled:
             continue
         publish_at = start - series.opens_before_hours * 3600
         if publish_at <= now:
@@ -66,6 +76,8 @@ def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
                 **warning_settings(series),
                 id=str(uuid.uuid4()),
                 series_id=series.id,
+                source_series_id=series.id,
+                series_slot_at=start,
                 scheduled_publish_at=publish_at,
                 closes_at=start - series.closes_before_hours * 3600,
                 guild_id=series.guild_id,
@@ -82,3 +94,4 @@ def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
             )
         )
         future.add(start)
+        occupied.add(start)

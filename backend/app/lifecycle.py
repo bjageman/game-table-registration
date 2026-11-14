@@ -100,11 +100,12 @@ def application_lifespan(
                             publish_event(event_id, client_for(target), "scheduled")
                             with DBSession(engine) as archive_db:
                                 current = archive_db.get(Event, event_id)
-                                if current and current.series_id:
+                                if current and current.source_series_id:
                                     archive_db.execute(
                                         update(Event)
                                         .where(
-                                            Event.series_id == current.series_id,
+                                            Event.source_series_id
+                                            == current.source_series_id,
                                             Event.starts_at < current.starts_at,
                                             Event.status == "assigned",
                                             Event.archived_at.is_(None),

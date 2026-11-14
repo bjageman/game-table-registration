@@ -119,6 +119,7 @@ def publish_event(
                 else time.time()
             )
             event.message_id = str(message["id"])
+            event.series_id = None
             if event.signup_mode == "reactions":
                 event.closes_at = closes_at
                 # Save the message identity before seeding: an uncertain PUT

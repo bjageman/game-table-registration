@@ -21,7 +21,7 @@ export default function SignupWarningFields({ enabled, hours, message, onEnabled
         onChange={(event) => onHours(event.target.value)} error={Boolean(error)} helperText={error}
         slotProps={{ htmlInput: { min: 1, max: 767, step: 1 } }} />
       <FormField id="event-form-warning-message" label="Warning message" value={message} placeholder={DEFAULT_WARNING_MESSAGE}
-        onChange={(event) => onMessage(event.target.value)} multiline minRows={2}
+        onChange={(event) => onMessage(event.target.value)}
         slotProps={{ htmlInput: { maxLength: 1600 } }} />
     </div>}
   </div>;
