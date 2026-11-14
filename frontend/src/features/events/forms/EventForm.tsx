@@ -82,6 +82,8 @@ export default function EventForm({
   const startDate = resolveLocalTime(startsAtLocal, timezone).date;
   const endsAtLocal = endOverride ?? (startDate
     ? dayjs(new Date(startDate.getTime() + 4 * 3600000)).tz(timezone).format("YYYY-MM-DDTHH:mm") : "");
+  const endValue = endsAtLocal ? dayjs.tz(endsAtLocal, timezone) : null;
+  const [mobileEndTime, setMobileEndTime] = useState(() => initialTime(timezone));
   const [mobileDate, setMobileDate] = useState<Dayjs | null>(
     draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
   );
@@ -488,12 +490,28 @@ export default function EventForm({
                 />
               )}
             </div>
-          {createDiscordEvent && <DateTimePicker
-            timezone={timezone} label="Event ends" value={endsAtLocal ? dayjs.tz(endsAtLocal, timezone) : null}
+          {createDiscordEvent && (isMobile ? <div className="mobile-date-time-fields">
+            <DatePicker timezone={timezone} label="Event ends" value={endValue}
+              onChange={(value) => {
+                const time = endValue ?? mobileEndTime;
+                setEndOverride(value?.isValid() ? value.hour(time.hour()).minute(time.minute()).format("YYYY-MM-DDTHH:mm") : "");
+              }}
+              format="MMMM D, YYYY"
+              slotProps={{ textField: { margin: "none", id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }} />
+            <TimePicker timezone={timezone} label="Event end time" value={endValue ?? mobileEndTime}
+              onChange={(value) => {
+                if (!value?.isValid()) return;
+                setMobileEndTime(value);
+                if (endValue) setEndOverride(endValue.hour(value.hour()).minute(value.minute()).format("YYYY-MM-DDTHH:mm"));
+              }}
+              ampm minutesStep={15} viewRenderers={{ hours: renderTimeViewClock, minutes: renderTimeViewClock }}
+              slotProps={{ textField: { margin: "none", id: `${prefix}-end-time`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }} />
+          </div> : <DateTimePicker
+            timezone={timezone} label="Event ends" value={endValue}
             onChange={(value) => setEndOverride(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "")}
             format="MMMM D, YYYY h:mm A" ampm minutesStep={15}
             slotProps={{ textField: { margin: "none", id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }}
-          />}
+          />)}
           </div>
           </FormFields>
           <SignupWarningFields enabled={postWarning} hours={warningHours} message={warningMessage}
