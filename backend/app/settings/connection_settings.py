@@ -10,11 +10,10 @@ from app.config import Settings
 from app.discord.discord_api import DiscordAPI, DiscordRequestError
 from app.models import (
     Organization,
-    OrganizationMember,
-    OrganizationSelection,
     Session,
     UserSettings,
 )
+from app.settings.organization_selection import selected_organization
 
 # Signup posts need embeds, reactions, message history, and update-thread access.
 SIGNUP_PERMISSIONS = (
@@ -41,15 +40,7 @@ def register_settings(
         session = authenticated(request, require_destination=False)
         with DBSession(engine) as db:
             saved = db.get(UserSettings, session.user_id)
-            selected = db.get(OrganizationSelection, session.user_id)
-            organization = (
-                db.get(Organization, selected.organization_id) if selected else None
-            )
-            membership = (
-                db.get(OrganizationMember, (organization.id, session.user_id))
-                if organization
-                else None
-            )
+            organization, membership = selected_organization(db, session.user_id)
             selection = (
                 {
                     "guild_id": saved.guild_id,
@@ -141,15 +132,7 @@ def register_settings(
             raise HTTPException(422, "Choose a valid server")
         discord: DiscordAPI = app.state.discord
         with DBSession(engine) as db:
-            selected = db.get(OrganizationSelection, session.user_id)
-            organization = (
-                db.get(Organization, selected.organization_id) if selected else None
-            )
-            membership = (
-                db.get(OrganizationMember, (organization.id, session.user_id))
-                if organization
-                else None
-            )
+            organization, membership = selected_organization(db, session.user_id)
         if organization and membership:
             if membership.role != "admin":
                 raise HTTPException(403, "Organization admin access required")
@@ -166,15 +149,7 @@ def register_settings(
     def save(request: Request, body: DestinationInput) -> dict[str, str]:
         session = authenticated(request, True, require_destination=False)
         with DBSession(engine) as db:
-            selected = db.get(OrganizationSelection, session.user_id)
-            organization = (
-                db.get(Organization, selected.organization_id) if selected else None
-            )
-            membership = (
-                db.get(OrganizationMember, (organization.id, session.user_id))
-                if organization
-                else None
-            )
+            organization, membership = selected_organization(db, session.user_id)
             if organization and membership:
                 if membership.role != "admin":
                     raise HTTPException(
@@ -223,20 +198,12 @@ def register_settings(
     def disconnect(request: Request) -> Response:
         session = authenticated(request, True, require_destination=False)
         with DBSession(engine) as db:
-            selected = db.get(OrganizationSelection, session.user_id)
-            membership = (
-                db.get(OrganizationMember, (selected.organization_id, session.user_id))
-                if selected
-                else None
-            )
-            if selected and membership:
+            organization, membership = selected_organization(db, session.user_id)
+            if organization and membership:
                 if membership.role != "admin":
                     raise HTTPException(
                         403, "Only organization admins can disconnect Discord"
                     )
-                organization = db.get(Organization, selected.organization_id)
-                if organization is None:
-                    raise HTTPException(404, "Organization not found")
                 organization.guild_id = ""
                 organization.channel_id = ""
                 db.commit()

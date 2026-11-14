@@ -1,3 +1,4 @@
+import { MIN_WEIGHT, MAX_WEIGHT, parseWeightInput } from "../../lib/weightInput";
 import useDialog from "../../hooks/useDialog";
 import ModalHeader from "../../components/ModalHeader";
 import { useEffect, useRef, useState } from "react";
@@ -8,9 +9,10 @@ import FormFields, { FormField } from "../../components/FormFields";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
 import LoadingIndicator from "../../components/LoadingIndicator";
+import type { PlayerSummary } from "../../lib/players";
 import PlayerPairEditor, { type Partner } from "./PlayerPairEditor";
 
-interface Profile { discord_id: string; discord_name: string; real_name: string; weighting: number; is_test?: boolean; guaranteed_seat?: boolean; partner?: Partner | null; }
+interface Profile extends PlayerSummary { weighting: number; is_test?: boolean; guaranteed_seat?: boolean; partner?: Partner | null; }
 type ProfileChange = { real_name?: string; weighting?: number; guaranteed_seat?: boolean };
 
 export default function PlayerProfile({ player, csrf, readOnly = false, onClose, onAccessError, onSaved }: {
@@ -122,13 +124,12 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
   }
   function saveWeight(): boolean {
     if (!profileRef.current) return true;
-    const entered = Number(weighting);
-    const value = Math.min(10, Math.max(0.1, entered));
-    const message = entered > 10 ? "The maximum weight is 10. Weight set to 10." : entered < 0.1 ? "The minimum weight is 0.1. Weight set to 0.1." : "";
-    if (!weighting.trim() || !Number.isFinite(entered)) {
-      setError("Choose a weighting from 0.1 to 10.");
+    const parsed = parseWeightInput(weighting);
+    if (!parsed) {
+      setError(`Choose a weighting from ${MIN_WEIGHT} to ${MAX_WEIGHT}.`);
       return false;
     }
+    const { value, notice: message } = parsed;
     setWeighting(String(value));
     setError("");
     if (value === submitted.current.weighting) {
@@ -181,7 +182,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
       <div className="profile-weight-edit"><FormField id={`player-weight-${player.id}`} label="Global Weighting" type="number" value={weighting} fullWidth disabled={savingWeight || readOnly}
         onChange={(event) => { setWeighting(event.target.value); setNotice(""); }}
         onBlur={() => { saveWeight(); }}
-        slotProps={{ htmlInput: { min: 0.1, max: 10, step: 0.1 } }} />
+        slotProps={{ htmlInput: { min: MIN_WEIGHT, max: MAX_WEIGHT, step: 0.1 } }} />
       </div>
       <PlayerPairEditor playerId={player.id} partner={profile.partner ?? null} csrf={csrf} readOnly={readOnly} onAccessError={onAccessError} onError={setPairError}
         onBusy={(busy) => { pairingBusy.current = busy; }} onChanged={(partner) => {

@@ -1,0 +1,115 @@
+{
+  "snapshot": {
+    "tables": [
+      {
+        "name": "A",
+        "capacity": 2
+      },
+      {
+        "name": "B",
+        "capacity": 2
+      }
+    ],
+    "players": [
+      {
+        "id": "0",
+        "name": "Player 0",
+        "weight": 0.1,
+        "choices": [
+          "A",
+          "B"
+        ]
+      },
+      {
+        "id": "1",
+        "name": "Player 1",
+        "weight": 2.5,
+        "choices": [
+          "A"
+        ]
+      },
+      {
+        "id": "2",
+        "name": "Player 2",
+        "weight": 10,
+        "choices": [
+          "B",
+          "A"
+        ]
+      },
+      {
+        "id": "3",
+        "name": "Player 3",
+        "weight": 5,
+        "choices": [
+          "B"
+        ]
+      },
+      {
+        "id": "4",
+        "name": "Player 4",
+        "weight": 8.5,
+        "choices": [
+          "A",
+          "B"
+        ],
+        "guaranteed_seat": true
+      },
+      {
+        "id": "5",
+        "name": "Player 5",
+        "weight": 1,
+        "choices": [
+          "A"
+        ]
+      }
+    ]
+  },
+  "cases": [
+    {
+      "pairs": {},
+      "seed": "fixed",
+      "sha256": "e53f9eefd4180be33e04d9529447f3e5503a39918ddfc4dd728b3f4d1bd998c5"
+    },
+    {
+      "pairs": {},
+      "seed": "another-seed",
+      "sha256": "952da54c709bad88123dd5a6f5a5e9e37a61d74a69eaf6930b8b0555dc54ed82"
+    },
+    {
+      "pairs": {},
+      "seed": "12345",
+      "sha256": "526b42ec7c8b17fe1ea8838e958eb7abdda74e160ce0d7b55d4e434d39bb0129"
+    },
+    {
+      "pairs": {
+        "0": "1",
+        "1": "0",
+        "2": "3",
+        "3": "2"
+      },
+      "seed": "fixed",
+      "sha256": "8d4331a9597bdbf031cd482f1b2f026831a58481923fc044e91d6e3b2166170f"
+    },
+    {
+      "pairs": {
+        "0": "1",
+        "1": "0",
+        "2": "3",
+        "3": "2"
+      },
+      "seed": "another-seed",
+      "sha256": "8d4331a9597bdbf031cd482f1b2f026831a58481923fc044e91d6e3b2166170f"
+    },
+    {
+      "pairs": {
+        "0": "1",
+        "1": "0",
+        "2": "3",
+        "3": "2"
+      },
+      "seed": "12345",
+      "sha256": "a39511a638cd86e45175d4c721e2ade6c4dbce68b55c18b87352f3f4a6c58f20"
+    }
+  ]
+}

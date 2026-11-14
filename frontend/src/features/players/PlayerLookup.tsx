@@ -1,3 +1,4 @@
+import { matchesPlayer, type PlayerSummary } from "../../lib/players";
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import PlayerProfile from "./PlayerProfile";
@@ -6,7 +7,7 @@ import { FormField } from "../../components/FormFields";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import useRememberedCheckbox from "../../hooks/useRememberedCheckbox";
 
-interface Player { discord_id: string; discord_name: string; real_name: string; weighting: number; guaranteed_seat: boolean; is_test: boolean; partner?: { id: string; name: string } | null; }
+interface Player extends PlayerSummary { weighting: number; guaranteed_seat: boolean; is_test: boolean; partner?: { id: string; name: string } | null; }
 type SortKey = "guaranteed_seat" | "discord_name" | "real_name" | "weighting" | "is_test" | "partner";
 type SortOrder = { key: SortKey; direction: "asc" | "desc" };
 const sortHeaders: { key: SortKey; label: string }[] = [
@@ -43,8 +44,7 @@ export default function PlayerLookup({ session, onAccessError }: {
 
   const normalized = query.trim().toLocaleLowerCase();
   const visible = players.filter((player) =>
-    (!hideTestUsers || !player.is_test) && `${player.discord_name} ${player.real_name} ${player.discord_id}`
-      .toLocaleLowerCase().includes(normalized),
+    (!hideTestUsers || !player.is_test) && matchesPlayer(player, normalized),
   );
   const sorted = [...visible].sort((left, right) => {
     const leftValue = sort.key === "partner" ? left.partner?.name ?? "" : left[sort.key];

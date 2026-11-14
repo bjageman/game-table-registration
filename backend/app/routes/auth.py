@@ -20,7 +20,6 @@ from app.models import (
     LoginState,
     Organization,
     OrganizationMember,
-    OrganizationSelection,
     Session,
     UserIdentity,
     UserSettings,
@@ -31,6 +30,7 @@ from app.settings.connection_settings import (
     POLL_PERMISSIONS,
     SIGNUP_PERMISSIONS,
 )
+from app.settings.organization_selection import selected_organization
 
 
 def register(context: ApplicationContext) -> None:
@@ -220,17 +220,7 @@ def register(context: ApplicationContext) -> None:
             db.merge(UserIdentity(id=session.user_id, username=session.username))
             db.commit()
             saved = db.get(UserSettings, session.user_id)
-            selected = db.get(OrganizationSelection, session.user_id)
-            organization = (
-                db.get(Organization, selected.organization_id) if selected else None
-            )
-            membership = (
-                db.get(OrganizationMember, (organization.id, session.user_id))
-                if organization
-                else None
-            )
-            if organization and membership is None:
-                organization = None
+            organization, membership = selected_organization(db, session.user_id)
             selection = (
                 (
                     "disconnected"

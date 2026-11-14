@@ -1,3 +1,5 @@
+import { parseWeightInput } from "../../../lib/weightInput";
+import { matchesPlayer, type PlayerSummary } from "../../../lib/players";
 import useDialog from "../../../hooks/useDialog";
 import ModalHeader from "../../../components/ModalHeader";
 import TableTitle from "../TableTitle";
@@ -43,7 +45,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [addingToWaitlist, setAddingToWaitlist] = useState(false);
   const [addingTable, setAddingTable] = useState<string>();
   const [playerQuery, setPlayerQuery] = useState("");
-  const [availablePlayers, setAvailablePlayers] = useState<{ discord_id: string; discord_name: string; real_name: string }[]>([]);
+  const [availablePlayers, setAvailablePlayers] = useState<PlayerSummary[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
   const [removing, setRemoving] = useState<{ player: SignupPlayer; willPromote: boolean }>();
   const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
@@ -53,7 +55,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const canRemoveSignups = !readOnly && (canEditSignups || event.status === "assigned");
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
   const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
-    `${player.discord_name} ${player.real_name} ${player.discord_id}`.toLocaleLowerCase().includes(normalizedQuery)
+    matchesPlayer(player, normalizedQuery)
       && (!(event.status === "assigned" || event.status === "review") || !rows?.some((row) => row.players.some((seated) => seated.id === player.discord_id)))
       && (!addingToWaitlist || !rows?.find((row) => row.name === addingTable)?.waitlist?.some((entry) => entry.id === player.discord_id)),
   ).slice(0, 30) : [];
@@ -65,13 +67,13 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   useEffect(() => {
     if (!addingTable) return;
     let active = true;
-    api<{ discord_id: string; discord_name: string; real_name: string }[]>("/players")
+    api<PlayerSummary[]>("/players")
       .then((players) => { if (active) setAvailablePlayers(players); })
       .catch((failure) => { if (active && !onAccessError(failure)) setActionError(errorMessage(failure)); })
       .finally(() => { if (active) setPlayersLoading(false); });
     return () => { active = false; };
   }, [addingTable, onAccessError]);
-  async function addPlayer(player: { discord_id: string; discord_name: string; real_name: string }) {
+  async function addPlayer(player: PlayerSummary) {
     if (!addingTable || saving) return;
     setSaving(true); setActionError("");
     try {
@@ -201,12 +203,12 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 5)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
       onSaveWeight={(player) => {
-        const entered = Number(weight);
-        if (!weight.trim() || !Number.isFinite(entered)) { setActionError("Enter a valid weight."); return; }
-        const value = Math.min(10, Math.max(0.1, entered));
+        const parsed = parseWeightInput(weight);
+        if (!parsed) { setActionError("Enter a valid weight."); return; }
+        const { value, notice } = parsed;
         setActionError("");
         setWeight(String(value));
-        setWeightNotice(entered > 10 ? "The maximum weight is 10. Weight set to 10." : entered < 0.1 ? "The minimum weight is 0.1. Weight set to 0.1." : "");
+        setWeightNotice(notice);
         if (value === (player.weighting ?? 5)) setEditingWeight(undefined);
         else void saveSetting(player, { weighting: value });
       }}
