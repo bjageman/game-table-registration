@@ -169,3 +169,48 @@ def test_recurring_occurrences_keep_the_event_duration(client):
     events = client.get("/api/events").json()
     assert len(events) == 4
     assert all(event["ends_at"] - event["starts_at"] == 6 * 3600 for event in events)
+
+
+@pytest.mark.parametrize("action", ["archive", "delete"])
+@pytest.mark.parametrize("delete_discord", [True, False])
+def test_cleanup_option_only_deletes_linked_server_event(
+    client, action, delete_discord
+):
+    from flow_helpers import closing_event, closing_message
+
+    headers, event, path, _ = closing_event(client)
+    if action == "archive":
+        client.app.state.discord.poll_message.return_value = closing_message()
+        assert client.post(path + "/close", headers=headers).status_code == 200
+    with Session(client.app.state.engine) as db:
+        record = db.get(DiscordScheduledEvent, event["id"])
+        record.discord_id = "server-event"
+        record.state = "synced"
+        db.commit()
+    client.app.state.discord.reset_mock()
+    query = {"delete_discord_event": delete_discord}
+    response = (
+        client.post(path + "/archive", headers=headers, params=query)
+        if action == "archive"
+        else client.delete(path, headers=headers, params=query)
+    )
+    assert response.status_code == (200 if action == "archive" else 204)
+    deleted = any(
+        call.args == ("DELETE", "/guilds/guild/scheduled-events/server-event")
+        for call in client.app.state.discord.mock_calls
+    )
+    assert deleted == delete_discord
+    if action == "archive":
+        assert response.json()["has_discord_event"] != delete_discord
+
+
+def test_deleted_pending_server_event_is_not_created_later(promotion_db):
+    from app.discord.scheduled_events import delete_scheduled_event
+
+    queued(promotion_db)
+    discord = client_mock()
+    with Session(promotion_db) as db:
+        delete_scheduled_event(db, db.get(Event, "event"), discord)
+        db.commit()
+    synchronize_event(promotion_db, discord, "event")
+    discord.create_scheduled_event.assert_not_called()

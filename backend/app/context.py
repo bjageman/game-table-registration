@@ -207,6 +207,9 @@ class ApplicationContext:
             "starts_at": event.starts_at,
             "ends_at": event.ends_at,
             "discord_event_error": discord_event.error if discord_event else None,
+            "has_discord_event": bool(
+                discord_event and discord_event.state != "deleted"
+            ),
             "duration_hours": event.duration_hours,
             "tables": event.tables,
             "status": event.status,

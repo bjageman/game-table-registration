@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
@@ -44,6 +45,7 @@ def synchronize_event(engine: Engine, discord: DiscordAPI, event_id: str) -> Non
             update(DiscordScheduledEvent)
             .where(
                 DiscordScheduledEvent.event_id == event_id,
+                DiscordScheduledEvent.state != "deleted",
                 (DiscordScheduledEvent.checked_at.is_(None))
                 | (DiscordScheduledEvent.checked_at < now - 60),
             )
@@ -118,7 +120,7 @@ def synchronize_event(engine: Engine, discord: DiscordAPI, event_id: str) -> Non
             discord.update_scheduled_event(discord_id, desired)
         with Session(engine) as db:
             record = db.get(DiscordScheduledEvent, event_id)
-            if record:
+            if record and record.state != "deleted":
                 record.discord_id = discord_id
                 record.payload_hash = digest
                 record.state = "synced"
@@ -127,7 +129,7 @@ def synchronize_event(engine: Engine, discord: DiscordAPI, event_id: str) -> Non
     except Exception as failure:
         with Session(engine) as db:
             record = db.get(DiscordScheduledEvent, event_id)
-            if record:
+            if record and record.state != "deleted":
                 if discord_id:
                     record.discord_id = discord_id
                 uncertain = not discord_id and (
@@ -160,6 +162,7 @@ def synchronize_due(
                 select(Event.id, Event.guild_id, Event.channel_id)
                 .join(DiscordScheduledEvent, DiscordScheduledEvent.event_id == Event.id)
                 .where(
+                    DiscordScheduledEvent.state != "deleted",
                     Event.archived_at.is_(None),
                     Event.status.in_(["open", "review", "assigned"]),
                     Event.starts_at > time.time(),
@@ -170,3 +173,26 @@ def synchronize_due(
         )
     for event_id, guild, channel in rows:
         synchronize_event(engine, client_for(guild, channel or ""), event_id)
+
+
+def delete_scheduled_event(db: Session, event: Event, discord: DiscordAPI) -> None:
+    """Used by both archive and delete within the event mutation transaction."""
+    record = db.scalar(
+        select(DiscordScheduledEvent)
+        .where(DiscordScheduledEvent.event_id == event.id)
+        .with_for_update()
+    )
+    if record is None or record.state == "deleted":
+        return
+    if record.state in {"creating", "unknown"}:
+        raise HTTPException(
+            409,
+            "Discord event creation is still unconfirmed. "
+            "Check Discord and retry after synchronization.",
+        )
+    if record.discord_id:
+        discord.bot(
+            "DELETE", f"/guilds/{event.guild_id}/scheduled-events/{record.discord_id}"
+        )
+    record.state = "deleted"
+    record.error = None
