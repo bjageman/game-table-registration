@@ -263,6 +263,40 @@ def test_close_can_delete_signup_message_and_archive_can_delete_announcements(cl
     assert scoped.delete_poll.call_count == 3
 
 
+@pytest.mark.parametrize("status", [403, 429, 500])
+def test_thread_deletion_failure_preserves_archive_and_message_cleanup(client, status):
+    from app.announcements import dispatch_due
+    from app.discord_api import DiscordRequestError
+    from app.models import Event
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    client.post(path + "/close", headers=headers)
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).update_thread_id = "thread"
+        db.commit()
+    discord.delete_thread.side_effect = DiscordRequestError(status, 1)
+    result = client.post(
+        path + "/archive?delete_discord_messages=true", headers=headers
+    )
+    assert result.status_code == 200
+    assert result.json()["archived_at"]
+    assert result.json()["discord_cleanup_remaining"] == 1
+    if status == 403:
+        assert "Manage Threads" in result.json()["discord_cleanup_error"]
+    deleted_messages = discord.at.return_value.delete_poll.call_count
+    assert deleted_messages == 3
+    discord.delete_thread.side_effect = None
+    retried = client.post(path + "/discord-messages/delete", headers=headers)
+    assert retried.status_code == 200
+    assert retried.json()["discord_cleanup_remaining"] == 0
+    assert discord.at.return_value.delete_poll.call_count == deleted_messages
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]).update_thread_id is None
+
+
 def test_failed_archive_discord_cleanup_can_be_retried(client):
     from app.announcements import dispatch_due
     from app.discord_api import DiscordRequestError

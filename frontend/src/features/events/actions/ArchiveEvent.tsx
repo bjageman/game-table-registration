@@ -31,7 +31,7 @@ export default function ArchiveEvent({ event, csrf, onUpdated, onAccessError }: 
         : saved;
       setConfirming(false);
       const cleanupNotice = !deleteMessages && (saved.discord_cleanup_error || saved.discord_cleanup_remaining)
-        ? ` Event archived, but a promotion notice remains on Discord. Use Delete Discord Messages to retry.`
+        ? ` Discord cleanup remains unfinished. Use Delete Discord Messages to retry.`
         : "";
       onUpdated(completed, `Event archived: ${event.title}.${cleanupNotice}`);
     } catch (failure) {

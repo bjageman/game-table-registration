@@ -51,7 +51,9 @@ def delete_discord_messages_batch(
         def progress(
             retry_after: float = 0, error: str | None = None
         ) -> dict[str, Any]:
-            remaining = sum(not row.deleted_at for row in rows)
+            remaining = sum(not row.deleted_at for row in rows) + bool(
+                event.update_thread_id
+            )
             if not promotions_only:
                 remaining += bool(event.message_id and not event.signup_deleted_at)
             return {
@@ -145,5 +147,17 @@ def delete_discord_messages_batch(
                 remove_signup_message(context, db, event, request)
             except DiscordRequestError as failure:
                 return failed(failure)
+            db.commit()
+        if event.update_thread_id:
+            try:
+                scoped_discord(request).delete_thread(event.update_thread_id)
+            except DiscordRequestError as failure:
+                if failure.discord_status == 403:
+                    return progress(
+                        error="Discord refused to delete the event thread (403). "
+                        "Give the bot Manage Threads permission and retry cleanup."
+                    )
+                return failed(failure)
+            event.update_thread_id = None
             db.commit()
         return progress()
