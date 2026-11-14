@@ -1,4 +1,3 @@
-import { Send } from "lucide-react";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import { useEffect, useId, useRef, useState } from "react";
 import {
@@ -68,8 +67,8 @@ export default function PublishEvent({
 
   return (
     <>
-      <button
-        className="primary event-icon-action"
+      <button id={`event-publish-${event.id}`}
+        className="primary event-publish-action"
         type="button"
         aria-label="Publish to Discord"
         aria-describedby={expired ? expirationHint : undefined}
@@ -80,7 +79,7 @@ export default function PublishEvent({
           setConfirming(true);
         }}
       >
-        <Send size={18} aria-hidden="true" />
+        <span>Publish</span>
       </button>
       {expired && (
         <p className="sr-only" id={expirationHint}>
@@ -89,7 +88,7 @@ export default function PublishEvent({
         </p>
       )}
       {confirming && (
-        <ConfirmationDialog
+        <ConfirmationDialog showClose={false} id={`event-publish-dialog-${event.id}`}
           title={`Publish ${event.title}?`}
           busy={busy}
           error={error}
@@ -97,7 +96,6 @@ export default function PublishEvent({
           onCancel={() => setConfirming(false)}
           onConfirm={() => void publish()}
         >
-          <p>Players choose their specific tables directly in Discord. Signing up enters the lottery for those tables.</p>
           <ul className="table-summary">
             {event.tables.map((table) => (
               <li key={table.name}>

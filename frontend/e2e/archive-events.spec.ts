@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("archives only after confirmation and keeps saved placements available", async ({ page }) => {
   let archives = 0;
@@ -7,7 +7,7 @@ test("archives only after confirmation and keeps saved placements available", as
     archived_at: null as number | null, tables: [{ name: "Table A", capacity: 1 }] };
   await page.route("**/api/me", (route) => route.fulfill({ json: { username: "organizer", csrf: "csrf" } }));
   await page.route("**/api/events", (route) => route.fulfill({ json: [event] }));
-  await page.route("**/api/events/event/signups", (route) => route.fulfill({ json: [{ name: "Table A", players: [{ id: "1", name: "Mary" }], waitlist: [{ id: "2", name: "Dan" }] }] }));
+  await page.route("**/api/events/event/signups", (route) => route.fulfill({ json: [{ name: "Table A", players: [{ id: "1", name: "Mary", exact: true }], waitlist: [{ id: "2", name: "Dan", exact: true }] }] }));
   await page.route("**/api/events/event/announcement", (route) => route.fulfill({ json: { status: "sent", error: null, url: "https://discord.com/announcement" } }));
   await page.route("**/api/events/event/archive", (route) => {
     expect(route.request().method()).toBe("POST");
@@ -26,14 +26,14 @@ test("archives only after confirmation and keeps saved placements available", as
   await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(details).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Game Night/ })).toHaveCount(0);
-  await page.getByLabel("Show Archived").check();
+  await page.getByRole("checkbox", { name: "Archived", exact: true }).check();
   await page.getByRole("button", { name: /^Game Night Archived/ }).click();
-  await expect(details.locator(".table-players").getByRole("button", { name: "Mary" })).toBeVisible();
-  await expect(details.locator(".table-waitlist").getByRole("button", { name: "Dan" })).toBeVisible();
+  await expect(details.locator(".table-players").getByRole("button", { name: "Mary", exact: true })).toBeVisible();
+  await expect(details.locator(".table-waitlist").getByRole("button", { name: "Dan", exact: true })).toBeVisible();
   await expect(details.getByRole("button", { name: "Archive event", exact: true })).toHaveCount(0);
   expect(archives).toBe(1);
   await page.reload();
   await expect(page.getByRole("button", { name: /^Game Night/ })).toHaveCount(0);
-  await page.getByLabel("Show Archived").check();
+  await page.getByRole("checkbox", { name: "Archived", exact: true }).check();
   await expect(page.getByRole("button", { name: /^Game Night Archived/ })).toBeVisible();
 });

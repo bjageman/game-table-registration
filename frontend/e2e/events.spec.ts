@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("offers Discord login without exposing moderator content", async ({
   page,
@@ -32,7 +32,7 @@ test("restores a session and logs out", async ({ page }) => {
     await route.fulfill({ status: 204 });
   });
   await page.goto("/");
-  await expect(page.getByText("organizer", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "organizer", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "organizer" }).click();
   await page.getByRole("menuitem", { name: "Log Out" }).click();
   await expect(

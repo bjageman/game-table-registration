@@ -49,3 +49,36 @@ Server-scoped assignment settings are read/written at `/api/settings/assignment`
 DELETE `/api/settings` disconnects only the signed-in account with CSRF enforcement. An explicit disconnected state prevents the legacy server default from reconnecting it, including after sign-in. Events, profiles, server settings, and Discord messages are preserved. PUT `/api/settings` validates and restores a saved connection.
 
 GET `/api/auth/connect` starts account-bound, single-use OAuth with identify/guilds/bot scopes and the existing registered callback URI. The callback verifies the signed-in account, resolves the authorized guild (validating any guild hint against bot access and live Manage Server permission), saves the server immediately, and returns to Settings. A new server can be saved with no channel; event APIs require a saved channel, while assignment settings require only the verified server. Selecting a channel uses the existing validated Settings PUT. Cancelled, mismatched, expired, and unauthorized callbacks never overwrite the saved destination.
+
+
+Discord signup messages use a rich embed ordered as title, description, then dates/location and tables. Table fields span the embed width and include spacing below each table; assignment rosters also use full-width fields with spacing. Discord controls the final card width. Signup authorization requests Embed Links along with existing signup permissions. Closing a reaction signup adds an embed footer and retains its title, description, and tables; legacy text messages remain supported.
+
+## Code organization
+
+`app/main.py` composes the application. API paths and request schemas remain stable as features move into smaller modules:
+
+- `app/routes/` groups HTTP endpoints by authentication, organizations, preferences, players, events, signups, assignments, and cleanup.
+- `app/events/` owns publication, signup selections, recurring schedules, closing warnings, descriptions, and exports.
+- `app/assignments/` owns lottery algorithms, closing/finalization, withdrawals, promotions, and waitlist changes.
+- `app/discord/` owns the Discord API client, Gateway listener, message formatting/delivery/cleanup, reaction synchronization, rosters, threads, and promotion DMs.
+- `app/players/` owns organization-scoped player profile and pairing operations.
+- `app/settings/` owns assignment preferences and Discord connection settings.
+- `app/context.py` supplies shared request authorization, destination scoping, database access, and serialization. Read endpoints use `scoped_event`; mutations retain their atomic SQL guards.
+- `app/lifecycle.py` owns startup and the synchronization worker. `app/main.py` composes the application.
+- `app/models.py`, `app/schemas.py`, `app/config.py`, `app/branding.py`, and `app/security.py` contain shared database definitions, request bodies, configuration, branding, and token hashing.
+
+Package initializers are intentionally small. Import a service from its owning module, for example `from app.assignments.lottery import assign`, rather than re-exporting services through `app/__init__.py`.
+
+See [the duplication review](code-sharing-review.md) for candidates for further shared functions and components.
+
+API integration tests live in `backend/tests/test_api_*.py`, with the shared client fixture in `conftest.py` and workflow setup in `flow_helpers.py`. Run individual feature files or the full suite with `uv run pytest`.
+
+Keep source and test files below 1,000 total lines. Run `python3 scripts/check_file_lengths.py` from the repository root; Repository basics CI enforces the same rule.
+
+## Private waitlist promotion notices
+
+General → Send private messages for waitlist promotions defaults off and is scoped to the selected organization or personal events. When enabled, automatic promotions after a withdrawal and organizer moves from the waitlist queue a private bot message. Initial lottery placements, simulated players, and adding a known player who was not waiting do not trigger a DM. The option is independent of public table-change announcements.
+
+Each message names the event, table, and start time and includes a **Give up my seat** button. The Gateway verifies the application, private message, and intended recipient, then uses the same locked withdrawal service as channel reactions. Repeated clicks cannot release another player's seat or promote anyone twice. Withdrawals stop when the event starts or is archived. The saved lottery draw remains unchanged.
+
+`promotion_dms` is a separate durable delivery queue. The assignment commits before Discord is contacted; blocked inboxes never revoke a seat. Temporary errors and rate limits retry, while ambiguous sends are reconciled with message history before any further action. Unconfirmed delivery is recorded for review rather than blindly reposted. Archived events, expired events, disabled preferences, and players who no longer hold the promoted seat cancel pending notices. Public assignment updates continue independently. The existing Gateway listener must be running for DM buttons to work; no extra privileged intent is required.

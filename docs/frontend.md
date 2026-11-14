@@ -4,11 +4,11 @@ Run `npm ci` and `npm run dev` from `frontend/`, then open http://localhost:5180
 
 For headless access, set `DEV_HOST=0.0.0.0` and `PUBLIC_URL=http://your-host:5180` in the root `.env`. The configured hostname is allowlisted. API proxying targets loopback port 8000. Register your PUBLIC_URL plus `/api/auth/callback` as the redirect URI in Discord's OAuth2 settings. Use the exact same origin in your browser.
 
-Checks: `npm run lint`, `npm run build`, `npm test`, and `npx playwright install chromium && npm run test:e2e`. Stop any existing server on port 5180 before the browser tests. CI also builds the frontend Docker image. Browser tests mock the API and check login/logout on desktop and mobile without contacting Discord.
+Checks: `npm run lint`, `npm run build`, `npm test`, and `npx playwright install chromium && npm run test:e2e`. Browser tests start their own server on port 5181, leaving the development server on 5180 available. Set `PLAYWRIGHT_PORT` to use another port. CI runs automatically on pull requests and pushes to dev/main, and also builds the frontend Docker image. Browser tests use shared API fixtures and check moderator journeys on desktop and mobile without contacting the backend or Discord. Feature routes override the common read-only defaults; unexpected API requests fail the test. CI retains traces and screenshots for browser failures.
 
 Run `docker compose -f compose.yml -f compose.frontend.yml up --build -d --wait` from the repository root. Open http://localhost:8080. Set PUBLIC_URL to your browser origin. The frontend Compose file extends the backend Compose file and is not a standalone deployment.
 
-The event list loads the server's event records with start times, signup duration, table capacities, and publication status. Times use the browser's local timezone. Refresh retrieves the latest server state. A lost session or removed moderator access hides the dashboard. Events awaiting publication review show a check-Discord notice.
+The event list loads the server's event records with start times, signup duration, table capacities, and publication status. Times use the timezone selected in General settings, falling back to the browser timezone. Refresh retrieves the latest server state. A lost session or removed moderator access hides the dashboard. Events awaiting publication review show a check-Discord notice.
 
 Create event opens a draft form for the title, local event date/time, whole-hour signup duration (1–768), and 1–10 tables with capacities (1–999, default 15). MUI X uses a combined date/time picker on desktop and separate date and time pickers on mobile. Both use a clock face for hour and minute selection, with 15-minute increments, defaulting to the current time rounded up to the next 15-minute interval. The browser sends a timezone-qualified timestamp. Table names must be distinct, and the event must start after the signup window ends. Saving creates a draft; it does not publish a Discord message. Failed requests keep entered values for correction.
 
@@ -45,3 +45,47 @@ Settings → Assignments includes Automatically Adjust Player Weights for the cu
 The Discord tab offers Disconnect with shared Cancel/Confirm controls for connected accounts. Disconnect hides server/channel controls until authorization succeeds again. Connect uses the authenticated callback flow; server controls appear only after successful authorization. The Assignments tab remains accessible and offers Connect Discord when disconnected. The Refresh Channels icon beside Signup Channel reloads eligible channels without leaving Settings.
 
 The event list toolbar searches titles case-insensitively and provides a sort-icon menu for title A–Z/Z–A and event date earliest/latest first. Date ascending is the default; search and sort respect Show Archived.
+
+## UI references
+
+Major sections, controls, and dialogs have descriptive HTML `id` attributes for referring to the interface in issues and change requests. Find them with the browser's Inspect command; they are not visible labels. Keep these IDs stable when changing styling. Use record IDs for repeated controls and keep IDs unique in the rendered document. Existing labels and ARIA references must continue to point to their fields and headings.
+
+| Area | Example IDs |
+| --- | --- |
+| Top bar | `site-header`, `site-title`, `active-organization`, `profile-menu-button` |
+| Profile menu | `profile-players-link`, `profile-settings-link`, `profile-logout-button` |
+| Events | `events-dashboard`, `events-search`, `events-sort-button`, `event-create-button`, `events-refresh-button`, `events-show-archived` |
+| Event details | `event-open-{eventId}`, `event-dialog-{eventId}`, `event-close-{eventId}` |
+| Event actions | `event-publish-{eventId}`, `event-edit-{eventId}`, `event-delete-{eventId}`, `event-archive-{eventId}`, `event-share-{eventId}`, `event-download-{eventId}` |
+| Event form | `event-form`, `event-form-title`, `event-add-table-button`, `event-save-button`, `event-save-template-button` |
+| Table controls | `event-{eventId}-table-{number}-add-player`, `event-{eventId}-table-{number}-player-remove-{playerId}` |
+| Player lookup | `player-lookup`, `player-lookup-search`, `player-lookup-sort-guaranteed_seat`, `player-open-{playerId}` |
+| Player information | `player-profile-dialog-{playerId}`, `player-display-name-{playerId}`, `player-weight-{playerId}`, `player-guaranteed-seat-{playerId}` |
+| Settings tabs | `settings-discord-tab`, `settings-assignments-tab` (General), `settings-organization-tab` |
+| Discord settings | `discord-connect-button`, `discord-server-select`, `discord-channel-select`, `discord-settings-save-button` |
+| General settings | `assignment-auto-weights`, `assignment-announce-changes`, `assignment-thread-updates`, `general-timezone`, `assignment-settings-save-button` |
+| Organization | `organization-select`, `organization-create-button`, `organization-delete-button`, `organization-add-user-button` |
+| Organization members | `organization-member-{userId}`, `organization-member-role-{userId}`, `organization-member-delete-{userId}` |
+| Confirmation | `organization-delete-dialog`, `organization-delete-dialog-cancel`, `organization-delete-dialog-confirm`; other confirmation controls also use their dialog ID plus `-cancel`, `-confirm`, or `-close` |
+| Footer | `site-footer`, `footer-github-link` |
+
+New table rows default to Table #1, Table #2, and so on, with Name and Capacity labels. Clicking or focusing a Name field selects its contents for replacement. New defaults avoid collisions with existing table names.
+
+The create form actions use save icons with Draft (Schedule for recurring events), Template, and Cancel, and stay on one row on mobile.
+
+The footer has a top divider and a single GitHub repository icon link, using the compact rounded icon style from Tiny Grimoire. General settings use dividers between checkbox options. Organization deletion requires confirmation, and member removal uses a trash icon with an accessible username label.
+
+Event process buttons share the 46px primary action height. Icon actions and modal close buttons are square at 46×46px. The event toolbar wraps on narrow screens, uses a Discord icon for the signup link, and relies on automatic signup polling rather than a toolbar refresh button.
+
+All modal headers use ModalHeader to fit their title onto one line beside the square close button. Badges shrink more aggressively than the title so their text remains smaller. Titles refit when their text, available width, or fonts change, including after resizing an open dialog. Keep new modal headers on the shared component rather than implementing separate sizing logic.
+
+Active assigned events offer Add Player for known players who are not already seated. The backend saves the placement as a manual override and keeps the original lottery snapshot/result unchanged. New additions can overfill a table, join the event thread, and queue a refresh of the existing Discord assignment posts. The General announcement setting controls separate table-change notices; roster edits are queued regardless. Previously withdrawn players remain unavailable for re-addition.
+
+On mobile, event-detail date labels and values appear inline with a colon, labels aligned left and timestamps aligned right. All date rows share one fitted font size so they stay consistent and do not wrap. Desktop keeps labels stacked above values at the standard font size. Timestamps omit timezone abbreviations.
+
+
+General → Timezone persists an IANA timezone for the selected organization or personal workspace. Default (<current timezone>) follows the browser timezone; organization admins control shared settings. The setting applies to event lists/details, shared assignment pages, event date entry, recurring schedules, and PDF exports. Changing display timezone does not alter existing event instants or an existing series’ recurrence timezone. Date entry rejects nonexistent or repeated wall times at daylight-saving transitions. Discord continues rendering its timestamp markup in each viewer’s own timezone.
+
+The timezone preference adds a nullable column to assignment_preferences; run the normal Alembic upgrade to head before starting a backend without local automatic migrations.
+
+General → Send private messages for waitlist promotions lets an organizer opt into private bot notices when a waiting player receives a seat. It defaults off, follows the selected organization or personal scope, and is independent of Announce Table Changes on Discord. Each DM includes a Give up my seat button for the recipient to withdraw directly in Discord.

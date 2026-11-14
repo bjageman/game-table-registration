@@ -10,7 +10,7 @@ const event: EventRecord = {
 };
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("suggests known players as the manager types and adds the selected player", async () => {
+it.each(["open", "assigned"])("suggests known players and adds the selected player during %s", async (status) => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   let added = false;
@@ -23,7 +23,7 @@ it("suggests known players as the manager types and adds the selected player", a
     return new Response(JSON.stringify([{ name: "Table A", players: added ? [{ id: "123", name: "mary" }] : [] }, { name: "Table B", players: [] }]));
   });
   vi.stubGlobal("fetch", fetchMock);
-  render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
+  render(<EventTables csrf="csrf" event={{ ...event, status }} onAccessError={() => false} />);
   fireEvent.click(screen.getAllByRole("button", { name: "Add Player" })[0]);
   const search = screen.getByRole("combobox", { name: "Search players" });
   fireEvent.change(search, { target: { value: "mar" } });
@@ -37,14 +37,14 @@ it("suggests known players as the manager types and adds the selected player", a
   expect(await screen.findByRole("button", { name: "mary" })).toBeVisible();
 });
 
-it("closes the add player dialog with its X and a backdrop click", () => {
+it("closes the add player dialog with Cancel and a backdrop click", () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   vi.stubGlobal("fetch", vi.fn(async () => new Response("[]")));
   render(<EventTables csrf="csrf" event={{ ...event, status: "draft", discord_url: null }} onAccessError={() => false} />);
   const add = screen.getAllByRole("button", { name: "Add Player" })[0];
   fireEvent.click(add);
-  fireEvent.click(screen.getByRole("button", { name: "Close add player" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("dialog", { name: /Add a player/ })).not.toBeInTheDocument();
   fireEvent.click(add);
   const dialog = screen.getByRole("dialog", { name: /Add a player/ });
@@ -277,4 +277,52 @@ it.each([[11, 10], [-1, 0.1]])("clamps event weight %s to %s", async (entered, e
   fireEvent.submit(input.closest("form")!);
   await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === "PUT" && JSON.parse(options.body as string).weighting === expected)).toBe(true));
   expect(screen.getByText(entered > 10 ? /maximum weight is 10/ : /minimum weight is 0.1/)).toBeVisible();
+});
+
+it("adds a known player to the waitlist and excludes seated or already waiting players", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  let added = false;
+  const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/players") return new Response(JSON.stringify([
+      { discord_id: "1", discord_name: "Player Seated", real_name: "" },
+      { discord_id: "2", discord_name: "Player Waiting", real_name: "" },
+      { discord_id: "3", discord_name: "Player Late", real_name: "" },
+    ]));
+    if (url.endsWith("/waitlisted-players/3") && options?.method === "POST") {
+      added = true;
+      return new Response("{}");
+    }
+    return new Response(JSON.stringify([
+      { name: "Table A", players: [{ id: "1", name: "Player Seated" }], waitlist: [
+        { id: "2", name: "Player Waiting" }, ...(added ? [{ id: "3", name: "Player Late" }] : []),
+      ] }, { name: "Table B", players: [], waitlist: [] },
+    ]));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={{ ...event, status: "assigned" }} onAccessError={() => false} />);
+  fireEvent.click((await screen.findAllByRole("button", { name: "Add Player to Waitlist" }))[0]);
+  expect(screen.getByRole("dialog", { name: "Add a player to Table A waitlist" })).toBeVisible();
+  fireEvent.change(screen.getByRole("combobox", { name: "Search players" }), { target: { value: "Player" } });
+  const suggestions = await screen.findByRole("listbox", { name: "Suggested players" });
+  expect(suggestions).toHaveTextContent("Player Late");
+  expect(suggestions).not.toHaveTextContent("Player Seated");
+  expect(suggestions).not.toHaveTextContent("Player Waiting");
+  fireEvent.click(screen.getByRole("button", { name: /Player Late\s*3/ }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    "/api/events/event/waitlisted-players/3", expect.objectContaining({ method: "POST", body: JSON.stringify({ table: "Table A" }) }),
+  ));
+  expect(await screen.findByRole("button", { name: "Player Late" })).toBeVisible();
+  expect(screen.getByLabelText("Waitlist for Table A")).toHaveTextContent("Player WaitingPlayer Late");
+  expect(screen.getByLabelText("1 assigned players for 8 seats")).toBeVisible();
+});
+
+it.each([
+  { status: "open", readOnly: false },
+  { status: "assigned", readOnly: true },
+  { status: "assigned", readOnly: false, archived_at: 1 },
+])("hides waitlist additions when unavailable: %j", ({ readOnly, ...settings }) => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("[]")));
+  render(<EventTables csrf="csrf" event={{ ...event, ...settings }} readOnly={readOnly} onAccessError={() => false} />);
+  expect(screen.queryByRole("button", { name: "Add Player to Waitlist" })).not.toBeInTheDocument();
 });

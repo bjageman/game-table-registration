@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from test_signups import custom_client as custom_client
 from test_signups import publish
 
-from app.gateway import SignupGateway
+from app.discord.gateway import SignupGateway
 from app.main import create_app
 from app.models import Event, TableSignup
 
@@ -123,7 +123,9 @@ def test_defer_failure_does_not_save_a_selection(custom_client):
 def test_gateway_reports_database_failure_privately(custom_client, monkeypatch):
     client, _, config = custom_client
     _, event, _ = publish(custom_client)
-    monkeypatch.setattr("app.gateway.handle", Mock(side_effect=RuntimeError("DB down")))
+    monkeypatch.setattr(
+        "app.discord.gateway.handle", Mock(side_effect=RuntimeError("DB down"))
+    )
 
     async def check():
         gateway = SignupGateway(client.app.state.engine, config)
@@ -208,7 +210,7 @@ def test_api_lifespan_starts_and_closes_gateway(custom_client, monkeypatch):
     config.discord_gateway_enabled = True
     gateway = Mock(run_listener=AsyncMock(), close=AsyncMock())
     factory = Mock(return_value=gateway)
-    monkeypatch.setattr("app.main.SignupGateway", factory)
+    monkeypatch.setattr("app.lifecycle.SignupGateway", factory)
     app = create_app(config)
     with TestClient(app):
         assert app.state.gateway is gateway
@@ -218,7 +220,7 @@ def test_api_lifespan_starts_and_closes_gateway(custom_client, monkeypatch):
 
 
 def test_disconnected_gateway_blocks_publication_before_posting(custom_client):
-    from test_flow import event_body, login
+    from flow_helpers import event_body, login
 
     client, _, config = custom_client
     headers = login(client)

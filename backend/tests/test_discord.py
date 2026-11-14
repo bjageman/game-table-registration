@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.config import Settings
-from app.discord_api import DiscordAPI
+from app.discord.discord_api import DiscordAPI
 
 
 def test_member_roles_and_owner():
@@ -100,7 +100,7 @@ def test_signup_page_failure_does_not_return_partial_players():
 @pytest.mark.parametrize("status", [204, 404])
 def test_delete_discord_poll_accepts_success_and_already_deleted(status):
     api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
-    with patch("app.discord_api.httpx.Client") as client:
+    with patch("app.discord.discord_api.httpx.Client") as client:
         request = client.return_value.__enter__.return_value.request
         request.return_value = httpx.Response(
             status, request=httpx.Request("DELETE", "https://discord.com/test")
@@ -114,7 +114,7 @@ def test_delete_discord_poll_accepts_success_and_already_deleted(status):
 
 def test_delete_discord_poll_failure_is_reported():
     api = DiscordAPI(Settings(_env_file=None))
-    with patch("app.discord_api.httpx.Client") as client:
+    with patch("app.discord.discord_api.httpx.Client") as client:
         client.return_value.__enter__.return_value.request.return_value = (
             httpx.Response(
                 403, request=httpx.Request("DELETE", "https://discord.com/test")
@@ -127,7 +127,7 @@ def test_delete_discord_poll_failure_is_reported():
 
 @pytest.mark.parametrize("mode", ["custom", "poll"])
 def test_channel_picker_respects_user_and_bot_overwrites(mode):
-    from app.connection_settings import POLL_PERMISSIONS
+    from app.settings.connection_settings import POLL_PERMISSIONS
 
     api = DiscordAPI(Settings(_env_file=None, discord_signup_mode=mode))
     guild = {"id": "100", "owner_id": "other", "name": "Games"}
@@ -219,12 +219,12 @@ def test_saved_destination_rejects_lost_channel_access():
 
 
 def test_reaction_seeding_retries_discord_rate_limits(monkeypatch):
-    from app.discord_api import DiscordRequestError
+    from app.discord.discord_api import DiscordRequestError
 
     api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
     api.bot = Mock(side_effect=[{}, {}, DiscordRequestError(429, 0.3), {}, {}])
     sleep = Mock()
-    monkeypatch.setattr("app.discord_api.time.sleep", sleep)
+    monkeypatch.setattr("app.discord.discord_api.time.sleep", sleep)
     api.seed_reactions("message", ["1️⃣", "2️⃣", "3️⃣", "4️⃣"])
     assert api.bot.call_count == 5
     assert sleep.call_count == 1
@@ -240,10 +240,10 @@ def test_end_poll_uses_discord_expire_endpoint():
 
 
 def test_discord_rate_limit_delay_is_preserved():
-    from app.discord_api import DiscordRequestError
+    from app.discord.discord_api import DiscordRequestError
 
     api = DiscordAPI(Settings(_env_file=None))
-    with patch("app.discord_api.httpx.Client") as client:
+    with patch("app.discord.discord_api.httpx.Client") as client:
         client.return_value.__enter__.return_value.request.return_value = (
             httpx.Response(
                 429,
@@ -301,3 +301,98 @@ def test_identity_retains_authorized_guild_from_code_exchange():
     user = api.identity("authorization-code")
     assert user["authorized_guild"] == {"id": "100"}
     assert "access_token" not in user
+
+
+def test_closing_signup_embed_keeps_title_and_tables_and_adds_footer():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    embed = {
+        "type": "rich",
+        "title": "Game Night",
+        "description": "Instructions\n\nEvent: soon",
+        "color": 0x2F6B4F,
+        "fields": [{"name": "1️⃣ A", "value": "8 seats\n\u200b", "inline": False}],
+    }
+    api.bot = Mock(return_value={"content": "", "embeds": [embed]})
+    api.close_reaction_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert payload["content"] == ""
+    saved = payload["embeds"][0]
+    assert saved["title"] == embed["title"]
+    assert saved["description"] == embed["description"]
+    assert saved["fields"] == embed["fields"]
+    assert "type" not in saved
+    assert (
+        saved["footer"]["text"] == "Signups closed. Reactions no longer change entries."
+    )
+
+
+def test_closing_regular_signup_converts_it_to_an_embed():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(
+        return_value={
+            "content": "**Legacy title**\nEvent: <t:2000000000:F>\n1️⃣ Table A · 8 seats"
+        }
+    )
+    api.close_reaction_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert payload["content"] == ""
+    embed = payload["embeds"][0]
+    assert embed["title"] == "Legacy title"
+    assert "1️⃣ Table A · 8 seats" in embed["description"]
+    assert (
+        embed["footer"]["text"] == "Signups closed. Reactions no longer change entries."
+    )
+
+
+def test_closing_poll_signup_converts_it_and_removes_controls():
+    api = DiscordAPI(Settings(_env_file=None, discord_channel_id="channel"))
+    api.bot = Mock(return_value={"content": "**Game Night**\nEvent: <t:2000000000:F>"})
+    api.close_signup_message("message")
+    payload = api.bot.call_args.kwargs["json"]
+    assert payload["content"] == ""
+    assert payload["components"] == []
+    assert payload["embeds"][0]["title"] == "Game Night"
+    assert "Event: <t:2000000000:F>" in payload["embeds"][0]["description"]
+    assert payload["embeds"][0]["footer"]["text"] == "Signups closed."
+
+
+@pytest.mark.parametrize("content", ["", "<@123>"])
+def test_delivery_recovery_rejects_unrelated_embeds_and_mismatched_nonces(content):
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(return_value={"id": "bot"})
+    payload = {
+        "content": content,
+        "nonce": "expected",
+        "embeds": [{"title": "Expected event", "fields": []}],
+    }
+    unrelated = {
+        "id": "100",
+        "author": {"id": "bot"},
+        "content": content,
+        "nonce": "other",
+        "embeds": [{"title": "Other event"}],
+        "timestamp": "2026-11-13T00:00:00+00:00",
+    }
+    api.bot_items = Mock(return_value=[unrelated])
+    assert api.find_announcement("channel", payload, 0) is None
+    # Discord may omit older nonces; content alone must still not identify an embed.
+    unrelated.pop("nonce")
+    assert api.find_announcement("channel", payload, 0) is None
+    unrelated["embeds"] = payload["embeds"]
+    assert api.find_announcement("channel", payload, 0) == ("100" if content else None)
+    unrelated["nonce"] = "expected"
+    assert api.find_announcement("channel", payload, 0) == "100"
+
+
+def test_private_channel_creation_uses_the_recipient_and_validates_the_result():
+    from app.discord.discord_api import DiscordRequestError
+
+    api = DiscordAPI(Settings(_env_file=None))
+    api.bot = Mock(return_value={"id": "private-channel"})
+    assert api.open_dm("123") == "private-channel"
+    api.bot.assert_called_once_with(
+        "POST", "/users/@me/channels", json={"recipient_id": "123"}, timeout=8
+    )
+    api.bot.return_value = {}
+    with pytest.raises(DiscordRequestError):
+        api.open_dm("123")

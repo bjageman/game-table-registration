@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./fixtures";
+import { openEvent } from "./eventActions";
 
 const session = { username: "organizer", csrf: "test-csrf" };
 const draft = {
@@ -19,7 +20,7 @@ async function fillDraft(page: Page) {
   await page.getByRole("button", { name: "Create event", exact: true }).click();
   await page.getByLabel(/Event title/).fill("Friday games");
   await setDateTime(page, "June", "14", "2090", "07", "00", "PM");
-  await page.getByLabel(/Table 1 name/).fill("Clocktower");
+  await page.getByLabel(/^Name/).first().fill("Clocktower");
 }
 async function setDateTime(
   page: Page,
@@ -92,10 +93,7 @@ test("completes login, draft creation, publication, refresh, and logout", async 
       events = [published as unknown as typeof draft];
       return route.fulfill({ json: published });
     }
-    return route.fulfill({
-      status: 404,
-      json: { detail: "Unexpected request" },
-    });
+    return route.fallback();
   });
   await page.goto("/");
   await page.getByRole("link", { name: "Log in with Discord" }).click();
@@ -103,18 +101,20 @@ test("completes login, draft creation, publication, refresh, and logout", async 
     page.getByRole("heading", { name: "No Events Yet" }),
   ).toBeVisible();
   await fillDraft(page);
-  await page.getByRole("button", { name: "Save draft" }).click();
+  await page.getByRole("button", { name: "Draft" }).click();
   await expect(
-    page.getByRole("heading", { name: "Friday games" }),
+    page.getByRole("button", { name: /^Friday games/ }),
   ).toBeVisible();
   await expect(page.getByText("draft", { exact: true })).toBeVisible();
   await expect(page.getByRole("status")).toBeFocused();
+  await openEvent(page);
   expect(publications).toBe(0);
   await page.getByRole("button", { name: "Publish to Discord" }).click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
     page.getByRole("link", { name: /View Discord signup/ }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Close event", exact: true }).click();
   await page.getByRole("button", { name: "Refresh events" }).click();
   await expect(page.getByText("open", { exact: true })).toBeVisible();
   expect(creations).toBe(1);
@@ -129,7 +129,7 @@ test("completes login, draft creation, publication, refresh, and logout", async 
   await expect(
     page.getByRole("link", { name: "Log in with Discord" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Friday games" })).toHaveCount(
+  await expect(page.getByRole("button", { name: /^Friday games/ })).toHaveCount(
     0,
   );
 });
@@ -154,13 +154,13 @@ test("keeps event values and associates backend validation with its field", asyn
   });
   await page.goto("/");
   await fillDraft(page);
-  await page.getByRole("button", { name: "Save draft" }).click();
+  await page.getByRole("button", { name: "Draft" }).click();
   await expect(page.getByRole("alert")).toContainText("Capacity was rejected");
-  await expect(page.getByLabel(/Table 1 capacity/)).toHaveAttribute(
+  await expect(page.getByLabel(/^Capacity/).first()).toHaveAttribute(
     "aria-invalid",
     "true",
   );
-  await expect(page.getByLabel(/Table 1 capacity/)).toHaveAccessibleDescription(
+  await expect(page.getByLabel(/^Capacity/).first()).toHaveAccessibleDescription(
     "Capacity was rejected by the server",
   );
   await expect(page.getByLabel(/Event title/)).toHaveValue("Friday games");
@@ -180,7 +180,7 @@ for (const status of [401, 403]) {
     );
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "Friday games" }),
+      page.getByRole("button", { name: /^Friday games/ }),
     ).toBeVisible();
     expired = true;
     await page.getByRole("button", { name: "Refresh events" }).click();
@@ -189,15 +189,14 @@ for (const status of [401, 403]) {
         page.getByRole("link", { name: "Log in with Discord" }),
       ).toBeVisible();
     else
-      await expect(
-        page.getByRole("heading", { name: "Moderator Access Required" }),
-      ).toBeVisible();
+      await expect(page.getByRole("alert")).toHaveText("Access removed");
     await expect(
-      page.getByRole("heading", { name: "Friday games" }),
+      page.getByRole("button", { name: /^Friday games/ }),
     ).toHaveCount(0);
-    await expect(
+    if (status === 401) await expect(
       page.getByRole("button", { name: "Create event", exact: true }),
     ).toHaveCount(0);
+    else await expect(page.getByRole("button", { name: "Create event", exact: true })).toBeDisabled();
   });
 }
 
@@ -248,9 +247,10 @@ for (const outcome of ["network", "conflict"] as const) {
       });
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Publish to Discord" }).click();
+    const details = await openEvent(page);
+    await details.getByRole("button", { name: "Publish to Discord" }).click();
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
-    await expect(page.getByText("unconfirmed", { exact: true })).toBeVisible();
+    await expect(details.getByText("unconfirmed", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Publish to Discord" }),
     ).toHaveCount(0);
@@ -282,13 +282,14 @@ test("blocks repeat confirmation and Escape while a publication is pending", asy
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Publish to Discord" }).click();
+  const details = await openEvent(page);
+  await details.getByRole("button", { name: "Publish to Discord" }).click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Confirm", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Publish Friday games?" })).toBeVisible();
   release();
   await expect(
     page.getByRole("link", { name: /View Discord signup/ }),
@@ -304,13 +305,13 @@ test("rejects missing and ambiguous local times around daylight saving changes",
   await page.goto("/");
   await fillDraft(page);
   await setDateTime(page, "March", "12", "2090", "02", "30", "AM");
-  await page.getByRole("button", { name: "Save draft" }).click();
+  await page.getByRole("button", { name: "Draft" }).click();
   await expect(
     page.getByRole("group", { name: /Event starts/ }),
   ).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert")).toContainText("may not exist");
   await setDateTime(page, "November", "5", "2090", "01", "30", "AM");
-  await page.getByRole("button", { name: "Save draft" }).click();
+  await page.getByRole("button", { name: "Draft" }).click();
   await expect(page.getByRole("alert")).toContainText("occurs twice");
 });
 
@@ -339,15 +340,17 @@ test("edits a draft and requires confirmation before deleting it", async ({
     return route.fulfill({ status: 204 });
   });
   await page.goto("/");
+  await openEvent(page);
   await page.getByRole("button", { name: "Edit draft", exact: true }).click();
-  await expect(page.getByLabel(/Table 1 capacity/)).toHaveValue("15");
+  await expect(page.getByLabel(/^Capacity/).first()).toHaveValue("15");
   await page.getByLabel(/Event title/).fill("Saturday games");
-  await page.getByLabel(/Table 1 capacity/).fill("123");
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.getByLabel(/^Capacity/).first().fill("123");
+  await page.getByRole("button", { name: "Save Changes", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Saturday games", exact: true }),
+    page.getByRole("button", { name: /^Saturday games/ }),
   ).toBeVisible();
-  await expect(page.getByText("123 seats", { exact: false })).toBeVisible();
+  const details = await openEvent(page);
+  await expect(details.getByText("0/123", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Delete draft", exact: true }).click();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(deletions).toBe(0);

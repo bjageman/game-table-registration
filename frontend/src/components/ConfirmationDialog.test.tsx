@@ -30,3 +30,26 @@ it("focuses Cancel, blocks dismissal while busy, and restores trigger focus", ()
   expect(trigger).toHaveFocus();
   trigger.remove();
 });
+
+it("can keep Cancel as the only dismiss control and focus it", () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  const onCancel = vi.fn();
+  render(<ConfirmationDialog title="Publish event?" busy={false} error="" showClose={false} onCancel={onCancel} onConfirm={() => {}}>{null}</ConfirmationDialog>);
+  expect(screen.queryByRole("button", { name: "Close dialog" })).not.toBeInTheDocument();
+  const cancel = screen.getByRole("button", { name: "Cancel" });
+  expect(cancel).toHaveFocus();
+  fireEvent.click(cancel);
+  expect(onCancel).toHaveBeenCalledOnce();
+});
+
+it.each([false, true])("keeps Escape inside a nested confirmation (busy: %s)", (busy) => {
+  const parentCancel = vi.fn();
+  const onCancel = vi.fn();
+  render(<dialog open aria-label="Event details" onCancel={parentCancel}>
+    <ConfirmationDialog title="Publish event?" busy={busy} error="" onCancel={onCancel} onConfirm={() => {}}>{null}</ConfirmationDialog>
+  </dialog>);
+  fireEvent(screen.getByRole("dialog", { name: "Publish event?" }), new Event("cancel", { bubbles: true, cancelable: true }));
+  expect(parentCancel).not.toHaveBeenCalled();
+  expect(onCancel).toHaveBeenCalledTimes(busy ? 0 : 1);
+});

@@ -1,7 +1,8 @@
 name: Frontend CI
-# Temporarily pause automatic runs while browser tests are updated.
-# Keep the workflow available for manual runs.
 on:
+  pull_request:
+  push:
+    branches: [dev, main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,6 +12,7 @@ concurrency:
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -35,6 +37,7 @@ jobs:
           path: frontend/test-results
   image:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - run: docker build -t table-frontend ./frontend

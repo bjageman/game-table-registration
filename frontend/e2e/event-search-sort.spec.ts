@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("searches event titles and sorts by title or event date", async ({ page }) => {
   const draft = { status: "draft", duration_hours: 24, closes_at: null, discord_url: null, tables: [{ name: "Clocktower", capacity: 8 }] };
@@ -26,7 +26,7 @@ test("searches event titles and sorts by title or event date", async ({ page }) 
   }
   await search.fill(" alpha ");
   await expect(titles).toHaveText(["Alpha Night"]);
-  await page.getByLabel("Show Archived").check();
+  await page.getByRole("checkbox", { name: "Archived", exact: true }).check();
   await expect(titles).toHaveText(["Alpha Night", "Alpha Archived"]);
   await search.fill("Clocktower");
   await expect(page.getByRole("heading", { name: "No Matching Events" })).toBeVisible();

@@ -24,12 +24,12 @@ export default function DeleteDiscordMessages({ event, csrf, onUpdated, onAccess
     finally { setBusy(false); }
   }
   return <>
-    <button type="button" className="event-icon-action" aria-label="Delete Discord messages" title="Delete Discord Messages"
+    <button id={`event-delete-discord-messages-${event.id}`} type="button" className="event-icon-action" aria-label="Delete Discord messages" title="Delete Discord Messages"
       onClick={() => { setError(""); setConfirming(true); }}><Trash2 size={18} aria-hidden="true" /></button>
-    {confirming && <ConfirmationDialog title={`Delete Discord messages for ${event.title}?`}
+    {confirming && <ConfirmationDialog id={`event-delete-discord-messages-dialog-${event.id}`} title={`Delete Discord messages for ${event.title}?`}
       busy={busy} error={error} status={`Deleting Discord messages…${remaining === undefined ? "" : ` ${remaining} remaining.`}`}
       onCancel={() => setConfirming(false)} onConfirm={() => void remove()}>
-      <p>This deletes any remaining signup and assignment messages. Archived placements stay available here.</p>
+      {null}
     </ConfirmationDialog>}
   </>;
 }

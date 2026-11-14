@@ -1,6 +1,15 @@
 from typing import Any
 
-from sqlalchemy import JSON, Float, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    false,
+    true,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -26,9 +35,26 @@ class Session(Base):
     expires: Mapped[float] = mapped_column(Float)
 
 
-class Event(Base):
+class SignupWarningSettings:
+    post_warning_message: Mapped[bool] = mapped_column(
+        default=False, server_default=false()
+    )
+    warning_hours_before_close: Mapped[int] = mapped_column(
+        default=1, server_default="1"
+    )
+    warning_message: Mapped[str] = mapped_column(
+        String(1600), default="", server_default=""
+    )
+
+
+class Event(SignupWarningSettings, Base):
     __tablename__ = "events"
-    __table_args__ = (UniqueConstraint("series_id", "starts_at"),)
+    __table_args__ = (
+        UniqueConstraint("series_id", "starts_at"),
+        UniqueConstraint(
+            "source_series_id", "series_slot_at", name="uq_event_series_slot"
+        ),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     public_share_token: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True
@@ -56,22 +82,38 @@ class Event(Base):
     close_started_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     close_seed: Mapped[str | None] = mapped_column(String(64), nullable=True)
     close_guarantees: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    close_review_assignments: Mapped[bool | None] = mapped_column(nullable=True)
     close_adjust_weights: Mapped[bool | None] = mapped_column(nullable=True)
     close_weights: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
+    close_pairs: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     close_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     signup_mode: Mapped[str] = mapped_column(String(16), default="poll")
     reaction_checkpoint: Mapped[float | None] = mapped_column(Float, nullable=True)
     reaction_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    update_thread_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    thread_sync_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    signup_roster_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signup_roster_checked_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    signup_roster_messages: Mapped[list[dict[str, str]] | None] = mapped_column(
+        JSON, nullable=True
+    )
     series_id: Mapped[str | None] = mapped_column(
         ForeignKey("recurring_series.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
+    # Provenance survives publication and individual date changes. Membership does not.
+    source_series_id: Mapped[str | None] = mapped_column(
+        ForeignKey("recurring_series.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    series_slot_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     scheduled_publish_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
-class RecurringSeries(Base):
+class RecurringSeries(SignupWarningSettings, Base):
     __tablename__ = "recurring_series"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     created_by: Mapped[str] = mapped_column(String(32))
@@ -100,7 +142,7 @@ class CanceledOccurrence(Base):
     starts_at: Mapped[float] = mapped_column(Float, primary_key=True)
 
 
-class EventTemplate(Base):
+class EventTemplate(SignupWarningSettings, Base):
     __tablename__ = "event_templates"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(32), index=True)
@@ -154,6 +196,7 @@ class SignupInteraction(Base):
 
 class PlayerProfile(Base):
     __tablename__ = "player_profiles"
+    scope_key: Mapped[str] = mapped_column(String(100), primary_key=True)
     guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     discord_name: Mapped[str] = mapped_column(String(100), default="")
@@ -161,6 +204,7 @@ class PlayerProfile(Base):
     is_test: Mapped[bool] = mapped_column(default=False)
     real_name: Mapped[str] = mapped_column(String(100), default="")
     weighting: Mapped[float] = mapped_column(Float, default=5.0)
+    partner_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 class UserSettings(Base):
@@ -228,6 +272,17 @@ class EventWithdrawal(Base):
     promoted_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
+class EventWaitlistAddition(Base):
+    __tablename__ = "event_waitlist_additions"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    table_name: Mapped[str] = mapped_column(String(35), primary_key=True)
+    discord_name: Mapped[str] = mapped_column(String(100))
+    added_at: Mapped[float] = mapped_column(Float)
+
+
 class EventManualAssignment(Base):
     __tablename__ = "event_manual_assignments"
     event_id: Mapped[str] = mapped_column(
@@ -274,5 +329,55 @@ class GuildSettings(Base):
 class AssignmentPreference(Base):
     __tablename__ = "assignment_preferences"
     scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
-    announce_table_changes: Mapped[bool] = mapped_column(default=False)
+    automatic_weight_adjustment: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    announce_table_changes: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    post_discord_updates_to_thread: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    review_assignments_before_discord: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    show_open_signup_players: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    dm_waitlist_promotions: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+
+
+class EventThreadMember(Base):
+    __tablename__ = "event_thread_members"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    added_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class PromotionDM(Base):
+    __tablename__ = "promotion_dms"
+    __table_args__ = (
+        UniqueConstraint("event_id", "discord_id"),
+        Index("ix_promotion_dm_due", "state", "next_attempt"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
+    discord_id: Mapped[str] = mapped_column(String(32))
+    table_name: Mapped[str] = mapped_column(String(35))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    state: Mapped[str] = mapped_column(String(20), default="pending")
+    attempts: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[float] = mapped_column(Float)
+    next_attempt: Mapped[float] = mapped_column(Float)
+    attempted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unknown: Mapped[bool] = mapped_column(default=False)
+    token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_until: Mapped[float | None] = mapped_column(Float, nullable=True)
+    channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)

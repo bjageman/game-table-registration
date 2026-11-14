@@ -17,7 +17,7 @@ afterEach(() => {
 function mockApi(meStatus = 200, configured = true, branding = { name: "TableSignup", tagline: "Made for your next game night.", logo_url: null as string | null }) {
   const fetchMock = vi.fn(async (path: string) => {
     if (path === "/api/branding") return new Response(JSON.stringify(branding));
-    if (path === "/api/events") return new Response("[]");
+    if (path === "/api/events" || path === "/api/recurring-series") return new Response("[]");
     if (path === "/api/me")
       return new Response(
         JSON.stringify(
@@ -36,14 +36,17 @@ function mockApi(meStatus = 200, configured = true, branding = { name: "TableSig
   return fetchMock;
 }
 
-it("uses server branding for the header, browser title, footer, and logo", async () => {
+it("uses server branding and shows only the GitHub link in the footer", async () => {
   mockApi(401, true, { name: "Game Night", tagline: "Find your next table.", logo_url: "https://example.org/logo.svg" });
   render(<App />);
   const link = await screen.findByRole("link", { name: "Game Night" });
   expect(link).toContainElement(link.querySelector("img"));
   expect(link.querySelector("img")).toHaveAttribute("src", "https://example.org/logo.svg");
-  expect(document.title).toBe("Game Night");
-  expect(screen.getByText("Find your next table.")).toBeVisible();
+  await waitFor(() => expect(document.title).toBe("Game Night"));
+  expect(screen.queryByText("Find your next table.")).not.toBeInTheDocument();
+  const github = screen.getByRole("link", { name: "GitHub" });
+  expect(github).toHaveAttribute("href", "https://github.com/bjageman/game-table-registration");
+  expect(github).toHaveAttribute("rel", "noopener noreferrer");
 });
 
 it("connects signed-out users to Discord OAuth", async () => {

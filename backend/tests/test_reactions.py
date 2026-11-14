@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from test_signups import custom_client as custom_client
 from test_signups import publish
 
-from app import reactions
-from app.gateway import SignupGateway
+from app.discord import reactions
+from app.discord.gateway import SignupGateway
 from app.models import Event, LotteryRun, TableSignup
 
 
@@ -25,8 +25,9 @@ def test_numbered_publication_seeds_only_listed_tables(custom_client):
     _, event, _ = publish(custom_client, reaction=True)
     assert event["signup_mode"] == "reactions"
     payload = client.app.state.discord.publish.call_args.args[0]
-    assert "1️⃣ A" in payload["content"] and "2️⃣ B" in payload["content"]
-    assert "Remove your reaction" in payload["content"]
+    embed = payload["embeds"][0]
+    assert embed["fields"][0]["name"] == "1️⃣ A (0/1)"
+    assert "Remove your reaction" in embed["description"]
     assert "components" not in payload and "poll" not in payload
     client.app.state.discord.seed_reactions.assert_called_once_with(
         "message", ["1️⃣", "2️⃣"]
@@ -216,7 +217,7 @@ def test_gateway_recovery_uses_rest_then_marks_healthy(custom_client, monkeypatc
     api.reaction_players.return_value = [
         {"id": "1", "name": "Player", "choices": ["B"]}
     ]
-    monkeypatch.setattr("app.gateway.DiscordAPI", Mock(return_value=api))
+    monkeypatch.setattr("app.discord.gateway.DiscordAPI", Mock(return_value=api))
 
     async def check():
         gateway = SignupGateway(client.app.state.engine, config)
@@ -234,7 +235,7 @@ def test_gateway_recovery_uses_rest_then_marks_healthy(custom_client, monkeypatc
 
 
 def test_seeding_failure_holds_original_message_for_review(custom_client):
-    from test_flow import event_body, login
+    from flow_helpers import event_body, login
 
     client, _, _ = custom_client
     headers = login(client)

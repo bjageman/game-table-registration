@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("table titles fit beside counts as available width changes", async ({ page }) => {
   const names = ["A Very Long Table Name For Everyone", "Table B", "Another Long Table Name For Testing"];

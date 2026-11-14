@@ -31,7 +31,7 @@ export default function ArchiveEvent({ event, csrf, onUpdated, onAccessError }: 
         : saved;
       setConfirming(false);
       const cleanupNotice = !deleteMessages && (saved.discord_cleanup_error || saved.discord_cleanup_remaining)
-        ? ` Event archived, but a promotion notice remains on Discord. Use Delete Discord Messages to retry.`
+        ? ` Discord cleanup remains unfinished. Use Delete Discord Messages to retry.`
         : "";
       onUpdated(completed, `Event archived: ${event.title}.${cleanupNotice}`);
     } catch (failure) {
@@ -45,11 +45,11 @@ export default function ArchiveEvent({ event, csrf, onUpdated, onAccessError }: 
     finally { inFlight.current = false; setBusy(false); }
   }
   return <>
-    <button type="button" className="event-icon-action" aria-label="Archive event" title="Archive Event"
+    <button id={`event-archive-${event.id}`} type="button" className="event-icon-action" aria-label="Archive event" title="Archive Event"
       onClick={() => { setError(""); setConfirming(true); }}><Archive size={18} aria-hidden="true" /></button>
-    {confirming && <ConfirmationDialog title={`Archive ${event.title}?`} busy={busy} error={error} status={status}
+    {confirming && <ConfirmationDialog id={`event-archive-dialog-${event.id}`} title={`Archive ${event.title}?`} busy={busy} error={error} status={status}
       onCancel={() => setConfirming(false)} onConfirm={() => void archive()}>
-      <p>This keeps the event and its saved placements in the archive.</p>
+      {null}
       <label className="delete-poll-option"><input type="checkbox" checked={deleteMessages} disabled={busy}
         onChange={(change) => setDeleteMessages(change.target.checked)} /> Also delete the signup and assignment messages on Discord</label>
     </ConfirmationDialog>}

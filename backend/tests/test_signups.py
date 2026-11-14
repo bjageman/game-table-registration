@@ -10,12 +10,13 @@ from unittest.mock import Mock
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from flow_helpers import event_body, login, set_assignment_review
 from httpx import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from test_flow import event_body, login
 
 from app.config import Settings
+from app.events.signups import handle
 from app.main import create_app
 from app.models import (
     Base,
@@ -25,7 +26,6 @@ from app.models import (
     SignupInteraction,
     TableSignup,
 )
-from app.signups import handle
 
 
 @pytest.fixture
@@ -86,9 +86,10 @@ def interaction(event, action="open", user="1", values=None):
     }
 
 
-def publish(custom_client, *, reaction=False):
+def publish(custom_client, *, reaction=False, review=False):
     client, _, _ = custom_client
     headers = login(client)
+    set_assignment_review(client, headers, review)
     body = {
         **event_body(),
         "tables": [{"name": "A", "capacity": 1}, {"name": "B", "capacity": 1}],
@@ -112,12 +113,10 @@ def test_custom_publication_and_duplicate_guard(custom_client):
     headers, event, path = publish(custom_client)
     payload = client.app.state.discord.publish.call_args.args[0]
     assert "poll" not in payload
-    assert "A · 1 seats" in payload["content"]
-    assert "B · 1 seats" in payload["content"]
-    assert "lottery entry" in payload["content"]
+    embed = payload["embeds"][0]
+    assert [field["name"] for field in embed["fields"]] == ["1️⃣ A (0/1)", "2️⃣ B (0/1)"]
+    assert "lottery entry" in embed["description"]
     assert payload["allowed_mentions"] == {"parse": []}
-    assert "1️⃣ A" in payload["content"]
-    assert "2️⃣ B" in payload["content"]
     assert "components" not in payload
     assert event["signup_mode"] == "custom"
     assert event["closes_at"] == pytest.approx(time.time() + 86400, abs=5)
@@ -256,7 +255,7 @@ def test_closed_or_unpublished_events_reject_all_changes(custom_client, state):
 
 
 def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
-    from app.announcements import dispatch_due
+    from app.discord.announcements import dispatch_due
 
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
@@ -278,7 +277,10 @@ def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
         assert len(result["waitlist"]) == 1
         for player in snapshot["players"]:
             expected = 4.5 if player["id"] in result["assignments"] else 5.5
-            assert db.get(PlayerProfile, ("guild", player["id"])).weighting == expected
+            assert (
+                db.get(PlayerProfile, ("user:owner", "guild", player["id"])).weighting
+                == expected
+            )
     assert client.post(path + "/close", headers=headers).status_code == 200
     with Session(client.app.state.engine) as db:
         assert db.get(LotteryRun, event["id"]).result == result
@@ -306,7 +308,12 @@ def test_guarantee_conflict_allows_correction_without_losing_signups(custom_clie
     with Session(client.app.state.engine) as db:
         for user in ("1", "2"):
             db.add(
-                PlayerProfile(guild_id="guild", discord_id=user, guaranteed_seat=True)
+                PlayerProfile(
+                    scope_key="user:owner",
+                    guild_id="guild",
+                    discord_id=user,
+                    guaranteed_seat=True,
+                )
             )
         db.commit()
     assert client.post(path + "/close", headers=headers).status_code == 409
@@ -382,7 +389,7 @@ def test_signups_and_receipts_survive_application_restart(custom_client):
 
 
 def test_closing_claim_rejects_late_choices_before_snapshot(custom_client, monkeypatch):
-    import app.closing as closing
+    import app.assignments.closing as closing
 
     client, _, _ = custom_client
     headers, event, path = publish(custom_client)
@@ -443,7 +450,7 @@ def test_custom_signups_share_test_players_and_assignment_settings(custom_client
         assert run.snapshot["is_test"] is True
         assert run.snapshot["automatic_weight_adjustment"] is False
         assert len(run.snapshot["players"]) == 3
-        assert db.get(PlayerProfile, ("guild", "1")) is None
+        assert db.get(PlayerProfile, ("user:owner", "guild", "1")) is None
 
 
 def test_legacy_poll_controls_cannot_create_database_signups(custom_client):

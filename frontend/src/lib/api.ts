@@ -72,6 +72,7 @@ export function errorMessage(error: unknown): string {
 }
 
 export interface ModeratorSession {
+  timezone?: string | null;
   user_id?: string;
   organization?: { id: string; name: string } | null;
   organization_role?: "user" | "editor" | "admin" | null;
@@ -82,7 +83,27 @@ export interface ModeratorSession {
   csrf: string;
 }
 
-export interface EventRecord {
+export interface SignupWarningSettings {
+  post_warning_message?: boolean;
+  warning_hours_before_close?: number;
+  warning_message?: string;
+}
+
+export interface RecurringSeriesRecord extends SignupWarningSettings {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  tables: { name: string; capacity: number }[];
+  starts_at: number;
+  duration_hours: number;
+  frequency: string;
+  time_zone: string;
+  opens_before_hours: number;
+  closes_before_hours: number;
+}
+
+export interface EventRecord extends SignupWarningSettings {
   id: string;
   title: string;
   description?: string;
@@ -98,6 +119,7 @@ export interface EventRecord {
   archived_at?: number | null;
   signup_deleted_at?: number | null;
   close_error?: string | null;
+  pairing_warnings?: string[];
   is_test?: boolean;
   test_generation?: string | null;
   test_user_count?: number;
@@ -106,7 +128,7 @@ export interface EventRecord {
   discord_cleanup_error?: string | null;
 }
 
-export interface EventTemplateRecord {
+export interface EventTemplateRecord extends SignupWarningSettings {
   id: string;
   title: string;
   description?: string;

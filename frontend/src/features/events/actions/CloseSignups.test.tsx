@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import CloseSignups from "./CloseSignups";
 import type { EventRecord } from "../../../lib/api";
@@ -12,62 +12,84 @@ function props() {
 }
 afterEach(() => { cleanup(); localStorage.clear(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("requires confirmation and sends the close operation with CSRF", async () => {
+it.each(["assigned", "review"])("requires confirmation and handles a completed %s draw with CSRF", async (status) => {
   const parameters = props();
-  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ...event, status: "assigned" })));
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ review_assignments_before_discord: false })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ review_assignments_before_discord: false })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ ...event, status })));
   vi.stubGlobal("fetch", fetchMock);
   render(<CloseSignups {...parameters} />);
   fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
-  expect(fetchMock).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  expect(fetchMock).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
-  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
-  await waitFor(() => expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: "assigned" })));
+  const confirmation = await screen.findByRole("dialog", { name: "Close signups for Games?" });
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(fetchMock).toHaveBeenCalledWith("/api/events/event/close", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }) }));
+  expect(fetchMock).not.toHaveBeenCalledWith("/api/events/event/close", expect.anything());
+  fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
+  const reopenedConfirmation = await screen.findByRole("dialog", { name: "Close signups for Games?" });
+  fireEvent.click(within(reopenedConfirmation).getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status })));
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/events/event/close", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }) }));
+});
+
+it("closes directly into verification without a confirmation dialog", async () => {
+  const parameters = props();
+  localStorage.setItem("delete-discord-signup-on-close", "true");
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ review_assignments_before_discord: true })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ ...event, status: "review" })));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<CloseSignups {...parameters} />);
+  fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
+  await waitFor(() => expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: "review" })));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/events/event/close", expect.objectContaining({ method: "POST" }));
 });
 
 it("remembers message deletion and sends the selected close option", async () => {
   const parameters = props();
-  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ...event, status: "assigned", discord_url: null })));
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ review_assignments_before_discord: false })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ review_assignments_before_discord: false })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ ...event, status: "assigned", discord_url: null })));
   vi.stubGlobal("fetch", fetchMock);
   render(<CloseSignups {...parameters} />);
   fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
-  fireEvent.click(screen.getByRole("checkbox", { name: "Also delete the signup message on Discord" }));
-  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  let confirmation = await screen.findByRole("dialog", { name: "Close signups for Games?" });
+  fireEvent.click(within(confirmation).getByRole("checkbox", { name: "Also delete the signup message on Discord" }));
+  fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
   fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
-  expect(screen.getByRole("checkbox", { name: "Also delete the signup message on Discord" })).toBeChecked();
-  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/events/event/close?delete_signup_message=true", expect.anything()));
+  confirmation = await screen.findByRole("dialog", { name: "Close signups for Games?" });
+  expect(within(confirmation).getByRole("checkbox", { name: "Also delete the signup message on Discord" })).toBeChecked();
+  fireEvent.click(within(confirmation).getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith("/api/events/event/close?delete_signup_message=true", expect.anything()));
 });
 
 it("continues only after explicit closing responses and blocks duplicate confirmation", async () => {
-  vi.useFakeTimers();
   const parameters = props();
   const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ review_assignments_before_discord: false })))
     .mockResolvedValueOnce(new Response(JSON.stringify({ ...event, status: "closing" }), { status: 202 }))
     .mockResolvedValueOnce(new Response(JSON.stringify({ ...event, status: "assigned" })));
   vi.stubGlobal("fetch", fetchMock);
   render(<CloseSignups {...parameters} />);
   fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
+  await screen.findByRole("dialog", { name: "Close signups for Games?" });
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
   expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
-  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-  expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: "closing" }));
-  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-  expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: "assigned" }));
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  await waitFor(() => expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: "closing" })));
+  await waitFor(() => expect(parameters.onUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: "assigned" })), { timeout: 3000 });
+  expect(fetchMock).toHaveBeenCalledTimes(3);
 });
 
-it("does not automatically repeat a failed network operation", async () => {
+it("does not automatically repeat a failed settings lookup", async () => {
   const parameters = props();
   const fetchMock = vi.fn().mockRejectedValue(new Error("offline"));
   vi.stubGlobal("fetch", fetchMock);
   render(<CloseSignups {...parameters} />);
   fireEvent.click(screen.getByRole("button", { name: "Close Signups" }));
-  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach");
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole("button", { name: "Confirm" })).toBeEnabled();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });

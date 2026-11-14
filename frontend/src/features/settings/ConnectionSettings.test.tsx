@@ -6,15 +6,17 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const props = { csrf: "csrf", organizationId: "org", onSaved: vi.fn(async () => {}), onAccessError: vi.fn(() => false) };
 
 it("shows Connect and allows saving assignment settings without Discord", async () => {
-  const fetchMock = vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/settings"
+  const fetchMock = vi.fn(async (path: string, options?: RequestInit) => new Response(JSON.stringify(path === "/api/settings"
     ? { selection: null, disconnected: true, organization_role: "admin", connect_url: "/api/auth/connect" }
-    : { automatic_weight_adjustment: true, announce_table_changes: false })));
+    : path === "/api/settings/assignment" && options?.method === "PUT"
+      ? { automatic_weight_adjustment: true, announce_table_changes: true }
+      : { automatic_weight_adjustment: true, announce_table_changes: false })));
   vi.stubGlobal("fetch", fetchMock);
   render(<ConnectionSettings {...props} />);
   expect(await screen.findByRole("link", { name: "Connect" })).toHaveAttribute("href", "/api/auth/connect");
-  fireEvent.click(screen.getByRole("tab", { name: "Assignments" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Save" }));
-  await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === "/api/settings/assignment")).toHaveLength(2));
+  fireEvent.click(screen.getByRole("tab", { name: "General" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Announce Table Changes on Discord" }));
+  await waitFor(() => expect(fetchMock.mock.calls.filter(([path, options]) => path === "/api/settings/assignment" && options?.method === "PUT")).toHaveLength(1));
 });
 
 it("shows Disconnect beside Save and refreshes the server dropdown", async () => {

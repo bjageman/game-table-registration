@@ -18,3 +18,5 @@ jobs:
         run: git diff --check "$BASE_SHA" HEAD
       - name: Ensure local credentials are untracked
         run: test -z "$(git ls-files '.env' '**/.env' '.env.local' '**/.env.local')"
+      - name: Enforce source and test file length limit
+        run: python3 scripts/check_file_lengths.py

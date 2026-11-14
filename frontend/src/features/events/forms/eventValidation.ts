@@ -1,3 +1,5 @@
+import { resolveLocalTime } from "../../../lib/timezone";
+
 export interface TableDraft {
   id: number;
   name: string;
@@ -6,14 +8,10 @@ export interface TableDraft {
 export interface EventDraft {
   title: string;
   startsAt: string;
+  timezone?: string;
   duration: string;
   explicitClosing?: boolean;
   tables: TableDraft[];
-}
-
-function localMinute(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function validateEvent(
@@ -22,32 +20,13 @@ export function validateEvent(
 ): Record<string, string> {
   const errors = validateTemplate({ ...draft, duration: draft.explicitClosing ? "1" : draft.duration });
   const hours = Number(draft.duration);
-  const start = new Date(draft.startsAt);
-  if (Number.isNaN(start.getTime()) || localMinute(start) !== draft.startsAt) {
-    errors.start =
-      "Enter a valid local date and time. This time may not exist because the clocks change.";
-  } else {
-    // A different offset can produce the same wall time when clocks go back.
-    const offsets = [-86400000, 86400000].map((delta) =>
-      new Date(start.getTime() + delta).getTimezoneOffset(),
-    );
-    if (
-      offsets.some(
-        (offset) =>
-          offset !== start.getTimezoneOffset() &&
-          localMinute(
-            new Date(
-              start.getTime() + (offset - start.getTimezoneOffset()) * 60000,
-            ),
-          ) === draft.startsAt,
-      )
-    ) {
-      errors.start =
-        "This local time occurs twice when the clocks change. Choose an unambiguous time.";
-    } else if (start.getTime() <= now + (draft.explicitClosing ? 0 : hours * 3600000)) {
-      errors.start =
-        "The event must start after the signup window ends. Choose a later time or a shorter signup duration.";
-    }
+  const { date: start, ambiguous } = resolveLocalTime(draft.startsAt, draft.timezone);
+  if (ambiguous) {
+    errors.start = "This local time occurs twice when the clocks change. Choose an unambiguous time.";
+  } else if (!start) {
+    errors.start = "Enter a valid local date and time. This time may not exist because the clocks change.";
+  } else if (start.getTime() <= now + (draft.explicitClosing ? 0 : hours * 3600000)) {
+    errors.start = "The event must start after the signup window ends. Choose a later time or a shorter signup duration.";
   }
   return errors;
 }
