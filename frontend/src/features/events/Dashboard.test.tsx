@@ -27,7 +27,9 @@ it("opens event details from a compact event listing", async () => {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify([draft]))),
+    vi.fn(async (url: string) => new Response(JSON.stringify(
+      url.endsWith("/signups") ? [{ name: "Clocktower", players: [] }] : [draft],
+    ))),
   );
   render(<Dashboard {...props} />);
   const item = await screen.findByRole("button", { name: /^Friday games/ });
@@ -36,7 +38,7 @@ it("opens event details from a compact event listing", async () => {
   fireEvent.click(item);
   expect(screen.getByRole("dialog", { name: "Friday games" })).toBeVisible();
   expect(screen.getAllByText("draft")).toHaveLength(2);
-  expect(screen.getByText("0/15")).toBeVisible();
+  expect(await screen.findByText("0/15")).toBeVisible();
   expect(screen.getByText("Signup Close")).toBeVisible();
   expect(screen.getAllByRole("listitem").filter((li) => li.parentElement?.className === "table-players")).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", { name: "Close event" }));

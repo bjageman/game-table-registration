@@ -11,6 +11,7 @@ from app.config import Settings
 from app.discord.discord_format import clean
 from app.discord.event_threads import queue_member
 from app.discord.signup_messages import signup_body
+from app.events.table_membership import filter_rows, removals
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
@@ -83,7 +84,7 @@ def apply_manager_signups(
     )
     removed = {override.discord_id for override in overrides if override.removed}
     additions = {
-        override.discord_id: override for override in overrides if not override.removed
+        override.discord_id: override for override in overrides if override.choices
     }
     by_table = {row["name"]: row for row in rows}
     for row in rows:
@@ -98,7 +99,7 @@ def apply_manager_signups(
             table_row["players"].append(
                 {"id": override.discord_id, "name": override.discord_name}
             )
-    return rows
+    return filter_rows(db, event.id, rows)
 
 
 def apply_manager_players(
@@ -116,7 +117,7 @@ def apply_manager_players(
     for override in overrides:
         if override.removed:
             by_id.pop(override.discord_id, None)
-        elif override.choices:
+        if override.choices:
             player = by_id.setdefault(
                 override.discord_id,
                 {
@@ -130,7 +131,14 @@ def apply_manager_players(
             player["choices"] = sorted(
                 set(player.get("choices", [])) | set(override.choices)
             )
-    return list(by_id.values())
+    excluded = removals(db, event.id)
+    for player in by_id.values():
+        player["choices"] = [
+            table
+            for table in player.get("choices", [])
+            if (player["id"], table) not in excluded
+        ]
+    return [player for player in by_id.values() if player["choices"]]
 
 
 def private_message(content: str) -> dict[str, Any]:

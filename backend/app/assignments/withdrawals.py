@@ -12,6 +12,7 @@ from app.discord.announcements import enqueue_refresh
 from app.discord.discord_format import clean
 from app.discord.event_threads import queue_member
 from app.discord.promotion_dms import enqueue as enqueue_promotion_dm
+from app.events.table_membership import removals, set_removed
 from app.models import (
     Announcement,
     Event,
@@ -110,7 +111,9 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
             )
         )
     )
+    added_tables = {(row.discord_id, row.table_name) for row in additions}
     by_id = result_players(db, run)
+    excluded = removals(db, run.event_id)
     tables = []
     for table in result["tables"]:
         name = table["name"]
@@ -129,6 +132,7 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
             player
             for player in table.get("waitlist", [])
             if player["id"] not in withdrawn
+            and (player["id"], name) not in added_tables
         ]
         waitlist.extend(
             {"id": addition.discord_id, "name": addition.discord_name}
@@ -144,6 +148,7 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
                     dict(player)
                     for player in waitlist
                     if player["id"] not in assignments
+                    and (player["id"], name) not in excluded
                 ],
             }
         )
@@ -157,20 +162,13 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
         "assignments": assignments,
         "waitlist": list(
             dict.fromkeys(
-                [
-                    *[
-                        player_id
-                        for player_id in result["waitlist"]
-                        if player_id not in withdrawn and player_id not in assignments
-                    ],
-                    *[
-                        addition.discord_id
-                        for addition in additions
-                        if addition.added_at
-                        > withdrawn.get(addition.discord_id, float("-inf"))
-                        and addition.discord_id not in assignments
-                    ],
-                ]
+                pid
+                for pid in [*result["waitlist"], *[row.discord_id for row in additions]]
+                if any(
+                    player["id"] == pid
+                    for table in tables
+                    for player in table["waitlist"]
+                )
             )
         ),
         "tables": tables,
@@ -372,7 +370,13 @@ def withdraw_seat(
 
 
 def manager_remove(
-    engine: Engine, guild_id: str, event_id: str, player_id: str
+    engine: Engine,
+    guild_id: str,
+    event_id: str,
+    player_id: str,
+    table_name: str | None = None,
+    *,
+    waitlist_only: bool = False,
 ) -> bool:
     """Remove a player, promoting from the waitlist unless the table is overfull."""
     with Session(engine) as db:
@@ -381,20 +385,27 @@ def manager_remove(
             return False
         event, run = locked
         current = current_result(db, run)
-        table_name = current["assignments"].get(player_id)
+        requested_table = table_name
+        seated_table = current["assignments"].get(player_id)
+        table_name = (
+            seated_table
+            if not waitlist_only
+            and (requested_table is None or requested_table == seated_table)
+            else None
+        )
         if table_name is None:
             table_name = next(
                 (
                     table["name"]
                     for table in current["tables"]
-                    if any(player["id"] == player_id for player in table["waitlist"])
+                    if (requested_table is None or table["name"] == requested_table)
+                    and any(player["id"] == player_id for player in table["waitlist"])
                 ),
                 None,
             )
             if table_name is None:
                 return False
-            removed_at = time.time()
-            record_withdrawal(db, event.id, player_id, table_name, removed_at, None)
+            set_removed(db, event.id, player_id, table_name, True)
             if event.status == "assigned":
                 enqueue_refresh(db, event)
             db.commit()
@@ -502,6 +513,7 @@ def manager_add(
         else:
             assignment.table_name = table_name
             assignment.assigned_at = time.time()
+        set_removed(db, event_id, player_id, table_name, False)
         queue_member(db, event, player_id)
         if event.status == "assigned":
             action = "promoted from the waitlist" if waitlisted else "added"
