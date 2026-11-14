@@ -1,3 +1,4 @@
+import FormFields from "../../../components/FormFields";
 import { resolveLocalTime, useTimezone } from "../../../lib/timezone";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Plus, Save } from "lucide-react";
@@ -376,7 +377,7 @@ export default function EventForm({
       >
         <fieldset disabled={saving}>
           <legend className="sr-only">Event details</legend>
-          <div className="event-title-start-row">
+          <FormFields>
           <TextField
             id={`${prefix}-title`}
             error={Boolean(fieldErrors.title)}
@@ -388,11 +389,13 @@ export default function EventForm({
             autoFocus
             fullWidth
             variant="outlined"
+            margin="none"
             slotProps={{
               inputLabel: { shrink: true },
               htmlInput: { maxLength: 100 },
             }}
           />
+          <div className={`event-date-time-row${createDiscordEvent ? "" : " single"}`}>
             <div className="date-time-fields" ref={scheduleFields}>
               {isMobile ? (
                 <div className="mobile-date-time-fields">
@@ -401,6 +404,7 @@ export default function EventForm({
                     label="Event starts"
                     slotProps={{
                       textField: {
+                        margin: "none",
                         id: `${prefix}-start`,
                         error: Boolean(fieldErrors.start),
                         helperText: fieldErrors.start,
@@ -426,6 +430,7 @@ export default function EventForm({
                     }}
                     slotProps={{
                       textField: {
+                        margin: "none",
                         id: `${prefix}-time`,
                         fullWidth: true,
                         required: true,
@@ -465,6 +470,7 @@ export default function EventForm({
                       },
                     },
                     textField: {
+                      margin: "none",
                       id: `${prefix}-start`,
                       fullWidth: true,
                       required: true,
@@ -476,13 +482,14 @@ export default function EventForm({
                 />
               )}
             </div>
-          </div>
           {createDiscordEvent && <DateTimePicker
             timezone={timezone} label="Event ends" value={endsAtLocal ? dayjs.tz(endsAtLocal, timezone) : null}
             onChange={(value) => setEndOverride(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "")}
             format="MMMM D, YYYY h:mm A" ampm minutesStep={15}
-            slotProps={{ textField: { id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }}
+            slotProps={{ textField: { margin: "none", id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }}
           />}
+          </div>
+          </FormFields>
           <SignupWarningFields enabled={postWarning} hours={warningHours} message={warningMessage}
             onEnabled={setPostWarning} onHours={setWarningHours} onMessage={setWarningMessage}
             error={fieldErrors.warning_hours_before_close} />

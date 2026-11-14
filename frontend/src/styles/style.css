@@ -388,7 +388,8 @@ dd {
   column-gap: 12px;
   align-items: start;
 }
-.event-title-start-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.event-date-time-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.event-date-time-row.single { grid-template-columns: minmax(0, 1fr); }
 .scheduled-event-checkbox { display: flex; align-items: center; gap: 8px; margin: 20px 0; }
 .event-scheduling-inputs { min-width: 0; }
 .signup-warning-inputs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
@@ -399,7 +400,7 @@ dd {
   .event-scheduling-inputs.single { flex: 0 1 22rem; }
   .signup-warning-inputs { grid-template-columns: 10rem minmax(0, 1fr); }
 }
-@media (max-width: 600px) { .event-title-start-row { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .event-date-time-row { grid-template-columns: minmax(0, 1fr); } }
 .scheduled-events-panel { margin-bottom: 24px; padding-bottom: 20px; }
 .archive-filter-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
 .archive-filter-controls .archive-filter { margin-bottom: 16px; }
