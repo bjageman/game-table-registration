@@ -20,14 +20,17 @@ it("confirms breaking the target's current link before saving the new pair", asy
   vi.stubGlobal("fetch", fetchMock);
   render(<PlayerPairEditor playerId="1" partner={{ id: "2", name: "Bob" }} csrf="csrf"
     onChanged={onChanged} onBusy={vi.fn()} onAccessError={() => false} />);
-  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Carol" } });
-  fireEvent.click(await screen.findByRole("button", { name: "Link Carol (3)" }));
+  fireEvent.focus(screen.getByRole("combobox", { name: "Linked Player" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Linked Player" }), { target: { value: "Carol" } });
+  fireEvent.click(await screen.findByRole("option", { name: "Carol (3)" }));
   let confirmation = await screen.findByRole("dialog", { name: "Replace player link?" });
   expect(confirmation).toHaveTextContent("Carol and Dave");
   expect(onChanged).not.toHaveBeenCalled();
   fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
-  expect(screen.getByText(/Linked to Bob/)).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "Link Carol (3)" }));
+  expect(screen.getByRole("combobox", { name: "Linked Player" })).toHaveValue("Bob");
+  fireEvent.focus(screen.getByRole("combobox", { name: "Linked Player" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Linked Player" }), { target: { value: "Carol" } });
+  fireEvent.click(await screen.findByRole("option", { name: "Carol (3)" }));
   confirmation = await screen.findByRole("dialog", { name: "Replace player link?" });
   fireEvent.click(within(confirmation).getByRole("button", { name: "Confirm" }));
   await waitFor(() => expect(onChanged).toHaveBeenCalledWith({ id: "3", name: "Carol" }));
@@ -40,7 +43,7 @@ it("confirms breaking the target's current link before saving the new pair", asy
 it("shows the linked player without editing controls for read-only members", () => {
   render(<PlayerPairEditor playerId="1" partner={{ id: "2", name: "Bob" }} csrf="csrf" readOnly
     onChanged={vi.fn()} onBusy={vi.fn()} onAccessError={() => false} />);
-  expect(screen.getByText(/Linked to Bob/)).toBeVisible();
-  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "Linked Player" })).toHaveValue("Bob");
+  expect(screen.getByRole("combobox", { name: "Linked Player" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
 });

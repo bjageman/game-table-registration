@@ -165,15 +165,16 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
         onBlur={() => { saveWeight(); }}
         slotProps={{ htmlInput: { min: 0.1, max: 10, step: 0.1 } }} />
       </div>
-      <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat} disabled={readOnly}
-        onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }, "Guaranteed seat saved."); }} />} />
-      {notice && <p role="status">{notice}</p>}
-      </FormFields>
       <PlayerPairEditor playerId={player.id} partner={profile.partner ?? null} csrf={csrf} readOnly={readOnly} onAccessError={onAccessError}
         onBusy={(busy) => { pairingBusy.current = busy; }} onChanged={(partner) => {
           setProfile((current) => current ? { ...current, partner } : current);
           onSaved?.();
         }} />
+      <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat} disabled={readOnly}
+        onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }, "Guaranteed seat saved."); }} />} />
+      {notice && <p role="status">{notice}</p>}
+      </FormFields>
+
     </div>}
   </dialog>;
 }

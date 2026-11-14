@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import Autocomplete from "@mui/material/Autocomplete";
+import { FormField } from "../../components/FormFields";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
 
@@ -14,28 +16,30 @@ export default function PlayerPairEditor({ playerId, partner, csrf, readOnly = f
   onChanged: (partner: Partner | null) => void; onBusy: (busy: boolean) => void;
   onAccessError: (error: unknown) => boolean;
 }) {
-  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [reset, setReset] = useState(0);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmation, setConfirmation] = useState<{ target: string; previous: string; message: string }>();
   const inFlight = useRef(false);
   useEffect(() => {
-    if (query.trim().length < 2) return;
+    if (!open || readOnly) return;
     const controller = new AbortController();
     api<Candidate[]>("/players", { signal: controller.signal }).then((players) => {
       if (!controller.signal.aborted) setCandidates(players);
     }).catch((failure) => {
       if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure));
-    });
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [query, onAccessError]);
-  const normalized = query.trim().toLocaleLowerCase();
-  const visible = candidates.filter((candidate) => candidate.discord_id !== playerId && candidate.discord_id !== partner?.id
-    && `${candidate.discord_name} ${candidate.real_name} ${candidate.discord_id}`.toLocaleLowerCase().includes(normalized));
+  }, [open, readOnly, onAccessError]);
+  const options = candidates.filter((candidate) => candidate.discord_id !== playerId).map((candidate) => ({
+    id: candidate.discord_id, name: candidate.real_name || candidate.discord_name, discordName: candidate.discord_name,
+  }));
   async function link(target: string | null, previous?: string) {
     if (inFlight.current) return;
-    inFlight.current = true; setBusy(true); onBusy(true); setError("");
+    inFlight.current = true; setBusy(true); setOpen(false); onBusy(true); setError("");
     try {
       const result = await api<PairResponse>(`/players/${encodeURIComponent(playerId)}/partner`, {
         ...mutationOptions(csrf, { partner_id: target, replace_partner_id: previous ?? null }), method: "PUT",
@@ -44,28 +48,31 @@ export default function PlayerPairEditor({ playerId, partner, csrf, readOnly = f
         setConfirmation({ target: target!, previous: result.replace_partner_id, message: result.message });
       } else {
         onChanged(result.profile.partner);
-        setQuery(""); setCandidates([]); setConfirmation(undefined);
+        setConfirmation(undefined); setReset((value) => value + 1);
       }
-    } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
+    } catch (failure) { setReset((value) => value + 1); if (!onAccessError(failure)) setError(errorMessage(failure)); }
     finally { inFlight.current = false; setBusy(false); onBusy(false); }
   }
-  return <section aria-label="Linked player" onKeyDown={(event) => event.stopPropagation()}>
-    <h3>Linked player</h3>
-    <p className="help">Applies to future draws in this organization when both players sign up. Manual edits affect only the selected player.</p>
-    {partner ? <p>Linked to {partner.name} {!readOnly && <button type="button" disabled={busy} onClick={() => void link(null)}>Unlink player</button>}</p> : <p>No linked player.</p>}
-    {!readOnly && <>
-    <label htmlFor={`player-pair-search-${playerId}`}>Search for a player to link</label>
-    <input id={`player-pair-search-${playerId}`} type="search" value={query} disabled={busy} placeholder="Name or Discord ID"
-      onChange={(event) => { setQuery(event.target.value); setCandidates([]); setError(""); }} />
-    {normalized.length >= 2 && <ul className="add-player-results" aria-label="Matching players">
-      {visible.map((candidate) => <li key={candidate.discord_id}><button type="button" disabled={busy}
-        onClick={() => void link(candidate.discord_id)}>Link {candidate.real_name || candidate.discord_name} ({candidate.discord_id})</button></li>)}
-    </ul>}
+  return <div onKeyDown={(event) => event.stopPropagation()}>
+    <Autocomplete<Partner & { discordName?: string }>
+      key={`${partner?.id ?? "none"}:${reset}`} id={`player-pair-${playerId}`} fullWidth disablePortal openOnFocus
+      options={options} value={partner} loading={loading} disabled={busy || readOnly} open={open}
+      onOpen={() => { setOpen(true); setLoading(true); setError(""); }} onClose={() => setOpen(false)}
+      getOptionLabel={(option) => option.name} isOptionEqualToValue={(option, value) => option.id === value.id}
+      filterOptions={(items, state) => items.filter((item) => `${item.name} ${item.discordName ?? ""} ${item.id}`
+        .toLocaleLowerCase().includes(state.inputValue.trim().toLocaleLowerCase()))}
+      onChange={(_, value) => { if (value?.id !== partner?.id) void link(value?.id ?? null); }}
+      renderOption={(props, option) => {
+        const { key, ...attributes } = props;
+        return <li key={key} {...attributes}>{option.name} ({option.id})</li>;
+      }}
+      renderInput={(params) => <FormField {...params} label="Linked Player"
+        slotProps={{ ...params.slotProps, inputLabel: { ...params.slotProps.inputLabel, shrink: true } }} />} />
     {error && !confirmation && <p role="alert" className="error">{error}</p>}
     {confirmation && <ConfirmationDialog id={`player-pair-confirm-${playerId}`} title="Replace player link?" busy={busy} error={error}
-      onCancel={() => { setConfirmation(undefined); setError(""); }} onConfirm={() => void link(confirmation.target, confirmation.previous)}>
+      onCancel={() => { setConfirmation(undefined); setReset((value) => value + 1); setError(""); }}
+      onConfirm={() => void link(confirmation.target, confirmation.previous)}>
       <p>{confirmation.message}</p>
     </ConfirmationDialog>}
-    </>}
-  </section>;
+  </div>;
 }
