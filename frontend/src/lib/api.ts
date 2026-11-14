@@ -89,6 +89,20 @@ export interface SignupWarningSettings {
   warning_message?: string;
 }
 
+export interface RecurringSeriesRecord extends SignupWarningSettings {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  tables: { name: string; capacity: number }[];
+  starts_at: number;
+  duration_hours: number;
+  frequency: string;
+  time_zone: string;
+  opens_before_hours: number;
+  closes_before_hours: number;
+}
+
 export interface EventRecord extends SignupWarningSettings {
   id: string;
   title: string;

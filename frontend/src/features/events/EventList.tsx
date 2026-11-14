@@ -142,6 +142,8 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               {signupOpensAt != null && <EventDateLine label="Signup Open" timestamp={signupOpensAt} />}
               <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
+              {event.post_warning_message && signupClosesAt != null && <EventDateLine label="Warning Message"
+                timestamp={signupClosesAt - (event.warning_hours_before_close ?? 1) * 3600} />}
             </EventDateDetails>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
             {event.status === "review" && <p role="status" className="notice">Review these assignments. Add or remove players as needed, then send the results to Discord.</p>}

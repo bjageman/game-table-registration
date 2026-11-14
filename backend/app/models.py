@@ -49,7 +49,12 @@ class SignupWarningSettings:
 
 class Event(SignupWarningSettings, Base):
     __tablename__ = "events"
-    __table_args__ = (UniqueConstraint("series_id", "starts_at"),)
+    __table_args__ = (
+        UniqueConstraint("series_id", "starts_at"),
+        UniqueConstraint(
+            "source_series_id", "series_slot_at", name="uq_event_series_slot"
+        ),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     public_share_token: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True
@@ -98,6 +103,13 @@ class Event(SignupWarningSettings, Base):
         nullable=True,
         index=True,
     )
+    # Provenance survives publication and individual date changes. Membership does not.
+    source_series_id: Mapped[str | None] = mapped_column(
+        ForeignKey("recurring_series.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    series_slot_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     scheduled_publish_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 

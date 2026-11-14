@@ -17,6 +17,7 @@ import {
   errorMessage,
   mutationOptions,
   type EventRecord,
+  type RecurringSeriesRecord,
   type EventTemplateRecord,
 } from "../../../lib/api";
 import { validateEvent, validateTemplate } from "./eventValidation";
@@ -26,6 +27,7 @@ import SignupWarningFields, { warningErrors } from "./SignupWarningFields";
 interface Props {
   csrf: string;
   event?: EventRecord;
+  series?: RecurringSeriesRecord;
   onCreated: (event: EventRecord) => void;
   onScheduled?: (title: string) => void;
   onCancel: () => void;
@@ -38,14 +40,22 @@ function initialTime(timezone: string): Dayjs {
 
 export default function EventForm({
   csrf,
-  event: draft,
+  event,
+  series,
   onCreated,
   onScheduled,
   onCancel,
   onAccessError,
 }: Props) {
   const prefix = "event-form";
-  const timezone = useTimezone();
+  const userTimezone = useTimezone();
+  const timezone = series?.time_zone ?? userTimezone;
+  const draft = series ? {
+    ...series,
+    scheduled_publish_at: series.starts_at - series.opens_before_hours * 3600,
+    closes_at: series.starts_at - series.closes_before_hours * 3600,
+  } : event;
+  const editing = Boolean(event || series);
   const [title, setTitle] = useState(draft?.title ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
   const [location, setLocation] = useState(draft?.location ?? "");
@@ -72,9 +82,9 @@ export default function EventForm({
   const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
   const [manualClosesBefore, setManualClosesBefore] = useState(draft?.closes_at != null ? String(Math.round((draft.starts_at - draft.closes_at) / 3600)) : draft ? "" : "24");
   const [scheduled, setScheduled] = useState(Boolean(draft?.scheduled_publish_at));
-  const [frequency, setFrequency] = useState("once");
-  const [opensBefore, setOpensBefore] = useState("72");
-  const [closesBefore, setClosesBefore] = useState(String(draft?.duration_hours ?? 24));
+  const [frequency, setFrequency] = useState(series?.frequency ?? "once");
+  const [opensBefore, setOpensBefore] = useState(String(series?.opens_before_hours ?? (draft?.scheduled_publish_at != null ? (draft.starts_at - draft.scheduled_publish_at) / 3600 : 72)));
+  const [closesBefore, setClosesBefore] = useState(String(series?.closes_before_hours ?? (draft?.closes_at != null ? (draft.starts_at - draft.closes_at) / 3600 : 24)));
   const [tables, setTables] = useState(
     draft
       ? draft.tables.map((table, id) => ({
@@ -226,8 +236,8 @@ export default function EventForm({
     }
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
     if (inFlight.current) return;
     setError("");
     const errors = { ...validateEvent({
@@ -278,7 +288,7 @@ export default function EventForm({
     setSaving(true);
     try {
       const result = await api<EventRecord | { id: string; title: string }>(
-        frequency !== "once" ? "/recurring-series" : draft ? `/events/${draft.id}` : "/events",
+        series ? `/recurring-series/${series.id}` : frequency !== "once" ? "/recurring-series" : event ? `/events/${event.id}` : "/events",
         {
           ...mutationOptions(csrf, {
             ...warningSettings,
@@ -299,7 +309,7 @@ export default function EventForm({
               capacity: Number(table.capacity),
             })),
           }),
-          method: draft ? "PUT" : "POST",
+          method: editing ? "PUT" : "POST",
         },
       );
       if (frequency !== "once") onScheduled?.(result.title);
@@ -333,7 +343,7 @@ export default function EventForm({
   return (
     <section id="event-form-panel" className="panel form-panel" aria-labelledby={`${prefix}-heading`}>
       <div className="section-heading template-heading">
-        <h3 id={`${prefix}-heading`}>{draft ? "Edit Event Draft" : !scheduled ? "Create Draft Event" : frequency === "once" ? "Create Scheduled Event" : "Create Recurring Scheduled Event"}</h3>
+        <h3 id={`${prefix}-heading`}>{series ? "Edit Recurring Event" : event?.status === "scheduled" ? "Edit Scheduled Event" : event ? "Edit Event Draft" : !scheduled ? "Create Draft Event" : frequency === "once" ? "Create Scheduled Event" : "Create Recurring Scheduled Event"}</h3>
         {templates.length > 0 && <button id="event-load-template-button" type="button" className="text-link" onClick={() => setChoosingTemplate(true)}>Load From Template</button>}
       </div>
       {choosingTemplate && <TemplatePicker templates={templates} onSelect={loadTemplate} onClose={() => setChoosingTemplate(false)} />}
@@ -341,7 +351,7 @@ export default function EventForm({
         id="event-form"
         noValidate
         onSubmit={(event) => void submit(event)}
-        aria-label={draft ? "Edit event" : "Create event"}
+        aria-label={series ? "Edit recurring event" : event ? "Edit event" : "Create event"}
       >
         <fieldset disabled={saving}>
           <legend className="sr-only">Event details</legend>
@@ -450,7 +460,7 @@ export default function EventForm({
             onEnabled={setPostWarning} onHours={setWarningHours} onMessage={setWarningMessage}
             error={fieldErrors.warning_hours_before_close} />
           <div className="event-scheduling-options">
-          <label className="scheduled-event-checkbox"><input id="event-scheduled-checkbox" type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
+          <label className="scheduled-event-checkbox"><input id="event-scheduled-checkbox" type="checkbox" disabled={Boolean(series || event?.series_id)} checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
           <div className={`event-scheduling-inputs ${!scheduled ? "single" : ""}`}>
           {!scheduled && <TextField label="Signups Close Before Event (hours)" type="number" value={manualClosesBefore} onChange={(event) => setManualClosesBefore(event.target.value)} fullWidth slotProps={{ htmlInput: { min: 1, max: 767, step: 1 } }} />}
           {scheduled && <div className="form-grid event-schedule-fields">
@@ -482,8 +492,8 @@ export default function EventForm({
               slotProps={{ inputLabel: { title: "Close before event (hours)" }, htmlInput: { min: 1, max: 768, step: 1 } }}
             />
             </Tooltip>
-            {!draft && <TextField select id={`${prefix}-frequency`} label="Repeat" value={frequency} onChange={(event) => setFrequency(event.target.value)} fullWidth>
-              <MenuItem value="once">Does not repeat</MenuItem>
+            {(!event || series) && <TextField select id={`${prefix}-frequency`} label="Repeat" value={frequency} onChange={(event) => setFrequency(event.target.value)} fullWidth>
+              {!series && <MenuItem value="once">Does not repeat</MenuItem>}
               <MenuItem value="daily">Daily</MenuItem>
               <MenuItem value="weekly">Weekly</MenuItem>
               <MenuItem value="monthly">Monthly</MenuItem>
@@ -601,7 +611,7 @@ export default function EventForm({
         <div id="event-form-actions" className="form-actions event-form-actions">
           <button id="event-save-button" className="primary" type="submit" disabled={saving}>
             <Save size={16} aria-hidden="true" />
-            {saving ? "Saving…" : frequency === "once" ? "Draft" : "Schedule"}
+            {saving ? "Saving…" : editing ? "Save Changes" : frequency === "once" ? "Draft" : "Schedule"}
           </button>
           <button id="event-save-template-button" type="button" onClick={() => void saveTemplate()} disabled={saving}>
             <Save size={16} aria-hidden="true" />
