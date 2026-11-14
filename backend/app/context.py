@@ -17,9 +17,6 @@ from app.events.signup_warnings import settings as warning_settings
 from app.models import (
     Event,
     EventPlayerSetting,
-    Organization,
-    OrganizationMember,
-    OrganizationSelection,
     PlayerProfile,
     Session,
     UserSettings,
@@ -28,6 +25,7 @@ from app.players.player_profiles import PlayerScope
 from app.players.player_profiles import for_event as player_scope_for_event
 from app.security import digest
 from app.settings.assignment_preferences import scope_key
+from app.settings.organization_selection import selected_organization
 
 
 @dataclass
@@ -130,17 +128,7 @@ class ApplicationContext:
             ):
                 raise HTTPException(403, "Invalid request. Refresh and try again.")
             request.state.user_id = session.user_id
-            selection = db.get(OrganizationSelection, session.user_id)
-            organization = (
-                db.get(Organization, selection.organization_id) if selection else None
-            )
-            member = (
-                db.get(OrganizationMember, (organization.id, session.user_id))
-                if organization
-                else None
-            )
-            if organization and not member:
-                organization = None
+            organization, member = selected_organization(db, session.user_id)
             request.state.organization_id = organization.id if organization else None
             request.state.organization_role = (
                 member.role if organization and member else None

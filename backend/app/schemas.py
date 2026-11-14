@@ -30,10 +30,28 @@ class SignupWarningInput(BaseModel):
         return value.strip()
 
 
-class EventInput(SignupWarningInput):
+class EventDetailsInput(SignupWarningInput):
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=300)
     location: str = Field(default="", max_length=200)
+    tables: list[TableInput] = Field(min_length=1, max_length=10)
+
+    @field_validator("title")
+    @classmethod
+    def valid_title(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Event title cannot be blank")
+        return value
+
+    @field_validator("tables")
+    @classmethod
+    def unique_tables(cls, value: list[TableInput]) -> list[TableInput]:
+        if len({table.name.casefold() for table in value}) != len(value):
+            raise ValueError("Table names must be unique")
+        return value
+
+
+class EventInput(EventDetailsInput):
     starts_at: datetime
     duration_hours: int = Field(
         ge=0,
@@ -42,12 +60,9 @@ class EventInput(SignupWarningInput):
     )
     opens_before_hours: int | None = Field(default=None, ge=2, le=768)
     closes_before_hours: int | None = Field(default=None, ge=1, le=767)
-    tables: list[TableInput] = Field(min_length=1, max_length=10)
 
     @model_validator(mode="after")
     def validate_event(self) -> "EventInput":
-        if not self.title.strip():
-            raise ValueError("Event title cannot be blank")
         if (
             self.post_warning_message
             and not self.duration_hours
@@ -69,8 +84,6 @@ class EventInput(SignupWarningInput):
             or self.opens_before_hours <= self.closes_before_hours
         ):
             raise ValueError("Signups must open before they close")
-        if len({table.name.casefold() for table in self.tables}) != len(self.tables):
-            raise ValueError("Table names must be unique")
         return self
 
 
@@ -105,20 +118,8 @@ class RecurringInput(EventInput):
         return self
 
 
-class EventTemplateInput(SignupWarningInput):
-    title: str = Field(min_length=1, max_length=100)
-    description: str = Field(default="", max_length=300)
-    location: str = Field(default="", max_length=200)
+class EventTemplateInput(EventDetailsInput):
     duration_hours: int = Field(ge=1, le=768)
-    tables: list[TableInput] = Field(min_length=1, max_length=10)
-
-    @model_validator(mode="after")
-    def validate_template(self) -> "EventTemplateInput":
-        if not self.title.strip():
-            raise ValueError("Event title cannot be blank")
-        if len({table.name.casefold() for table in self.tables}) != len(self.tables):
-            raise ValueError("Table names must be unique")
-        return self
 
 
 class AssignmentSettingsInput(BaseModel):

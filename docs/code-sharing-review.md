@@ -1,8 +1,21 @@
 # Code sharing review
 
-This review covers application code in `backend/app` and `frontend/src`. These are refactoring opportunities, not claims of confirmed user-facing defects. The backend folder reorganization changes module locations and imports; the extractions below are follow-up work.
+This review covers application code in `backend/app` and `frontend/src`. These are refactoring opportunities, not claims of confirmed user-facing defects. The backend folder reorganization changes module locations and imports. The seven extractions below have now been implemented:
 
-## Recommended extractions
+| Responsibility | Shared implementation |
+| --- | --- |
+| Weight input parsing and limit feedback | `frontend/src/lib/weightInput.ts` |
+| Player summary types and name/ID search | `frontend/src/lib/players.ts` |
+| Event/template details validation | `EventDetailsInput` in `backend/app/schemas.py` |
+| Organization selection and membership | `backend/app/settings/organization_selection.py` |
+| Assignment mutation claims | `backend/app/assignments/mutations.py` |
+| Public table-change queueing | `backend/app/assignments/notifications.py` |
+| Private promotion queueing | `notify_promoted` in `backend/app/assignments/withdrawals.py` |
+| Deterministic lottery sampling | `backend/app/assignments/randomness.py` |
+
+The original findings are retained below to explain the responsibility boundaries. Lottery replay fixtures capture results from before extraction; regression tests also cover removed memberships, weight input handling, and shared event/template constraints.
+
+## Reviewed extractions
 
 ### 1. Weight input parsing and limit feedback
 
@@ -65,4 +78,4 @@ Several frontend action components repeat busy/error state, access-error handlin
 - `signup_messages.signup_body` and `discord_format` share Discord presentation and size limits.
 - `ConfirmationDialog`, `FormField`, `useDialog`, `mutationOptions`, and `finishDiscordCleanup` already cover common UI/request behavior.
 
-Suggested order: weight handling, player search, schema validation, organization resolution, assignment locking, promotion queueing, then lottery sampling with replay fixtures. Keep each extraction in a focused PR.
+The remaining lower-priority mutation-hook idea is optional; it should be considered only if future UI work demonstrates a clear benefit.

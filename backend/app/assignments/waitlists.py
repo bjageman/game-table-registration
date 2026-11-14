@@ -2,16 +2,15 @@
 
 import time
 
-from sqlalchemy import Engine, update
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from app.assignments.mutations import locked_assignment
 from app.assignments.withdrawals import current_result, result_players
 from app.discord.announcements import enqueue_refresh
 from app.discord.event_threads import queue_member
 from app.models import (
-    Event,
     EventWaitlistAddition,
-    LotteryRun,
 )
 from app.players.player_profiles import for_event as player_scope_for_event
 
@@ -20,26 +19,11 @@ def add_player(
     engine: Engine, guild_id: str, event_id: str, player_id: str, table_name: str
 ) -> bool:
     with Session(engine) as db:
-        # Serialize roster changes with assignments and withdrawals.
-        claimed = db.execute(
-            update(Event)
-            .where(
-                Event.id == event_id,
-                Event.guild_id == guild_id,
-                Event.status.in_(["assigned", "review"]),
-                Event.archived_at.is_(None),
-            )
-            .values(status=Event.status)
-            .returning(Event.id)
-        ).scalar_one_or_none()
-        if claimed is None:
+        locked = locked_assignment(db, guild_id, event_id)
+        if locked is None:
             return False
-        run = db.get(LotteryRun, event_id)
-        event = db.get(Event, event_id)
-        assert event is not None
+        event, run = locked
         profile = player_scope_for_event(event).get(db, player_id)
-        if run is None:
-            return False
         known = result_players(db, run).get(player_id)
         if profile is None and known is None:
             return False
@@ -77,8 +61,6 @@ def add_player(
         else:
             addition.discord_name = name
             addition.added_at = time.time()
-        event = db.get(Event, event_id)
-        assert event is not None
         queue_member(db, event, player_id)
         if event.status == "assigned":
             enqueue_refresh(db, event)

@@ -1,13 +1,13 @@
 """Process post-assignment withdrawals and promote the table waitlist."""
 
-import hashlib
 import time
-import uuid
 from typing import Any
 
-from sqlalchemy import Engine, func, select, update
+from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
+from app.assignments.mutations import locked_assignment
+from app.assignments.notifications import enqueue_table_change
 from app.discord.announcements import enqueue_refresh
 from app.discord.discord_format import clean
 from app.discord.event_threads import queue_member
@@ -22,7 +22,6 @@ from app.models import (
     LotteryRun,
 )
 from app.players.player_profiles import for_event as player_scope_for_event
-from app.settings.assignment_preferences import announce_changes
 
 
 def announcement_event(
@@ -322,6 +321,15 @@ def pair_promotion_text(db: Session, run: LotteryRun, ids: list[str]) -> str:
     )
 
 
+def notify_promoted(db: Session, event: Event, run: LotteryRun, ids: list[str]) -> None:
+    if not ids or event.status != "assigned":
+        return
+    db.flush()
+    assignments = current_result(db, run)["assignments"]
+    for pid in ids:
+        enqueue_promotion_dm(db, event, pid, assignments[pid])
+
+
 def withdraw_seat(
     db: Session, event: Event, run: LotteryRun, player_id: str, channel_id: str
 ) -> bool:
@@ -337,51 +345,28 @@ def withdraw_seat(
         db, event, run, current, player_id, table_name, withdrawn_at
     )
     promoted_id = promoted_ids[0] if promoted_ids else None
-    if promoted_id and announce_changes(db, event):
+    if promoted_id:
         left = result_players(db, run)[player_id]
         promoted_name = promoted_names(db, run, promoted_ids)
         left_name = (
             clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
         )
-        announce_id = db.scalar(
-            select(func.max(Announcement.part)).where(Announcement.event_id == event_id)
-        )
-        part = (announce_id if announce_id is not None else -1) + 1
         content = (
             f"{promoted_name} has been promoted to **{clean(table_name)}** "
             f"after {left_name} left their seat.\n"
         )
         if len(promoted_ids) > 1:
             content = pair_promotion_text(db, run, promoted_ids)
-        mentions = [
-            user_id
-            for user_id in (*promoted_ids, player_id)
-            if not user_id.startswith("test-")
-        ]
-        db.add(
-            Announcement(
-                id=str(uuid.uuid4()),
-                event_id=event_id,
-                part=part,
-                kind="promotion",
-                channel_id=event.channel_id or channel_id,
-                payload={
-                    "content": content,
-                    "allowed_mentions": {"parse": [], "users": mentions},
-                    "nonce": hashlib.sha256(
-                        f"{event_id}:promotion:{player_id}:{withdrawn_at}".encode()
-                    ).hexdigest()[:24],
-                    "enforce_nonce": True,
-                },
-                created_at=withdrawn_at,
-                next_attempt=withdrawn_at,
-            )
+        enqueue_table_change(
+            db,
+            event,
+            content,
+            [*promoted_ids, player_id],
+            nonce_key=f"{event_id}:promotion:{player_id}:{withdrawn_at}",
+            created_at=withdrawn_at,
+            channel_id=channel_id,
         )
-    if promoted_ids:
-        db.flush()
-        updated = current_result(db, run)
-        for pid in promoted_ids:
-            enqueue_promotion_dm(db, event, pid, updated["assignments"][pid])
+    notify_promoted(db, event, run, promoted_ids)
     enqueue_refresh(db, event)
     return True
 
@@ -391,25 +376,10 @@ def manager_remove(
 ) -> bool:
     """Remove a player, promoting from the waitlist unless the table is overfull."""
     with Session(engine) as db:
-        claimed = db.execute(
-            update(Event)
-            .where(
-                Event.id == event_id,
-                Event.guild_id == guild_id,
-                Event.status.in_(["assigned", "review"]),
-                Event.archived_at.is_(None),
-            )
-            .values(status=Event.status)
-            .returning(Event.id)
-        ).scalar_one_or_none()
-        if claimed is None:
+        locked = locked_assignment(db, guild_id, event_id)
+        if locked is None:
             return False
-        run = db.get(LotteryRun, event_id)
-        if run is None:
-            return False
-        event = db.get(Event, event_id)
-        if event is None:
-            return False
+        event, run = locked
         current = current_result(db, run)
         table_name = current["assignments"].get(player_id)
         if table_name is None:
@@ -435,42 +405,15 @@ def manager_remove(
         else:
             content = f"{left_name} has left their seat at **{clean(table_name)}**."
             mentions = [] if player_id.startswith("test-") else [player_id]
-        channel_id = event.channel_id or db.scalar(
-            select(Announcement.channel_id)
-            .where(Announcement.event_id == event_id)
-            .order_by(Announcement.part)
-            .limit(1)
+        enqueue_table_change(
+            db,
+            event,
+            content,
+            mentions,
+            nonce_key=f"{event_id}:manager-removal:{player_id}:{removed_at}",
+            created_at=removed_at,
         )
-        if event.status == "assigned" and channel_id and announce_changes(db, event):
-            part = db.scalar(
-                select(func.max(Announcement.part)).where(
-                    Announcement.event_id == event_id
-                )
-            )
-            db.add(
-                Announcement(
-                    id=str(uuid.uuid4()),
-                    event_id=event_id,
-                    part=(part if part is not None else -1) + 1,
-                    kind="promotion",
-                    channel_id=channel_id,
-                    payload={
-                        "content": content,
-                        "allowed_mentions": {"parse": [], "users": mentions},
-                        "nonce": hashlib.sha256(
-                            f"{event_id}:manager-removal:{player_id}:{removed_at}".encode()
-                        ).hexdigest()[:24],
-                        "enforce_nonce": True,
-                    },
-                    created_at=removed_at,
-                    next_attempt=removed_at,
-                )
-            )
-        if promoted_ids and event.status == "assigned":
-            db.flush()
-            updated = current_result(db, run)
-            for pid in promoted_ids:
-                enqueue_promotion_dm(db, event, pid, updated["assignments"][pid])
+        notify_promoted(db, event, run, promoted_ids)
         if event.status == "assigned":
             enqueue_refresh(db, event)
         db.commit()
@@ -488,22 +431,10 @@ def manager_add(
 ) -> bool:
     """Assign a waitlisted or explicitly selected known player, even to a full table."""
     with Session(engine) as db:
-        claimed = db.execute(
-            update(Event)
-            .where(
-                Event.id == event_id,
-                Event.guild_id == guild_id,
-                Event.status.in_(["assigned", "review"]),
-                Event.archived_at.is_(None),
-            )
-            .values(status=Event.status)
-            .returning(Event.id)
-        ).scalar_one_or_none()
-        if claimed is None:
+        locked = locked_assignment(db, guild_id, event_id)
+        if locked is None:
             return False
-        run = db.get(LotteryRun, event_id)
-        if run is None:
-            return False
+        event, run = locked
         current = current_result(db, run)
         table = next(
             (row for row in current["tables"] if row["name"] == table_name), None
@@ -521,8 +452,6 @@ def manager_add(
             and db.get(EventWithdrawal, (event_id, player_id)) is not None
         ):
             return False
-        event = db.get(Event, event_id)
-        assert event is not None
         profile = player_scope_for_event(event).get(db, player_id)
         known = result_players(db, run)
         if not waitlisted and profile is None:
@@ -558,10 +487,8 @@ def manager_add(
         else:
             assignment.table_name = table_name
             assignment.assigned_at = time.time()
-        event = db.get(Event, event_id)
-        assert event is not None
         queue_member(db, event, player_id)
-        if event.status == "assigned" and announce_changes(db, event):
+        if event.status == "assigned":
             action = "promoted from the waitlist" if waitlisted else "added"
             promoted = known[player_id]
             name = (
@@ -569,46 +496,16 @@ def manager_add(
                 if player_id.startswith("test-")
                 else f"<@{player_id}>"
             )
-            channel_id = event.channel_id or db.scalar(
-                select(Announcement.channel_id)
-                .where(Announcement.event_id == event_id)
-                .order_by(Announcement.part)
-                .limit(1)
+            enqueue_table_change(
+                db,
+                event,
+                f"{name} has been {action} to **{clean(table_name)}**.",
+                [player_id],
+                nonce_key=f"{event_id}:manager-add:{player_id}",
+                created_at=time.time(),
             )
-            if channel_id:
-                part = db.scalar(
-                    select(func.max(Announcement.part)).where(
-                        Announcement.event_id == event_id
-                    )
-                )
-                db.add(
-                    Announcement(
-                        id=str(uuid.uuid4()),
-                        event_id=event_id,
-                        part=(part if part is not None else -1) + 1,
-                        kind="promotion",
-                        channel_id=channel_id,
-                        payload={
-                            "content": (
-                                f"{name} has been {action} to **{clean(table_name)}**."
-                            ),
-                            "allowed_mentions": {
-                                "parse": [],
-                                "users": (
-                                    [] if player_id.startswith("test-") else [player_id]
-                                ),
-                            },
-                            "nonce": hashlib.sha256(
-                                f"{event_id}:manager-add:{player_id}".encode()
-                            ).hexdigest()[:24],
-                            "enforce_nonce": True,
-                        },
-                        created_at=time.time(),
-                        next_attempt=time.time(),
-                    )
-                )
-        if was_waitlisted and event.status == "assigned":
-            enqueue_promotion_dm(db, event, player_id, table_name)
+        if was_waitlisted:
+            notify_promoted(db, event, run, [player_id])
         if event.status == "assigned":
             enqueue_refresh(db, event)
         db.commit()

@@ -1,9 +1,9 @@
 """Place reciprocal pairs atomically, preferring shared tables before split seating."""
 
-import hashlib
-import math
 from collections import Counter
 from typing import Any
+
+from app.assignments.randomness import digest, weighted_priority
 
 
 def active_pairs(snapshot: dict[str, Any]) -> dict[str, str]:
@@ -30,9 +30,6 @@ def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         {tuple(sorted((pid, pairs[pid]))) if pid in pairs else (pid,) for pid in people}
     )
 
-    def digest(label: str) -> str:
-        return hashlib.sha256(f"{seed}\0{label}".encode()).hexdigest()
-
     def guaranteed(group: tuple[str, ...]) -> bool:
         return any(
             people[pid].get("guaranteed_seat") or people[pid].get("guaranteed_table")
@@ -41,7 +38,6 @@ def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
 
     def priority(group: tuple[str, ...]) -> tuple[bool, bool, float, tuple[str, ...]]:
         label = group[0] if len(group) == 1 else "pair:" + ":".join(group)
-        uniform = (int(digest(f"priority:{label}")[:13], 16) + 1) / (2**52 + 1)
         average = sum(float(people[pid]["weight"]) for pid in group) / len(group)
         # Preserve individual guarantees before attempting inherited pair guarantees;
         # conflicting pairs can then wait with an organizer alert instead of
@@ -49,7 +45,7 @@ def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         return (
             not guaranteed(group),
             guaranteed(group) and len(group) == 2,
-            -math.log(uniform) / average,
+            weighted_priority(seed, label, average),
             group,
         )
 
@@ -66,14 +62,14 @@ def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         together = [
             (name,) * len(group)
             for name in sorted(
-                shared, key=lambda name: digest(f"table:{':'.join(group)}:{name}")
+                shared, key=lambda name: digest(seed, f"table:{':'.join(group)}:{name}")
             )
             if capacities[name] >= len(group)
         ]
         split = (
             sorted(
                 [(a, b) for a in choices[0] for b in choices[1] if a != b],
-                key=lambda option: digest(f"split:{group}:{option}"),
+                key=lambda option: digest(seed, f"split:{group}:{option}"),
             )
             if len(group) == 2 and not guaranteed(group)
             else []

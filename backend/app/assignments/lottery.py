@@ -1,8 +1,9 @@
 """Replayable weighted priority and capacity-aware placement."""
 
-import hashlib
 import math
 from typing import Any
+
+from app.assignments.randomness import digest, weighted_priority
 
 VERSION = "paired-weighted-matching-v5"
 
@@ -37,13 +38,10 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
     if active_pairs(snapshot):
         return assign_pairs(snapshot, seed)
 
-    def digest(label: str) -> str:
-        return hashlib.sha256(f"{seed}\0{label}".encode()).hexdigest()
-
     def priority(player_id: str) -> tuple[float, str]:
-        # 52-bit uniform is strictly between 0 and 1 and independent of input order.
-        uniform = (int(digest(f"priority:{player_id}")[:13], 16) + 1) / (2**52 + 1)
-        return -math.log(uniform) / float(by_id[player_id]["weight"]), player_id
+        return weighted_priority(
+            seed, player_id, float(by_id[player_id]["weight"])
+        ), player_id
 
     order = sorted(
         by_id,
@@ -57,7 +55,9 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
     )
     rank = {pid: i for i, pid in enumerate(order)}
     choices = {
-        pid: sorted(set(p["choices"]), key=lambda name: digest(f"table:{pid}:{name}"))
+        pid: sorted(
+            set(p["choices"]), key=lambda name: digest(seed, f"table:{pid}:{name}")
+        )
         for pid, p in by_id.items()
     }
     seated: dict[str, list[str]] = {name: [] for name in capacities}

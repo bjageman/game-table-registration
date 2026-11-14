@@ -1,3 +1,4 @@
+import { matchesPlayer, type PlayerSummary } from "../../lib/players";
 import { useEffect, useRef, useState } from "react";
 import Autocomplete from "@mui/material/Autocomplete";
 import { FormField } from "../../components/FormFields";
@@ -5,7 +6,6 @@ import ConfirmationDialog from "../../components/ConfirmationDialog";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
 
 export interface Partner { id: string; name: string }
-interface Candidate { discord_id: string; discord_name: string; real_name: string }
 type PairResponse = { profile: { partner: Partner | null } } | {
   confirmation_required: true; replace_partner_id: string; message: string;
 };
@@ -20,7 +20,7 @@ export default function PlayerPairEditor({ playerId, partner, csrf, readOnly = f
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [reset, setReset] = useState(0);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [candidates, setCandidates] = useState<PlayerSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmation, setConfirmation] = useState<{ target: string; previous: string; message: string }>();
@@ -28,7 +28,7 @@ export default function PlayerPairEditor({ playerId, partner, csrf, readOnly = f
   useEffect(() => {
     if (!open || readOnly) return;
     const controller = new AbortController();
-    api<Candidate[]>("/players", { signal: controller.signal }).then((players) => {
+    api<PlayerSummary[]>("/players", { signal: controller.signal }).then((players) => {
       if (!controller.signal.aborted) setCandidates(players);
     }).catch((failure) => {
       if (!controller.signal.aborted && !onAccessError(failure)) {
@@ -39,7 +39,7 @@ export default function PlayerPairEditor({ playerId, partner, csrf, readOnly = f
     return () => controller.abort();
   }, [open, readOnly, onAccessError, onError]);
   const options = candidates.filter((candidate) => candidate.discord_id !== playerId).map((candidate) => ({
-    id: candidate.discord_id, name: candidate.real_name || candidate.discord_name, discordName: candidate.discord_name,
+    id: candidate.discord_id, name: candidate.real_name || candidate.discord_name, source: candidate,
   }));
   async function link(target: string | null, previous?: string) {
     if (inFlight.current) return;
@@ -65,13 +65,12 @@ export default function PlayerPairEditor({ playerId, partner, csrf, readOnly = f
     finally { inFlight.current = false; setBusy(false); onBusy(false); }
   }
   return <div onKeyDown={(event) => event.stopPropagation()}>
-    <Autocomplete<Partner & { discordName?: string }>
+    <Autocomplete<Partner & { source?: PlayerSummary }>
       key={`${partner?.id ?? "none"}:${reset}`} id={`player-pair-${playerId}`} fullWidth disablePortal openOnFocus
       options={options} value={partner} loading={loading} disabled={busy || readOnly} open={open}
       onOpen={() => { setOpen(true); setLoading(true); setError(""); onError?.(""); }} onClose={() => setOpen(false)}
       getOptionLabel={(option) => option.name} isOptionEqualToValue={(option, value) => option.id === value.id}
-      filterOptions={(items, state) => items.filter((item) => `${item.name} ${item.discordName ?? ""} ${item.id}`
-        .toLocaleLowerCase().includes(state.inputValue.trim().toLocaleLowerCase()))}
+      filterOptions={(items, state) => items.filter((item) => matchesPlayer(item.source ?? { discord_id: item.id, discord_name: item.name, real_name: "" }, state.inputValue))}
       onChange={(_, value) => { if (value?.id !== partner?.id) void link(value?.id ?? null); }}
       renderOption={(props, option) => {
         const { key, ...attributes } = props;
