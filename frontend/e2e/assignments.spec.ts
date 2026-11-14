@@ -7,6 +7,7 @@ test("confirms closing signups and shows saved placements and waitlists", async 
     duration_hours: 24, closes_at: 3799900000, published_at: 3799813600,
     discord_url: "https://discord.com/poll", tables: [{ name: "Table A", capacity: 1 }] };
   await page.route("**/api/me", (route) => route.fulfill({ json: { username: "organizer", csrf: "csrf" } }));
+  await page.route("**/api/settings/assignment", (route) => route.fulfill({ json: { review_assignments_before_discord: false } }));
   await page.route("**/api/events", (route) => route.fulfill({ json: [event] }));
   await page.route("**/api/events/event/signups", (route) => route.fulfill({ json: [{
     name: "Table A", players: closed ? [{ id: "1", name: "Mary" }] : [{ id: "1", name: "Mary" }, { id: "2", name: "Dan" }],

@@ -34,6 +34,9 @@ def register(context: ApplicationContext) -> None:
                 "announce_table_changes": saved.announce_table_changes,
                 "post_discord_updates_to_thread": saved.post_discord_updates_to_thread,
                 "timezone": saved.timezone,
+                "review_assignments_before_discord": (
+                    saved.review_assignments_before_discord
+                ),
                 "dm_waitlist_promotions": saved.dm_waitlist_promotions,
                 "show_open_signup_players": saved.show_open_signup_players,
             }
@@ -51,6 +54,7 @@ def register(context: ApplicationContext) -> None:
             key = assignment_scope_key(request.state.organization_id, session.user_id)
             previous = db.get(AssignmentPreference, key)
             for field in (
+                "review_assignments_before_discord",
                 "timezone",
                 "post_discord_updates_to_thread",
                 "show_open_signup_players",
@@ -71,6 +75,7 @@ def register(context: ApplicationContext) -> None:
                     announce_table_changes=body.announce_table_changes,
                     post_discord_updates_to_thread=body.post_discord_updates_to_thread,
                     timezone=body.timezone,
+                    review_assignments_before_discord=body.review_assignments_before_discord,
                     show_open_signup_players=body.show_open_signup_players,
                     dm_waitlist_promotions=body.dm_waitlist_promotions,
                 )

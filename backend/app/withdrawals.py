@@ -347,7 +347,7 @@ def manager_remove(
             .where(
                 Event.id == event_id,
                 Event.guild_id == guild_id,
-                Event.status == "assigned",
+                Event.status.in_(["assigned", "review"]),
                 Event.archived_at.is_(None),
             )
             .values(status=Event.status)
@@ -392,7 +392,7 @@ def manager_remove(
             .order_by(Announcement.part)
             .limit(1)
         )
-        if channel_id and announce_changes(db, event):
+        if event.status == "assigned" and channel_id and announce_changes(db, event):
             part = db.scalar(
                 select(func.max(Announcement.part)).where(
                     Announcement.event_id == event_id
@@ -417,9 +417,10 @@ def manager_remove(
                     next_attempt=removed_at,
                 )
             )
-        if promoted_id:
+        if promoted_id and event.status == "assigned":
             enqueue_promotion_dm(db, event, promoted_id, table_name)
-        enqueue_refresh(db, event)
+        if event.status == "assigned":
+            enqueue_refresh(db, event)
         db.commit()
         return True
 
@@ -440,7 +441,7 @@ def manager_add(
             .where(
                 Event.id == event_id,
                 Event.guild_id == guild_id,
-                Event.status == "assigned",
+                Event.status.in_(["assigned", "review"]),
                 Event.archived_at.is_(None),
             )
             .values(status=Event.status)
@@ -506,7 +507,7 @@ def manager_add(
         event = db.get(Event, event_id)
         assert event is not None
         queue_member(db, event, player_id)
-        if announce_changes(db, event):
+        if event.status == "assigned" and announce_changes(db, event):
             action = "promoted from the waitlist" if waitlisted else "added"
             promoted = known[player_id]
             name = (
@@ -552,8 +553,9 @@ def manager_add(
                         next_attempt=time.time(),
                     )
                 )
-        if was_waitlisted:
+        if was_waitlisted and event.status == "assigned":
             enqueue_promotion_dm(db, event, player_id, table_name)
-        enqueue_refresh(db, event)
+        if event.status == "assigned":
+            enqueue_refresh(db, event)
         db.commit()
         return True

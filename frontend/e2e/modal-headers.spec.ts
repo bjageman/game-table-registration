@@ -27,6 +27,7 @@ for (const title of ["Demo Event Time", "A very long event name that needs to fi
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
       const json = path === "/api/me" ? { username: "organizer", csrf: "csrf" }
+        : path === "/api/settings/assignment" ? { review_assignments_before_discord: false }
         : path === "/api/branding" ? { name: "TableSignup", tagline: "", logo_url: null }
         : path === "/api/events" ? [{ id: "event", title, status: "open", starts_at: 3800000000,
           duration_hours: 24, closes_at: 3799900000, discord_url: "https://discord.com/poll",

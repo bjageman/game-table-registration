@@ -67,7 +67,7 @@ def register(context: ApplicationContext) -> None:
         custom_result: tuple[list[dict[str, Any]], str] | None = None
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
-            if event.status == "assigned":
+            if event.status in ("assigned", "review"):
                 run = db.get(LotteryRun, event_id)
                 if run is None:
                     raise HTTPException(503, "Saved placements are unavailable")
@@ -105,7 +105,7 @@ def register(context: ApplicationContext) -> None:
             authenticated(request)
             if event is None or not matches_destination(event, request):
                 raise HTTPException(404, "Event not found")
-            if event.status != "assigned":
+            if event.status not in ("assigned", "review"):
                 raise HTTPException(409, "Signups must be assigned before export")
         rows = event_signups(event_id, request)
         return Response(
@@ -175,7 +175,7 @@ def register(context: ApplicationContext) -> None:
                 assigned_event.guild_id
                 if assigned_event is not None
                 and matches_destination(assigned_event, request)
-                and assigned_event.status == "assigned"
+                and assigned_event.status in ("assigned", "review")
                 else None
             )
         if assigned_guild:
@@ -263,7 +263,9 @@ def register(context: ApplicationContext) -> None:
         valid_player_id(player_id)
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
-            assigned_guild = event.guild_id if event.status == "assigned" else None
+            assigned_guild = (
+                event.guild_id if event.status in ("assigned", "review") else None
+            )
         if assigned_guild:
             if not manager_remove(engine, assigned_guild, event_id, player_id):
                 raise HTTPException(409, "Player is not currently assigned")

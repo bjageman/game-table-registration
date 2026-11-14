@@ -40,8 +40,16 @@ def event_body():
     }
 
 
-def closing_event(client):
+def set_assignment_review(client, headers, enabled):
+    settings = client.get("/api/settings/assignment").json()
+    settings["review_assignments_before_discord"] = enabled
+    response = client.put("/api/settings/assignment", headers=headers, json=settings)
+    assert response.status_code == 200
+
+
+def closing_event(client, *, review=False):
     headers = login(client)
+    set_assignment_review(client, headers, review)
     body = {
         **event_body(),
         "tables": [{"name": "A", "capacity": 1}, {"name": "B", "capacity": 1}],

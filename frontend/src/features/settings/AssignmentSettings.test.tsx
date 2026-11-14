@@ -12,6 +12,7 @@ it("shows assignment options on separate rows and restricts organization editors
   render(<AssignmentSettings csrf="csrf" restricted onAccessError={() => false} />);
   const weights = await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
   const announcements = screen.getByRole("checkbox", { name: "Announce Table Changes on Discord" });
+  expect(screen.getByRole("checkbox", { name: "Review assignments before sending to Discord" })).toBeDisabled();
   expect(weights).toBeDisabled();
   expect(announcements).toBeDisabled();
   expect(screen.getByRole("checkbox", { name: "Show players in open Discord signups" })).toBeDisabled();
@@ -29,7 +30,7 @@ it("shows assignment options on separate rows and restricts organization editors
 it("saves assignment options for an admin", async () => {
   const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => new Response(JSON.stringify(
     options?.method === "PUT"
-      ? { automatic_weight_adjustment: true, announce_table_changes: true, post_discord_updates_to_thread: true, timezone: "America/New_York", show_open_signup_players: true, dm_waitlist_promotions: true }
+      ? { review_assignments_before_discord: false, automatic_weight_adjustment: true, announce_table_changes: true, post_discord_updates_to_thread: true, timezone: "America/New_York", show_open_signup_players: true, dm_waitlist_promotions: true }
       : { automatic_weight_adjustment: true, announce_table_changes: false, post_discord_updates_to_thread: false, show_open_signup_players: false, dm_waitlist_promotions: false },
   )));
   vi.stubGlobal("fetch", fetchMock);
@@ -37,6 +38,7 @@ it("saves assignment options for an admin", async () => {
   const announcements = await screen.findByRole("checkbox", { name: "Announce Table Changes on Discord" });
   const privateMessages = screen.getByRole("checkbox", { name: "Send private messages for waitlist promotions" });
   expect(privateMessages).not.toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Review assignments before sending to Discord" }));
   fireEvent.click(privateMessages);
   fireEvent.click(announcements);
   fireEvent.click(screen.getByRole("checkbox", { name: "Post Discord updates to a new thread" }));
@@ -46,7 +48,7 @@ it("saves assignment options for an admin", async () => {
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
     "/api/settings/assignment",
     expect.objectContaining({ method: "PUT", body: JSON.stringify({
-      automatic_weight_adjustment: true, announce_table_changes: true, post_discord_updates_to_thread: true, timezone: "America/New_York", show_open_signup_players: true, dm_waitlist_promotions: true,
+      review_assignments_before_discord: false, automatic_weight_adjustment: true, announce_table_changes: true, post_discord_updates_to_thread: true, timezone: "America/New_York", show_open_signup_players: true, dm_waitlist_promotions: true,
     }) }),
   ));
   expect(screen.getByRole("checkbox", { name: "Post Discord updates to a new thread" })).toBeChecked();
@@ -59,6 +61,6 @@ it("enables every General toggle by default before the first settings save", asy
   render(<AssignmentSettings csrf="csrf" onAccessError={() => false} />);
   await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
   const toggles = screen.getAllByRole("checkbox");
-  expect(toggles).toHaveLength(5);
+  expect(toggles).toHaveLength(6);
   toggles.forEach((toggle) => expect(toggle).toBeChecked());
 });

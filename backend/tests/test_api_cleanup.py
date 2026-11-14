@@ -186,12 +186,17 @@ def test_test_profiles_reused_after_clear_and_event_deletion(client):
 
 
 def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
+    from app.models import Event
+
     headers, event, path, _ = closing_event(client)
     assert client.post(path + "/archive", headers=headers).status_code == 409
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     run = client.get(path + "/assignments").json()
     signups = client.get(path + "/signups").json()
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).update_thread_id = "event-thread"
+        db.commit()
     calls = list(client.app.state.discord.mock_calls)
     assert client.post(path + "/archive").status_code == 403
     archived = client.post(path + "/archive", headers=headers)
@@ -199,6 +204,7 @@ def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
     assert archived.json()["archived_at"] > 0
     assert archived.json()["status"] == "assigned"
     assert client.post(path + "/archive", headers=headers).json() == archived.json()
+    client.app.state.discord.delete_thread.assert_called_with("event-thread")
     assert client.get(path + "/assignments").json() == run
     assert client.get(path + "/signups").json() == signups
     assert any(
@@ -210,8 +216,6 @@ def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
         c[0] == "send_announcement" for c in client.app.state.discord.mock_calls
     ) == sum(c[0] == "send_announcement" for c in calls)
     client.app.state.discord.delete_poll.assert_not_called()
-    from app.models import Event
-
     with DBSession(client.app.state.engine) as db:
         db.get(Event, event["id"]).channel_id = "another-channel"
         db.commit()
@@ -257,6 +261,40 @@ def test_close_can_delete_signup_message_and_archive_can_delete_announcements(cl
         == 200
     )
     assert scoped.delete_poll.call_count == 3
+
+
+@pytest.mark.parametrize("status", [403, 429, 500])
+def test_thread_deletion_failure_preserves_archive_and_message_cleanup(client, status):
+    from app.announcements import dispatch_due
+    from app.discord_api import DiscordRequestError
+    from app.models import Event
+
+    headers, event, path, _ = closing_event(client)
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    client.post(path + "/close", headers=headers)
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    with DBSession(client.app.state.engine) as db:
+        db.get(Event, event["id"]).update_thread_id = "thread"
+        db.commit()
+    discord.delete_thread.side_effect = DiscordRequestError(status, 1)
+    result = client.post(
+        path + "/archive?delete_discord_messages=true", headers=headers
+    )
+    assert result.status_code == 200
+    assert result.json()["archived_at"]
+    assert result.json()["discord_cleanup_remaining"] == 1
+    if status == 403:
+        assert "Manage Threads" in result.json()["discord_cleanup_error"]
+    deleted_messages = discord.at.return_value.delete_poll.call_count
+    assert deleted_messages == 3
+    discord.delete_thread.side_effect = None
+    retried = client.post(path + "/discord-messages/delete", headers=headers)
+    assert retried.status_code == 200
+    assert retried.json()["discord_cleanup_remaining"] == 0
+    assert discord.at.return_value.delete_poll.call_count == deleted_messages
+    with DBSession(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]).update_thread_id is None
 
 
 def test_failed_archive_discord_cleanup_can_be_retried(client):

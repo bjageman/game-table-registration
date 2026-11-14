@@ -82,7 +82,9 @@ def test_defaults_migration_preserves_saved_false_and_sets_sql_defaults(tmp_path
     migration.set_main_option("sqlalchemy.url", url)
     command.upgrade(migration, "20261113_waitlist_additions")
     engine = create_engine(url)
-    columns = ", ".join(DEFAULTS)
+    columns = ", ".join(
+        key for key in DEFAULTS if key != "review_assignments_before_discord"
+    )
     with engine.begin() as connection:
         connection.execute(
             text(

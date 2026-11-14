@@ -112,6 +112,25 @@ def test_same_player_can_wait_for_multiple_tables(promotion_db):
         )
 
 
+def test_player_can_join_multiple_waitlists_during_review(client):
+    headers, event, path, _ = closing_event(client, review=True)
+    engine = client.app.state.engine
+    profile(engine, "999")
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).json()["status"] == "review"
+    target = path + "/waitlisted-players/999"
+    for table in ("A", "B"):
+        response = client.post(target, headers=headers, json={"table": table})
+        assert response.status_code == 200
+    assert client.post(target, headers=headers, json={"table": "A"}).status_code == 409
+    rows = client.get(path + "/signups").json()
+    assert all(row["waitlist"][-1]["id"] == "999" for row in rows)
+    with Session(engine) as db:
+        assert db.get(Event, event["id"]).status == "review"
+        assert list(db.scalars(select(Announcement))) == []
+    client.app.state.discord.send_announcement.assert_not_called()
+
+
 def test_waitlist_api_permissions_validation_and_state(client):
     headers, event, path, _ = closing_event(client)
     engine = client.app.state.engine

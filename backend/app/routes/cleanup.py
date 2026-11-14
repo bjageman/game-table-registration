@@ -82,16 +82,21 @@ def register(context: ApplicationContext) -> None:
             # Claim deletion atomically, keeping the transaction open until the
             # optional Discord operation succeeds. Failures roll back this row.
             changed = db.execute(
-                delete(Event)
+                update(Event)
                 .where(
                     Event.id == event_id,
                     *event_scope(request),
-                    Event.status.in_(["draft", "scheduled", "open"]),
+                    Event.status.in_(["draft", "scheduled", "open", "review"]),
                 )
+                .values(status=Event.status)
                 .returning(Event.message_id, Event.signup_roster_messages)
             ).first()
             if changed is None:
-                raise HTTPException(409, "Only drafts and open signups can be deleted.")
+                raise HTTPException(
+                    409,
+                    "Only drafts, open signups, and assignments awaiting review "
+                    "can be deleted.",
+                )
             if delete_poll:
                 # Retain the event transaction until every tracked message is
                 # deleted. A retry can safely repeat successful DELETEs (404).
@@ -100,6 +105,8 @@ def register(context: ApplicationContext) -> None:
                     ids.append(changed.message_id)
                 for message_id in dict.fromkeys(ids):
                     scoped_discord(request).delete_poll(message_id)
+            db.execute(delete(LotteryRun).where(LotteryRun.event_id == event_id))
+            db.execute(delete(Event).where(Event.id == event_id))
             db.execute(delete(TableSignup).where(TableSignup.event_id == event_id))
             db.execute(
                 delete(SignupInteraction).where(SignupInteraction.event_id == event_id)

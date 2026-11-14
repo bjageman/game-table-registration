@@ -56,6 +56,7 @@ class Event(Base):
     close_started_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     close_seed: Mapped[str | None] = mapped_column(String(64), nullable=True)
     close_guarantees: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    close_review_assignments: Mapped[bool | None] = mapped_column(nullable=True)
     close_adjust_weights: Mapped[bool | None] = mapped_column(nullable=True)
     close_weights: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
     close_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -299,6 +300,9 @@ class AssignmentPreference(Base):
         default=True, server_default=true()
     )
     post_discord_updates_to_thread: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
+    review_assignments_before_discord: Mapped[bool] = mapped_column(
         default=True, server_default=true()
     )
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)

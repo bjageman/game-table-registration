@@ -1,5 +1,6 @@
 """Assignments API routes."""
 
+import logging
 import secrets
 import time
 from typing import Any
@@ -17,8 +18,10 @@ from app.announcements import (
 from app.announcements import (
     status as announcement_status,
 )
+from app.assignment_finalization import approve
 from app.assignment_preferences import for_event as preferences_for_event
 from app.context import ApplicationContext
+from app.message_cleanup import remove_signup_message
 from app.models import (
     Announcement,
     Event,
@@ -37,6 +40,27 @@ def register(context: ApplicationContext) -> None:
     engine = context.engine
     list_names = context.list_names
     scoped_discord = context.scoped_discord
+
+    @router.post("/api/events/{event_id}/assignments/approve")
+    def approve_assignments(
+        event_id: str, request: Request, delete_signup_message: bool = False
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            event = context.scoped_event(db, event_id, request)
+            if delete_signup_message:
+                remove_signup_message(context, db, event, request)
+                db.commit()
+        approve(engine, event_id, destination(request).discord_channel_id)
+        try:
+            deliver_event(engine, scoped_discord(request), event_id)
+        except Exception:
+            # The durable queue continues delivery after a transient failure.
+            logging.getLogger(__name__).exception(
+                "Approved assignments remain queued for %s", event_id
+            )
+        with DBSession(engine) as db:
+            return context.serialize(context.scoped_event(db, event_id, request))
 
     @router.get("/api/events/{event_id}/announcement")
     def announcement(event_id: str, request: Request) -> dict[str, Any]:
@@ -68,7 +92,13 @@ def register(context: ApplicationContext) -> None:
                 event.channel_id or destination(request).discord_channel_id
             )
             if creating:
-                enqueue(db, event, announcement_channel, run.result, run.snapshot)
+                enqueue(
+                    db,
+                    event,
+                    announcement_channel,
+                    current_result(db, run),
+                    run.snapshot,
+                )
             else:
                 enqueue_instructions(db, event, announcement_channel)
             rows = list(
