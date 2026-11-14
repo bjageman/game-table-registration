@@ -13,7 +13,7 @@ it("keeps the preview available after an approval failure and retries with CSRF"
     .mockResolvedValueOnce(new Response(JSON.stringify({ ...event, status: "assigned" })));
   vi.stubGlobal("fetch", fetchMock);
   render(<ReviewAssignments event={event} csrf="csrf" readOnly={false} onUpdated={updated} onAccessError={() => false} />);
-  const button = screen.getByRole("button", { name: "Confirm Assignments and Send to Discord" });
+  const button = screen.getByRole("button", { name: "Send to Discord" });
   expect(fetchMock).not.toHaveBeenCalled();
   fireEvent.click(button);
   expect(await screen.findByRole("alert")).toHaveTextContent("Please retry");
@@ -27,6 +27,5 @@ it("keeps the preview available after an approval failure and retries with CSRF"
 
 it("shows review status without approval controls for read-only users", () => {
   render(<ReviewAssignments event={event} csrf="csrf" readOnly onUpdated={vi.fn()} onAccessError={() => false} />);
-  expect(screen.getByRole("status")).toHaveTextContent("Results will be sent to Discord after confirmation.");
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });

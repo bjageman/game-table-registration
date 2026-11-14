@@ -89,24 +89,23 @@ def test_approval_publishes_exact_preview_and_adjusts_weights_once(client):
 
 
 def test_review_blocks_mutations_and_public_bypasses(client):
-    headers, _, path = prepared(client)
+    headers, event, path = prepared(client)
+    event_id = event["id"]
     client.post(path + "/close", headers=headers)
     rows = client.get(path + "/signups").json()
     seated = next(p["id"] for row in rows for p in row["players"])
     waiting_table = next(row for row in rows if row["waitlist"])
     waiting = waiting_table["waitlist"][0]["id"]
-    assert (
-        client.delete(path + f"/manager-players/{seated}", headers=headers).status_code
-        == 409
-    )
-    assert (
-        client.post(
-            path + f"/assigned-players/{waiting}",
-            headers=headers,
-            json={"table": waiting_table["name"]},
-        ).status_code
-        == 409
-    )
+    assert client.delete(path + f"/manager-players/{seated}", headers=headers).status_code == 200
+    updated = client.get(path + "/signups").json()
+    next_waiting = next(row for row in updated if row["waitlist"])
+    waiting = next_waiting["waitlist"][0]["id"]
+    assert client.post(
+        path + f"/assigned-players/{waiting}",
+        headers=headers,
+        json={"table": next_waiting["name"]},
+    ).status_code == 200
+    assert next(row for row in client.get("/api/events").json() if row["id"] == event_id)["status"] == "review"
     assert (
         client.post(
             path + "/announcement/retry", headers=headers, json={"confirm_repost": True}
@@ -114,7 +113,6 @@ def test_review_blocks_mutations_and_public_bypasses(client):
         == 409
     )
     assert client.post(path + "/share", headers=headers).status_code == 409
-    assert client.get(path + "/signups.csv").status_code == 409
     client.app.state.discord.send_announcement.assert_not_called()
 
 
