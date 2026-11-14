@@ -16,7 +16,9 @@ from app.discord.discord_format import (
     TABLE_FIELD_CONTENT_LIMIT,
     clean,
     event_embed,
+    is_discord_user_id,
     paginate_fields,
+    sanitize_user_mentions,
     table_field,
 )
 from app.discord.event_threads import update_channel
@@ -53,7 +55,8 @@ def payloads(
         )
         header = f"{clean(table['name'])} ({count})"
         table_entries = [
-            (name(p), p["id"] if not is_test else None) for p in table["players"]
+            (name(p), p["id"] if not is_test and is_discord_user_id(p["id"]) else None)
+            for p in table["players"]
         ]
         sections.append(
             (header, table_entries or [("No players assigned.", None)], True)
@@ -334,6 +337,8 @@ def deliver_event(
                 .limit(1)
             )
             event = db.get(Event, event_id)
+            if row is not None and row.state == "pending" and not row.unknown:
+                row.payload = sanitize_user_mentions(row.payload)
             expired_warning = bool(
                 row and row.kind == "warning" and not can_send_warning(event, now)
             )
@@ -536,6 +541,9 @@ def deliver_event(
             error = (
                 "Delivery could not be confirmed. Check Discord before retrying."
                 if uncertain
+                else "Discord rejected the announcement. "
+                "Use Retry Announcement to try again."
+                if state == "needs_review"
                 else "Discord could not accept the announcement. "
                 "Automatic retry is queued."
             )

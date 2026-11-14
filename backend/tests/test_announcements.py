@@ -298,3 +298,45 @@ def test_long_event_details_do_not_overflow_assignment_embeds():
     )
     for player in all_players:
         assert roster.count(player["name"]) == 1
+
+
+def test_mixed_assignment_roster_only_notifies_real_discord_users():
+    event = Event(id="event", guild_id="guild", title="Games", message_id="poll")
+    players = [
+        {"id": "123", "name": "Real Player"},
+        {"id": "test-" + "a" * 24, "name": "Test Player 003"},
+    ]
+    message = payloads(
+        event,
+        "channel",
+        {
+            "tables": [{"name": "A", "players": players}],
+            "waitlist": [],
+        },
+        {"players": players, "is_test": False},
+    )[0]
+    assert message["allowed_mentions"]["users"] == ["123"]
+    assert message["content"] == "<@123>"
+    assert "Test Player 003" in message["embeds"][0]["fields"][0]["value"]
+
+
+def test_retry_repairs_invalid_test_mentions_in_saved_messages(promotion_db):
+    with Session(promotion_db) as db:
+        row = db.get(Announcement, "assignment")
+        row.state = "pending"
+        row.message_id = None
+        row.payload = {
+            "content": "<@test-example> <@123>",
+            "allowed_mentions": {"parse": [], "users": ["test-example", "123"]},
+        }
+        db.commit()
+    discord = Mock()
+    discord.send_announcement.return_value = {"id": "posted"}
+    deliver_event(promotion_db, discord, "event")
+    sent = discord.send_announcement.call_args.args[1]
+    assert sent["content"] == "<@123>"
+    assert sent["allowed_mentions"]["users"] == ["123"]
+    with Session(promotion_db) as db:
+        row = db.get(Announcement, "assignment")
+        assert row.state == "sent"
+        assert row.payload == sent

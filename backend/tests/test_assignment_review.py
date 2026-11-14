@@ -405,3 +405,68 @@ def test_background_confirmation_advances_review_without_reposting(client):
         if call.args[1].get("embeds")
     ]
     assert len(assignment_posts) == 1
+
+
+@pytest.mark.parametrize("review", [True, False])
+def test_mixed_real_and_manual_test_players_publish_in_both_modes(client, review):
+    from app.models import EventPlayerSetting
+
+    headers, event, path, _ = closing_event(client, review=review)
+    pid = "test-" + "c" * 24
+    with Session(client.app.state.engine) as db:
+        db.add(
+            PlayerProfile(
+                scope_key="user:owner",
+                guild_id="guild",
+                discord_id=pid,
+                discord_name="Test Player 003",
+                is_test=True,
+            )
+        )
+        db.add(
+            EventPlayerSetting(
+                event_id=event["id"], discord_id=pid, guaranteed_table="A"
+            )
+        )
+        db.commit()
+    assert (
+        client.put(
+            path + f"/manager-players/{pid}",
+            headers=headers,
+            json={"table": "A", "name": "Test Player 003"},
+        ).status_code
+        == 200
+    )
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    discord.table_signups.return_value = [
+        {"name": name, "players": []} for name in ("A", "B")
+    ]
+    closed = client.post(path + "/close", headers=headers)
+    assert closed.status_code == 200
+    if review:
+        assert closed.json()["status"] == "review"
+        assert (
+            client.post(path + "/assignments/approve", headers=headers).json()["status"]
+            == "assigned"
+        )
+    else:
+        assert closed.json()["status"] == "assigned"
+    sent = [
+        call.args[1]
+        for call in discord.send_announcement.call_args_list
+        if call.args[1].get("embeds")
+    ]
+    assert sent
+    assert any(
+        "Test Player 003" in field["value"]
+        for payload in sent
+        for embed in payload["embeds"]
+        for field in embed["fields"]
+    )
+    assert all(
+        user.isdecimal()
+        for payload in sent
+        for user in payload["allowed_mentions"]["users"]
+    )
+    assert all("<@test-" not in payload["content"] for payload in sent)
