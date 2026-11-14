@@ -282,7 +282,9 @@ export default function EventForm({
         return;
       }
       if (start.getTime() - close * 3600000 <= Date.now()) {
-        setError("That signup closing time is in the past. Reduce Signups Close Before Event (hours), or clear it to close signups manually.");
+        const closingTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: timezone })
+          .format(new Date(start.getTime() - close * 3600000));
+        setError(`The signups will close before the current time (${closingTime}). Reduce the hours before the event close or clear the field to close manually.`);
         return;
       }
     }
