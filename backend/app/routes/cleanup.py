@@ -98,7 +98,8 @@ def register(context: ApplicationContext) -> None:
             if changed is None:
                 raise HTTPException(
                     409,
-                    "Only drafts, open signups, and assignments awaiting review can be deleted.",
+                    "Only drafts, open signups, and assignments awaiting review "
+                    "can be deleted.",
                 )
             if delete_poll:
                 # Retain the event transaction until every tracked message is

@@ -93,7 +93,11 @@ def register(context: ApplicationContext) -> None:
             )
             if creating:
                 enqueue(
-                    db, event, announcement_channel, current_result(db, run), run.snapshot
+                    db,
+                    event,
+                    announcement_channel,
+                    current_result(db, run),
+                    run.snapshot,
                 )
             else:
                 enqueue_instructions(db, event, announcement_channel)

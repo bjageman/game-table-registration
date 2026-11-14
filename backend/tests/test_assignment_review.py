@@ -111,28 +111,50 @@ def test_approval_posts_edited_assignments_and_waitlists(client):
     with Session(engine) as db:
         original = deepcopy(db.get(LotteryRun, event["id"]).result)
     removed = next(iter(original["assignments"]))
-    assert client.delete(path + f"/manager-players/{removed}", headers=headers).status_code == 200
-    assert client.post(
-        path + f"/waitlisted-players/{removed}", headers=headers, json={"table": "B"}
-    ).status_code == 200
+    assert (
+        client.delete(path + f"/manager-players/{removed}", headers=headers).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            path + f"/waitlisted-players/{removed}",
+            headers=headers,
+            json={"table": "B"},
+        ).status_code
+        == 200
+    )
     rows = client.get(path + "/signups").json()
     waiting = next(
-        player["id"] for row in rows for player in row["waitlist"]
+        player["id"]
+        for row in rows
+        for player in row["waitlist"]
         if player["id"] != removed
     )
-    assert client.post(
-        path + f"/assigned-players/{waiting}", headers=headers, json={"table": "B"}
-    ).status_code == 200
+    assert (
+        client.post(
+            path + f"/assigned-players/{waiting}", headers=headers, json={"table": "B"}
+        ).status_code
+        == 200
+    )
     with Session(engine) as db:
         run = db.get(LotteryRun, event["id"])
         edited = deepcopy(current_result(db, run))
         expected = payloads(db.get(Event, event["id"]), "channel", edited, run.snapshot)
         assert edited != original
-    assert client.post(path + "/assignments/approve", headers=headers).status_code == 200
+    assert (
+        client.post(path + "/assignments/approve", headers=headers).status_code == 200
+    )
     with Session(engine) as db:
-        posts = list(db.scalars(select(Announcement).where(
-            Announcement.event_id == event["id"], Announcement.kind == "assignment"
-        ).order_by(Announcement.part)))
+        posts = list(
+            db.scalars(
+                select(Announcement)
+                .where(
+                    Announcement.event_id == event["id"],
+                    Announcement.kind == "assignment",
+                )
+                .order_by(Announcement.part)
+            )
+        )
         assert [post.payload for post in posts] == expected
         run = db.get(LotteryRun, event["id"])
         assert run.result == original
@@ -140,13 +162,23 @@ def test_approval_posts_edited_assignments_and_waitlists(client):
         # Legacy events without announcement records must also use edited rosters.
         db.execute(delete(Announcement).where(Announcement.event_id == event["id"]))
         db.commit()
-    assert client.post(
-        path + "/announcement/retry", headers=headers, json={"confirm_repost": True}
-    ).status_code == 200
+    assert (
+        client.post(
+            path + "/announcement/retry", headers=headers, json={"confirm_repost": True}
+        ).status_code
+        == 200
+    )
     with Session(engine) as db:
-        posts = list(db.scalars(select(Announcement).where(
-            Announcement.event_id == event["id"], Announcement.kind == "assignment"
-        ).order_by(Announcement.part)))
+        posts = list(
+            db.scalars(
+                select(Announcement)
+                .where(
+                    Announcement.event_id == event["id"],
+                    Announcement.kind == "assignment",
+                )
+                .order_by(Announcement.part)
+            )
+        )
         assert [post.payload for post in posts] == expected
 
 
@@ -158,16 +190,27 @@ def test_review_blocks_mutations_and_public_bypasses(client):
     seated = next(p["id"] for row in rows for p in row["players"])
     waiting_table = next(row for row in rows if row["waitlist"])
     waiting = waiting_table["waitlist"][0]["id"]
-    assert client.delete(path + f"/manager-players/{seated}", headers=headers).status_code == 200
+    assert (
+        client.delete(path + f"/manager-players/{seated}", headers=headers).status_code
+        == 200
+    )
     updated = client.get(path + "/signups").json()
     next_waiting = next(row for row in updated if row["waitlist"])
     waiting = next_waiting["waitlist"][0]["id"]
-    assert client.post(
-        path + f"/assigned-players/{waiting}",
-        headers=headers,
-        json={"table": next_waiting["name"]},
-    ).status_code == 200
-    assert next(row for row in client.get("/api/events").json() if row["id"] == event_id)["status"] == "review"
+    assert (
+        client.post(
+            path + f"/assigned-players/{waiting}",
+            headers=headers,
+            json={"table": next_waiting["name"]},
+        ).status_code
+        == 200
+    )
+    assert (
+        next(row for row in client.get("/api/events").json() if row["id"] == event_id)[
+            "status"
+        ]
+        == "review"
+    )
     assert (
         client.post(
             path + "/announcement/retry", headers=headers, json={"confirm_repost": True}

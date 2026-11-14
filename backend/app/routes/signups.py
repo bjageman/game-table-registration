@@ -263,7 +263,9 @@ def register(context: ApplicationContext) -> None:
         valid_player_id(player_id)
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
-            assigned_guild = event.guild_id if event.status in ("assigned", "review") else None
+            assigned_guild = (
+                event.guild_id if event.status in ("assigned", "review") else None
+            )
         if assigned_guild:
             if not manager_remove(engine, assigned_guild, event_id, player_id):
                 raise HTTPException(409, "Player is not currently assigned")
