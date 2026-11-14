@@ -13,6 +13,31 @@ TABLE_FIELD_SPACER = "\n\u200b" + "\u2002" * 16 + "\u200b"
 TABLE_FIELD_CONTENT_LIMIT = 1024 - len(TABLE_FIELD_SPACER)
 
 
+def is_discord_user_id(value: str) -> bool:
+    return value.isascii() and value.isdecimal() and len(value) <= 32
+
+
+def sanitize_user_mentions(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep synthetic player IDs out of Discord's notification fields."""
+    allowed = payload.get("allowed_mentions", {})
+    users = allowed.get("users", [])
+    if all(is_discord_user_id(user) for user in users):
+        return payload
+    content = re.sub(
+        r"<@!?([^>]+)>",
+        lambda match: match[0] if is_discord_user_id(match[1]) else "",
+        payload.get("content", ""),
+    ).strip()
+    return {
+        **payload,
+        "content": content,
+        "allowed_mentions": {
+            **allowed,
+            "users": [user for user in users if is_discord_user_id(user)],
+        },
+    }
+
+
 def clean(text: str) -> str:
     return re.sub(r"([\\`*_{}\[\]()#+.!|>~\-])", r"\\\1", " ".join(text.split()))
 
