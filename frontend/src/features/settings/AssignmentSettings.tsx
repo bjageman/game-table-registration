@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
@@ -6,68 +6,106 @@ import LoadingIndicator from "../../components/LoadingIndicator";
 import { FormField } from "../../components/FormFields";
 import { browserTimezone } from "../../lib/timezone";
 
-interface Settings { review_assignments_before_discord?: boolean; automatic_weight_adjustment: boolean; announce_table_changes: boolean; post_discord_updates_to_thread: boolean; timezone?: string | null; show_open_signup_players?: boolean; dm_waitlist_promotions?: boolean; }
+interface Settings {
+  review_assignments_before_discord: boolean;
+  automatic_weight_adjustment: boolean;
+  announce_table_changes: boolean;
+  post_discord_updates_to_thread: boolean;
+  timezone: string | null;
+  show_open_signup_players: boolean;
+  dm_waitlist_promotions: boolean;
+}
+
+const DEFAULTS: Settings = {
+  review_assignments_before_discord: true,
+  automatic_weight_adjustment: true,
+  announce_table_changes: true,
+  post_discord_updates_to_thread: true,
+  timezone: null,
+  show_open_signup_players: true,
+  dm_waitlist_promotions: true,
+};
 
 export default function AssignmentSettings({ csrf, restricted = false, onAccessError, onSaved }: {
   csrf: string; restricted?: boolean; onAccessError: (error: unknown) => boolean; onSaved?: () => Promise<void>;
 }) {
-  const [reviewAssignments, setReviewAssignments] = useState(true);
-  const [enabled, setEnabled] = useState(true);
-  const [announceChanges, setAnnounceChanges] = useState(true);
-  const [threadUpdates, setThreadUpdates] = useState(true);
-  const [showSignupPlayers, setShowSignupPlayers] = useState(true);
-  const [dmPromotions, setDmPromotions] = useState(true);
-  const [timezone, setTimezone] = useState("");
-  const timezones = [...new Set(["UTC", ...(Intl.supportedValuesOf?.("timeZone") ?? [browserTimezone()]), ...(timezone ? [timezone] : [])])].sort();
+  const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const inFlight = useRef(false);
+  const timezones = [...new Set(["UTC", ...(Intl.supportedValuesOf?.("timeZone") ?? [browserTimezone()]), ...(settings.timezone ? [settings.timezone] : [])])].sort();
+
   useEffect(() => {
     const controller = new AbortController();
-    api<Settings>("/settings/assignment", { signal: controller.signal }).then((value) => {
-      if (!controller.signal.aborted) { setReviewAssignments(value.review_assignments_before_discord ?? true); setEnabled(value.automatic_weight_adjustment); setAnnounceChanges(value.announce_table_changes); setThreadUpdates(value.post_discord_updates_to_thread ?? true); setTimezone(value.timezone ?? ""); setShowSignupPlayers(value.show_open_signup_players ?? true); setDmPromotions(value.dm_waitlist_promotions ?? true); setLoaded(true); setError(""); }
+    api<Partial<Settings>>("/settings/assignment", { signal: controller.signal }).then((value) => {
+      if (!controller.signal.aborted) {
+        setSettings({ ...DEFAULTS, ...value });
+        setLoaded(true);
+        setError("");
+      }
     }).catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
     return () => controller.abort();
   }, [attempt, onAccessError]);
-  async function save(event: FormEvent) {
-    event.preventDefault();
+
+  async function updateSettings(patch: Partial<Settings>) {
     if (inFlight.current || !loaded || restricted) return;
-    inFlight.current = true; setBusy(true); setSaved(false); setError("");
+    const previous = settings;
+    const next = { ...previous, ...patch };
+    inFlight.current = true;
+    setBusy(true);
+    setSaved(false);
+    setError("");
+    setSettings(next);
     try {
-      const result = await api<Settings>("/settings/assignment", { ...mutationOptions(csrf, { review_assignments_before_discord: reviewAssignments, automatic_weight_adjustment: enabled, announce_table_changes: announceChanges, post_discord_updates_to_thread: threadUpdates, timezone: timezone || null, show_open_signup_players: showSignupPlayers, dm_waitlist_promotions: dmPromotions }), method: "PUT" });
-      setReviewAssignments(result.review_assignments_before_discord ?? true); setEnabled(result.automatic_weight_adjustment); setAnnounceChanges(result.announce_table_changes); setThreadUpdates(result.post_discord_updates_to_thread ?? true); setTimezone(result.timezone ?? ""); setShowSignupPlayers(result.show_open_signup_players ?? true); setDmPromotions(result.dm_waitlist_promotions ?? true); await onSaved?.(); setSaved(true);
-    } catch (failure) { if (!onAccessError(failure)) setError(errorMessage(failure)); }
-    finally { inFlight.current = false; setBusy(false); }
+      const result = await api<Settings>("/settings/assignment", {
+        ...mutationOptions(csrf, next),
+        method: "PUT",
+      });
+      setSettings({ ...DEFAULTS, ...result });
+      await onSaved?.();
+      setSaved(true);
+    } catch (failure) {
+      setSettings(previous);
+      if (!onAccessError(failure)) setError(errorMessage(failure));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
   }
+
+  function toggle(field: keyof Omit<Settings, "timezone">, value: boolean) {
+    void updateSettings({ [field]: value });
+  }
+
   return <section id="assignment-settings" className="assignment-settings" aria-label="Assignment settings">
     {!loaded && !error && <p><LoadingIndicator label="Loading assignment settings…" /></p>}
     {error && <p role="alert" className="error">{error}{!loaded && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry</button>}</p>}
-    {loaded && <form id="assignment-settings-form" aria-label="Assignment settings" onSubmit={(event) => void save(event)}>
-      <div className="general-setting-option"><FormControlLabel label="Review assignments before sending to Discord" control={<Checkbox id="general-review-assignments" checked={reviewAssignments} disabled={busy || restricted}
-        onChange={(event) => { setReviewAssignments(event.target.checked); setSaved(false); }} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox id="assignment-auto-weights" checked={enabled} disabled={busy || restricted}
-        onChange={(event) => { setEnabled(event.target.checked); setSaved(false); }} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Announce Table Changes on Discord" control={<Checkbox id="assignment-announce-changes" checked={announceChanges} disabled={busy || restricted}
-        onChange={(event) => { setAnnounceChanges(event.target.checked); setSaved(false); }} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Post Discord updates to a new thread" control={<Checkbox id="assignment-thread-updates" checked={threadUpdates} disabled={busy || restricted}
-        onChange={(event) => { setThreadUpdates(event.target.checked); setSaved(false); }} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Show players in open Discord signups" control={<Checkbox id="general-show-signup-players" checked={showSignupPlayers} disabled={busy || restricted}
-        onChange={(event) => { setShowSignupPlayers(event.target.checked); setSaved(false); }} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Send private messages for waitlist promotions" control={<Checkbox id="general-dm-waitlist-promotions" checked={dmPromotions} disabled={busy || restricted}
-        onChange={(event) => { setDmPromotions(event.target.checked); setSaved(false); }} />} /></div>
+    {loaded && <form id="assignment-settings-form" aria-label="Assignment settings" onSubmit={(event) => event.preventDefault()}>
+      <div className="general-setting-option"><FormControlLabel label="Review assignments before sending to Discord" control={<Checkbox id="general-review-assignments" checked={settings.review_assignments_before_discord} disabled={busy || restricted}
+        onChange={(event) => toggle("review_assignments_before_discord", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox id="assignment-auto-weights" checked={settings.automatic_weight_adjustment} disabled={busy || restricted}
+        onChange={(event) => toggle("automatic_weight_adjustment", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Announce Table Changes on Discord" control={<Checkbox id="assignment-announce-changes" checked={settings.announce_table_changes} disabled={busy || restricted}
+        onChange={(event) => toggle("announce_table_changes", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Post Discord updates to a new thread" control={<Checkbox id="assignment-thread-updates" checked={settings.post_discord_updates_to_thread} disabled={busy || restricted}
+        onChange={(event) => toggle("post_discord_updates_to_thread", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Show players in open Discord signups" control={<Checkbox id="general-show-signup-players" checked={settings.show_open_signup_players} disabled={busy || restricted}
+        onChange={(event) => toggle("show_open_signup_players", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Send private messages for waitlist promotions" control={<Checkbox id="general-dm-waitlist-promotions" checked={settings.dm_waitlist_promotions} disabled={busy || restricted}
+        onChange={(event) => toggle("dm_waitlist_promotions", event.target.checked)} />} /></div>
       <div className="general-setting-option general-timezone-setting">
-        <FormField id="general-timezone" select label="Timezone" value={timezone} disabled={busy || restricted}
+        <FormField id="general-timezone" select label="Timezone" value={settings.timezone ?? ""} disabled={busy || restricted}
           slotProps={{ select: { native: true } }}
-          onChange={(event) => { setTimezone(event.target.value); setSaved(false); }}>
+          onChange={(event) => void updateSettings({ timezone: event.target.value || null })}>
           <option value="">Default ({browserTimezone()})</option>
           {timezones.map((zone) => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}
         </FormField>
       </div>
-      {saved && <p role="status">Assignment settings saved.</p>}
-      <div className="form-actions"><span title={restricted ? "Only users with admin privileges can save" : undefined}><button id="assignment-settings-save-button" type="submit" className="primary" disabled={busy || restricted}>{busy ? "Saving…" : "Save"}</button></span></div>
+      {busy && <p role="status">Saving…</p>}
+      {saved && <p role="status">Settings saved.</p>}
     </form>}
   </section>;
 }

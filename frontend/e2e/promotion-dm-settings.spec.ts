@@ -22,13 +22,11 @@ test("saved private waitlist notification choices are independent and persist", 
   const option = page.getByRole("checkbox", { name: "Send private messages for waitlist promotions" });
   await expect(option).not.toBeChecked();
   await option.check();
-  await page.locator("#assignment-settings-save-button").click();
-  await expect(page.getByRole("status")).toHaveText("Assignment settings saved.");
+  await expect(page.getByRole("status")).toHaveText("Settings saved.");
   await page.reload();
   await page.getByRole("tab", { name: "General", exact: true }).click();
   await expect(option).toBeChecked();
   await option.uncheck();
-  await page.locator("#assignment-settings-save-button").click();
-  await expect(page.getByRole("status")).toHaveText("Assignment settings saved.");
+  await expect(page.getByRole("status")).toHaveText("Settings saved.");
   expect(enabled).toBe(false);
 });

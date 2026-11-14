@@ -107,14 +107,12 @@ test("General settings are accessible after server authorization and persists it
   const checkbox = form.getByLabel("Automatically Adjust Player Weights");
   await expect(checkbox).toBeChecked();
   await checkbox.uncheck();
-  await form.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(form.getByRole("status")).toHaveText("Assignment settings saved.");
+  await expect(form.getByRole("status")).toHaveText("Settings saved.");
   await page.reload();
   await page.getByRole("tab", { name: "General", exact: true }).click();
   await expect(checkbox).not.toBeChecked();
   await checkbox.check();
-  await form.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(form.getByRole("status")).toHaveText("Assignment settings saved.");
+  await expect(form.getByRole("status")).toHaveText("Settings saved.");
   expect(enabled).toBe(true);
   await page.getByRole("tab", { name: "Discord", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Discord Server" })).toBeVisible();

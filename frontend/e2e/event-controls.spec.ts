@@ -61,8 +61,7 @@ test("saves the optional open signup roster setting and defaults it off", async 
   const option = page.getByRole("checkbox", { name: "Show players in open Discord signups" });
   await expect(option).not.toBeChecked();
   await option.check();
-  await page.locator("#assignment-settings-save-button").click();
-  await expect(page.getByRole("status")).toContainText("settings saved");
+  await expect(page.getByRole("status")).toHaveText("Settings saved.");
   await page.reload();
   await page.getByRole("tab", { name: "General", exact: true }).click();
   await expect(option).toBeChecked();
