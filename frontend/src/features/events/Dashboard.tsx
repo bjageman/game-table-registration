@@ -181,7 +181,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             onClick={(event) => setSortAnchor(event.currentTarget)}>
             {sort.descending ? <ArrowDownWideNarrow size={18} aria-hidden="true" /> : <ArrowUpWideNarrow size={18} aria-hidden="true" />}
           </button>
-          <button id="events-download-all-button" type="button" className="event-icon-action" aria-label="Download all event signups" title="Download All Event Signups"
+          <button id="events-download-all-button" type="button" className="event-icon-action" aria-label="Download all event signups" title="Download All Event Signups" hidden
             disabled={exporting || loading || Boolean(error)} onClick={() => {
               setExporting(true);
               void download("/exports/signups.csv", "all-event-signups.csv")
