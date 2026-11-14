@@ -1,3 +1,4 @@
+import { subscribeLiveUpdates } from "../../../lib/liveUpdates";
 import { useEffect, useState } from "react";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import { api, errorMessage, mutationOptions, type EventRecord } from "../../../lib/api";
@@ -17,18 +18,26 @@ export default function AssignmentAnnouncement({ event, csrf, refreshToken = 0, 
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
+    let inFlight = false;
+    let refreshAgain = false;
     async function load() {
+      if (document.hidden || controller.signal.aborted) return;
+      if (inFlight) { refreshAgain = true; return; }
+      clearTimeout(timer);
+      inFlight = true;
       try {
         const value = await api<Delivery>(`/events/${encodeURIComponent(event.id)}/announcement`, { signal: controller.signal });
         if (!controller.signal.aborted) {
           setDelivery(value); setError("");
           onLinkChange?.(value.status === "sent" ? value.url : null);
-          if (!event.archived_at) timer = setTimeout(() => void load(), value.update_pending || value.status === "pending" ? 5000 : 15000);
+          if (!event.archived_at && (value.update_pending || value.status === "pending")) timer = setTimeout(() => void load(), 1000);
         }
       } catch (failure) { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); }
+      finally { inFlight = false; if (refreshAgain) { refreshAgain = false; void load(); } }
     }
     void load();
-    return () => { controller.abort(); clearTimeout(timer); };
+    const unsubscribe = subscribeLiveUpdates(() => void load());
+    return () => { unsubscribe(); controller.abort(); clearTimeout(timer); };
   }, [event.id, event.archived_at, refreshToken, attempt, onAccessError, onLinkChange]);
   async function retry() {
     if (busy) return;
