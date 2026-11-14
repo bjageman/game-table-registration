@@ -107,6 +107,7 @@ def test_player_profile_survives_event_and_poll_deletion(client):
         "guaranteed_seat": False,
         "real_name": "",
         "weighting": 5.0,
+        "partner": None,
     }
     client.app.state.discord.bot.reset_mock()
     assert (

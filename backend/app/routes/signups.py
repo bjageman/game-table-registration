@@ -26,6 +26,7 @@ from app.models import (
     TableSignup,
 )
 from app.player_profiles import for_event as player_scope_for_event
+from app.player_profiles import remember_poll_players
 from app.publication import mark_signup_closed
 from app.schemas import (
     AssignedAddInput,
@@ -73,7 +74,7 @@ def register(context: ApplicationContext) -> None:
                 if run is None:
                     raise HTTPException(503, "Saved placements are unavailable")
                 rows: list[dict[str, Any]] = current_result(db, run)["tables"]
-                return list_names(rows, event_id)
+                return list_names(rows, event_id, include_settings=False)
             message_id = event.message_id
             tables = event.tables
             population = event.test_signups
@@ -92,7 +93,8 @@ def register(context: ApplicationContext) -> None:
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
             rows = apply_manager_signups(db, event, add_to_rows(rows, population))
-            db.rollback()
+            remember_poll_players(db, event, rows)
+            db.commit()
         return list_names(rows, event_id)
 
     @router.get("/api/events/{event_id}/signups.csv")

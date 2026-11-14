@@ -264,7 +264,6 @@ class ApplicationContext:
             "weighting": profile.weighting if profile else 5.0,
             "is_test": profile.is_test if profile else False,
             "guaranteed_seat": profile.guaranteed_seat if profile else False,
-            "partner_id": profile.partner_id if profile else None,
         }
 
     def valid_player_id(self, player_id: str) -> None:
@@ -274,7 +273,11 @@ class ApplicationContext:
             raise HTTPException(422, "Invalid Discord user ID")
 
     def list_names(
-        self, rows: list[dict[str, Any]], event_id: str
+        self,
+        rows: list[dict[str, Any]],
+        event_id: str,
+        *,
+        include_settings: bool = True,
     ) -> list[dict[str, Any]]:
         # Decorate copies for the app; saved results keep Discord names.
         with DBSession(self.engine) as db:
@@ -299,7 +302,7 @@ class ApplicationContext:
                         )
                     )
                 }
-                if event_id
+                if include_settings
                 else {}
             )
 
@@ -309,7 +312,7 @@ class ApplicationContext:
             result = {**player}
             if profile and profile.real_name:
                 result["display_name"] = profile.real_name
-            if event_id:
+            if include_settings:
                 result.update(
                     weighting=(
                         setting.weighting

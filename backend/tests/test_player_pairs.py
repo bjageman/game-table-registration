@@ -230,3 +230,31 @@ def test_guaranteed_pair_conflict_alerts_manager_and_waitlists_both(client):
     approved = client.post(path + "/assignments/approve", headers=headers)
     assert approved.status_code == 200
     assert approved.json()["pairing_warnings"] == []
+
+
+def test_first_time_poll_participants_can_be_linked_before_the_first_draw(client):
+    headers, _, path, _ = closing_event(client, review=True)
+    client.app.state.discord.table_signups.return_value = [
+        {
+            "name": "A",
+            "players": [{"id": "1", "name": "Alice"}, {"id": "2", "name": "Bob"}],
+        },
+        {"name": "B", "players": []},
+    ]
+    assert client.get("/api/players").json() == []
+    assert client.get(path + "/signups").status_code == 200
+    assert {player["discord_id"] for player in client.get("/api/players").json()} == {
+        "1",
+        "2",
+    }
+    linked = link(client, headers, "1", "2")
+    assert linked.status_code == 200
+    assert linked.json()["profile"]["partner"] == {"id": "2", "name": "Bob"}
+    assert client.get("/api/players/2").json()["partner"] == {
+        "id": "1",
+        "name": "Alice",
+    }
+    with Session(client.app.state.engine) as db:
+        from app.models import TableSignup
+
+        assert all(not row.choices for row in db.query(TableSignup).all())
