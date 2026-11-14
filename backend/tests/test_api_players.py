@@ -497,6 +497,7 @@ def test_add_known_player_after_assignment_updates_discord_without_redrawing(
         for row in client.get(path + "/signups").json()
         for player in row["players"]
     )
+    assert client.put(target, headers=headers, json=body).status_code == 200
     assert client.put(target, headers=headers, json=body).status_code == 409
     with DBSession(engine) as db:
         db.add(
