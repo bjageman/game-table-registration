@@ -183,7 +183,7 @@ def register(context: ApplicationContext) -> None:
             run = db.get(LotteryRun, event.id)
             if run is None:
                 raise HTTPException(404, "Shared event not found")
-            rows = list_names(current_result(db, run)["tables"], event.guild_id)
+            rows = list_names(current_result(db, run)["tables"], event.id)
             preferences = preferences_for_event(db, event)
             return {
                 "title": event.title,

@@ -153,7 +153,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     return () => { controller.abort(); clearTimeout(timer); };
   }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, hasSignups, attempt, refreshToken, onAccessError, onRefreshingChange]);
   return <>
-    {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf}
+    {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf} readOnly={readOnly}
       onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
     {addingTable && <dialog id={`event-add-player-dialog-${event.id}`} ref={addDialog} className="event-modal" aria-labelledby="add-player-heading"
       onCancel={(event) => { event.preventDefault(); closeAddPlayer(); }}

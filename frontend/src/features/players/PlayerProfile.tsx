@@ -8,13 +8,15 @@ import FormFields, { FormField } from "../../components/FormFields";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
 import LoadingIndicator from "../../components/LoadingIndicator";
+import PlayerPairEditor, { type Partner } from "./PlayerPairEditor";
 
-interface Profile { discord_id: string; discord_name: string; real_name: string; weighting: number; is_test?: boolean; guaranteed_seat?: boolean; }
+interface Profile { discord_id: string; discord_name: string; real_name: string; weighting: number; is_test?: boolean; guaranteed_seat?: boolean; partner?: Partner | null; }
 type ProfileChange = { real_name?: string; weighting?: number; guaranteed_seat?: boolean };
 
-export default function PlayerProfile({ player, csrf, onClose, onAccessError, onSaved }: {
+export default function PlayerProfile({ player, csrf, readOnly = false, onClose, onAccessError, onSaved }: {
   player: { id: string; name: string };
   csrf: string;
+  readOnly?: boolean;
   onClose: () => void;
   onSaved?: () => void;
   onAccessError: (error: unknown) => boolean;
@@ -27,6 +29,7 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
   const pending = useRef(0);
   const failed = useRef(false);
   const closing = useRef(false);
+  const pairingBusy = useRef(false);
   const [profile, setProfile] = useState<Profile>();
   const [realName, setRealName] = useState("");
   const [weighting, setWeighting] = useState("5");
@@ -122,7 +125,8 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
     return true;
   }
   async function close() {
-    if (closing.current) return;
+    if (readOnly) { onClose(); return; }
+    if (closing.current || pairingBusy.current) return;
     closing.current = true;
     failed.current = false;
     saveName();
@@ -152,19 +156,24 @@ export default function PlayerProfile({ player, csrf, onClose, onAccessError, on
     {!profile && error && <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button>}
     {profile && <div aria-label="Player information">
       <FormFields>
-      <FormField id={nameField} label="Display Name" value={realName} fullWidth
+      <FormField id={nameField} label="Display Name" value={realName} fullWidth disabled={readOnly}
         onChange={(event) => { setRealName(event.target.value); setNotice(""); }}
         onBlur={saveName}
         slotProps={{ htmlInput: { maxLength: 100 } }} />
-      <div className="profile-weight-edit"><FormField id={`player-weight-${player.id}`} label="Global Weighting" type="number" value={weighting} fullWidth disabled={savingWeight}
+      <div className="profile-weight-edit"><FormField id={`player-weight-${player.id}`} label="Global Weighting" type="number" value={weighting} fullWidth disabled={savingWeight || readOnly}
         onChange={(event) => { setWeighting(event.target.value); setNotice(""); }}
         onBlur={() => { saveWeight(); }}
         slotProps={{ htmlInput: { min: 0.1, max: 10, step: 0.1 } }} />
       </div>
-      <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat}
+      <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat} disabled={readOnly}
         onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }, "Guaranteed seat saved."); }} />} />
       {notice && <p role="status">{notice}</p>}
       </FormFields>
+      <PlayerPairEditor playerId={player.id} partner={profile.partner ?? null} csrf={csrf} readOnly={readOnly} onAccessError={onAccessError}
+        onBusy={(busy) => { pairingBusy.current = busy; }} onChanged={(partner) => {
+          setProfile((current) => current ? { ...current, partner } : current);
+          onSaved?.();
+        }} />
     </div>}
   </dialog>;
 }

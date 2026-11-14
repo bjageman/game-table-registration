@@ -9,7 +9,9 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import object_session
 
+from app.assignment_preferences import scope_key
 from app.config import Settings
 from app.discord_api import DiscordAPI
 from app.models import (
@@ -22,6 +24,8 @@ from app.models import (
     Session,
     UserSettings,
 )
+from app.player_profiles import PlayerScope
+from app.player_profiles import for_event as player_scope_for_event
 from app.security import digest
 
 
@@ -61,6 +65,12 @@ class ApplicationContext:
     def scoped_discord(self, request: Request) -> DiscordAPI:
         client: DiscordAPI = request.state.discord
         return client
+
+    def player_scope(self, request: Request) -> PlayerScope:
+        return PlayerScope(
+            scope_key(request.state.organization_id, request.state.user_id),
+            self.destination(request).discord_guild_id,
+        )
 
     def event_scope(self, request: Request) -> tuple[Any, ...]:
         target = self.destination(request)
@@ -184,6 +194,15 @@ class ApplicationContext:
             return session
 
     def serialize(self, event: Event) -> dict[str, Any]:
+        warnings: list[str] = []
+        if event.status in ("review", "assigned") and event.close_pairs:
+            from app.models import LotteryRun
+            from app.withdrawals import current_result
+
+            db = object_session(event)
+            run = db.get(LotteryRun, event.id) if db else None
+            if db and run and run.result.get("pairing_conflicts"):
+                warnings = current_result(db, run).get("pairing_warnings", [])
         return {
             "id": event.id,
             "title": event.title,
@@ -205,6 +224,7 @@ class ApplicationContext:
             "archived_at": event.archived_at,
             "signup_deleted_at": event.signup_deleted_at,
             "close_error": event.close_error or event.reaction_error,
+            "pairing_warnings": warnings,
             "is_test": bool(event.test_signups),
             "test_generation": event.test_signups.get("generation")
             if event.test_signups
@@ -244,6 +264,7 @@ class ApplicationContext:
             "weighting": profile.weighting if profile else 5.0,
             "is_test": profile.is_test if profile else False,
             "guaranteed_seat": profile.guaranteed_seat if profile else False,
+            "partner_id": profile.partner_id if profile else None,
         }
 
     def valid_player_id(self, player_id: str) -> None:
@@ -253,15 +274,19 @@ class ApplicationContext:
             raise HTTPException(422, "Invalid Discord user ID")
 
     def list_names(
-        self, rows: list[dict[str, Any]], guild_id: str, event_id: str | None = None
+        self, rows: list[dict[str, Any]], event_id: str
     ) -> list[dict[str, Any]]:
         # Decorate copies for the app; saved results keep Discord names.
         with DBSession(self.engine) as db:
+            event = db.get(Event, event_id)
+            if event is None:
+                raise ValueError("An event is required to resolve scoped player names")
+            scope = player_scope_for_event(event)
             profiles = {
                 profile.discord_id: profile
                 for profile in db.scalars(
                     select(PlayerProfile).where(
-                        PlayerProfile.guild_id == guild_id,
+                        *scope.filters(),
                     )
                 )
             }

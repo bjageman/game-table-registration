@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.announcements import enqueue
 from app.models import Event, LotteryRun, PlayerProfile
+from app.player_profiles import for_event as player_scope_for_event
 
 
 def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -> None:
@@ -22,7 +23,7 @@ def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -
             p.discord_id: p
             for p in db.scalars(
                 select(PlayerProfile)
-                .where(PlayerProfile.guild_id == event.guild_id)
+                .where(*player_scope_for_event(event).filters())
                 .order_by(PlayerProfile.discord_id)
                 .with_for_update()
             )
@@ -31,6 +32,7 @@ def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -
             profile = profiles.get(player["id"])
             if profile is None:
                 profile = PlayerProfile(
+                    scope_key=player_scope_for_event(event).key,
                     guild_id=event.guild_id,
                     discord_id=player["id"],
                     discord_name=player["name"],

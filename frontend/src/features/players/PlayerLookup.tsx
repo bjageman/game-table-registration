@@ -91,7 +91,7 @@ export default function PlayerLookup({ session, onAccessError }: {
       </div> : <p>{players.length ? "No players match your filters." : "No players have signed up yet."}</p>}
     </>}
     {selected && <PlayerProfile key={selected.discord_id} player={{ id: selected.discord_id, name: selected.discord_name }}
-      csrf={session.csrf} onClose={() => setSelected(undefined)} onAccessError={onAccessError}
+      csrf={session.csrf} readOnly={session.organization_role === "user"} onClose={() => setSelected(undefined)} onAccessError={onAccessError}
       onSaved={() => setAttempt((value) => value + 1)} />}
   </section>;
 }

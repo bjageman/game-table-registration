@@ -79,7 +79,11 @@ def test_adding_a_known_player_who_was_not_waitlisted_does_not_queue_a_dm(promot
     with Session(promotion_db) as db:
         db.add(
             PlayerProfile(
-                guild_id="guild", discord_id="4", discord_name="Dan", weighting=5
+                scope_key="user:owner",
+                guild_id="guild",
+                discord_id="4",
+                discord_name="Dan",
+                weighting=5,
             )
         )
         db.commit()
@@ -323,7 +327,11 @@ def test_manual_add_to_another_table_still_notifies_a_globally_waitlisted_player
         }
         db.add(
             PlayerProfile(
-                guild_id="guild", discord_id="2", discord_name="Bob", weighting=5
+                scope_key="user:owner",
+                guild_id="guild",
+                discord_id="2",
+                discord_name="Bob",
+                weighting=5,
             )
         )
         db.commit()

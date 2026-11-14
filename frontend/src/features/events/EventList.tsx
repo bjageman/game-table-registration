@@ -145,6 +145,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
             </EventDateDetails>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
             {event.status === "review" && <p role="status" className="notice">Review these assignments. Add or remove players as needed, then send the results to Discord.</p>}
+            {!readOnly && event.pairing_warnings?.map((warning) => <p key={warning} role="alert" className="notice">{warning}</p>)}
             <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}

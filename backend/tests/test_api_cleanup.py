@@ -174,7 +174,7 @@ def test_test_profiles_reused_after_clear_and_event_deletion(client):
     from app.models import PlayerProfile
 
     with DBSession(client.app.state.engine) as db:
-        db.get(PlayerProfile, ("guild", pid)).guild_id = "elsewhere"
+        db.get(PlayerProfile, ("user:owner", "guild", pid)).guild_id = "elsewhere"
         db.commit()
     assert client.get(profile_path).status_code == 404
     assert (

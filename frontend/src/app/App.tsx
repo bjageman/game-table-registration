@@ -231,7 +231,7 @@ export default function App() {
                 setAuth({ kind: "ready", session });
               }} />
           ) : page === "players" ? (
-            <PlayerLookup key={auth.session.destination ?? "legacy"} session={auth.session} onAccessError={onAccessError} />
+            <PlayerLookup key={`${auth.session.destination ?? "legacy"}:${auth.session.organization?.id ?? "personal"}`} session={auth.session} onAccessError={onAccessError} />
           ) : <Dashboard key={`${auth.session.destination ?? "legacy"}:${auth.session.organization?.id ?? "personal"}`} session={auth.session} onAccessError={onAccessError} />
         )}
       </main>

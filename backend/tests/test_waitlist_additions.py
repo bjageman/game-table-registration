@@ -25,6 +25,7 @@ def profile(engine, player_id="4"):
     with Session(engine) as db:
         db.add(
             PlayerProfile(
+                scope_key="user:owner",
                 guild_id="guild",
                 discord_id=player_id,
                 discord_name="Late Player",

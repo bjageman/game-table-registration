@@ -125,6 +125,12 @@ class AssignmentSettingsInput(BaseModel):
         return value
 
 
+class PlayerPairInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    partner_id: str | None
+    replace_partner_id: str | None = None
+
+
 class PlayerProfileInput(BaseModel):
     model_config = {"extra": "forbid"}
     real_name: str | None = Field(default=None, max_length=100)

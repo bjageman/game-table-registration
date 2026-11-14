@@ -20,8 +20,8 @@ from app.models import (
     EventWaitlistAddition,
     EventWithdrawal,
     LotteryRun,
-    PlayerProfile,
 )
+from app.player_profiles import for_event as player_scope_for_event
 from app.promotion_dms import enqueue as enqueue_promotion_dm
 
 
@@ -150,6 +150,11 @@ def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
         )
     return {
         **result,
+        "pairing_warnings": [
+            conflict["message"]
+            for conflict in result.get("pairing_conflicts", [])
+            if not all(pid in assignments for pid in conflict["players"])
+        ],
         "assignments": assignments,
         "waitlist": list(
             dict.fromkeys(
@@ -262,17 +267,59 @@ def withdraw(
         return changed
 
 
-def next_waitlisted(
-    event: Event, current: dict[str, Any], table_name: str
-) -> str | None:
-    """An overfilled table has no replacement seat until enough players leave."""
-    table = next(row for row in current["tables"] if row["name"] == table_name)
-    capacity = next(
-        row["capacity"] for row in event.tables if row["name"] == table_name
+def replace_with_waitlist(
+    db: Session,
+    event: Event,
+    run: LotteryRun,
+    current: dict[str, Any],
+    player_id: str,
+    table_name: str,
+    changed_at: float,
+) -> list[str]:
+    from app.pair_promotions import replacements
+
+    chosen = replacements(event, current, table_name)
+    record_withdrawal(
+        db,
+        event.id,
+        player_id,
+        table_name,
+        changed_at,
+        chosen[0][0] if chosen else None,
     )
-    if len(table["players"]) <= capacity and table["waitlist"]:
-        return str(table["waitlist"][0]["id"])
-    return None
+    for pid, table in chosen[1:]:
+        placement = db.get(EventManualAssignment, (event.id, pid))
+        if placement is None:
+            db.add(
+                EventManualAssignment(
+                    event_id=event.id,
+                    discord_id=pid,
+                    table_name=table,
+                    assigned_at=changed_at,
+                )
+            )
+        else:
+            placement.table_name = table
+            placement.assigned_at = changed_at
+    return [pid for pid, _ in chosen]
+
+
+def promoted_names(db: Session, run: LotteryRun, ids: list[str]) -> str:
+    players = result_players(db, run)
+    return " and ".join(
+        clean(players[pid]["name"]) if pid.startswith("test-") else f"<@{pid}>"
+        for pid in ids
+    )
+
+
+def pair_promotion_text(db: Session, run: LotteryRun, ids: list[str]) -> str:
+    """A split promotion must name each player's actual destination table."""
+    current = current_result(db, run)
+    return " ".join(
+        f"{promoted_names(db, run, [pid])} has been promoted from the waitlist "
+        f"to **{clean(current['assignments'][pid])}**."
+        for pid in ids
+    )
 
 
 def withdraw_seat(
@@ -285,17 +332,14 @@ def withdraw_seat(
     if table_name is None:
         return False
 
-    promoted_id = next_waitlisted(event, current, table_name)
     withdrawn_at = time.time()
-    record_withdrawal(db, event_id, player_id, table_name, withdrawn_at, promoted_id)
+    promoted_ids = replace_with_waitlist(
+        db, event, run, current, player_id, table_name, withdrawn_at
+    )
+    promoted_id = promoted_ids[0] if promoted_ids else None
     if promoted_id and announce_changes(db, event):
         left = result_players(db, run)[player_id]
-        promoted = result_players(db, run)[promoted_id]
-        promoted_name = (
-            clean(promoted["name"])
-            if promoted_id.startswith("test-")
-            else f"<@{promoted_id}>"
-        )
+        promoted_name = promoted_names(db, run, promoted_ids)
         left_name = (
             clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
         )
@@ -307,9 +351,11 @@ def withdraw_seat(
             f"{promoted_name} has been promoted to **{clean(table_name)}** "
             f"after {left_name} left their seat.\n"
         )
+        if len(promoted_ids) > 1:
+            content = pair_promotion_text(db, run, promoted_ids)
         mentions = [
             user_id
-            for user_id in (promoted_id, player_id)
+            for user_id in (*promoted_ids, player_id)
             if not user_id.startswith("test-")
         ]
         db.add(
@@ -331,8 +377,11 @@ def withdraw_seat(
                 next_attempt=withdrawn_at,
             )
         )
-    if promoted_id:
-        enqueue_promotion_dm(db, event, promoted_id, table_name)
+    if promoted_ids:
+        db.flush()
+        updated = current_result(db, run)
+        for pid in promoted_ids:
+            enqueue_promotion_dm(db, event, pid, updated["assignments"][pid])
     enqueue_refresh(db, event)
     return True
 
@@ -365,24 +414,24 @@ def manager_remove(
         table_name = current["assignments"].get(player_id)
         if table_name is None:
             return False
-        promoted_id = next_waitlisted(event, current, table_name)
         removed_at = time.time()
-        record_withdrawal(db, event_id, player_id, table_name, removed_at, promoted_id)
+        promoted_ids = replace_with_waitlist(
+            db, event, run, current, player_id, table_name, removed_at
+        )
+        promoted_id = promoted_ids[0] if promoted_ids else None
         left = result_players(db, run)[player_id]
         left_name = (
             clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
         )
         if promoted_id:
-            promoted_name = (
-                clean(result_players(db, run)[promoted_id]["name"])
-                if promoted_id.startswith("test-")
-                else f"<@{promoted_id}>"
-            )
+            promoted_name = promoted_names(db, run, promoted_ids)
             content = (
                 f"{promoted_name} has been promoted from the waitlist "
                 f"to **{clean(table_name)}**."
             )
-            mentions = [] if promoted_id.startswith("test-") else [promoted_id]
+            if len(promoted_ids) > 1:
+                content = pair_promotion_text(db, run, promoted_ids)
+            mentions = [pid for pid in promoted_ids if not pid.startswith("test-")]
         else:
             content = f"{left_name} has left their seat at **{clean(table_name)}**."
             mentions = [] if player_id.startswith("test-") else [player_id]
@@ -417,8 +466,11 @@ def manager_remove(
                     next_attempt=removed_at,
                 )
             )
-        if promoted_id and event.status == "assigned":
-            enqueue_promotion_dm(db, event, promoted_id, table_name)
+        if promoted_ids and event.status == "assigned":
+            db.flush()
+            updated = current_result(db, run)
+            for pid in promoted_ids:
+                enqueue_promotion_dm(db, event, pid, updated["assignments"][pid])
         if event.status == "assigned":
             enqueue_refresh(db, event)
         db.commit()
@@ -469,7 +521,9 @@ def manager_add(
             and db.get(EventWithdrawal, (event_id, player_id)) is not None
         ):
             return False
-        profile = db.get(PlayerProfile, (guild_id, player_id))
+        event = db.get(Event, event_id)
+        assert event is not None
+        profile = player_scope_for_event(event).get(db, player_id)
         known = result_players(db, run)
         if not waitlisted and profile is None:
             return False

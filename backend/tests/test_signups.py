@@ -277,7 +277,10 @@ def test_custom_close_uses_saved_choices_once_and_announces(custom_client):
         assert len(result["waitlist"]) == 1
         for player in snapshot["players"]:
             expected = 4.5 if player["id"] in result["assignments"] else 5.5
-            assert db.get(PlayerProfile, ("guild", player["id"])).weighting == expected
+            assert (
+                db.get(PlayerProfile, ("user:owner", "guild", player["id"])).weighting
+                == expected
+            )
     assert client.post(path + "/close", headers=headers).status_code == 200
     with Session(client.app.state.engine) as db:
         assert db.get(LotteryRun, event["id"]).result == result
@@ -305,7 +308,12 @@ def test_guarantee_conflict_allows_correction_without_losing_signups(custom_clie
     with Session(client.app.state.engine) as db:
         for user in ("1", "2"):
             db.add(
-                PlayerProfile(guild_id="guild", discord_id=user, guaranteed_seat=True)
+                PlayerProfile(
+                    scope_key="user:owner",
+                    guild_id="guild",
+                    discord_id=user,
+                    guaranteed_seat=True,
+                )
             )
         db.commit()
     assert client.post(path + "/close", headers=headers).status_code == 409
@@ -442,7 +450,7 @@ def test_custom_signups_share_test_players_and_assignment_settings(custom_client
         assert run.snapshot["is_test"] is True
         assert run.snapshot["automatic_weight_adjustment"] is False
         assert len(run.snapshot["players"]) == 3
-        assert db.get(PlayerProfile, ("guild", "1")) is None
+        assert db.get(PlayerProfile, ("user:owner", "guild", "1")) is None
 
 
 def test_legacy_poll_controls_cannot_create_database_signups(custom_client):

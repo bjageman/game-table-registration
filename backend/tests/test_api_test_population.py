@@ -42,7 +42,7 @@ def test_persisted_test_users_run_through_publish_close_and_announce(client):
         assert db.get(Event, event["id"]).close_seed is None
         assert db.get(LotteryRun, event["id"]) is None
         assert db.query(Announcement).count() == 0
-        weight = db.get(PlayerProfile, ("guild", pid)).weighting
+        weight = db.get(PlayerProfile, ("user:owner", "guild", pid)).weighting
         assert weight == 3.5
     discord = client.app.state.discord
     discord.send_announcement.assert_not_called()
@@ -228,5 +228,11 @@ def test_weight_adjustment_clamps_and_updates_test_profiles(client):
     discord.voter_users.return_value = []
     assert client.post(path + "/close", headers=headers).status_code == 200
     with DBSession(client.app.state.engine) as db:
-        assert db.get(PlayerProfile, ("guild", players[0]["id"])).weighting == 0.1
-        assert db.get(PlayerProfile, ("guild", players[1]["id"])).weighting == 10
+        assert (
+            db.get(PlayerProfile, ("user:owner", "guild", players[0]["id"])).weighting
+            == 0.1
+        )
+        assert (
+            db.get(PlayerProfile, ("user:owner", "guild", players[1]["id"])).weighting
+            == 10
+        )
