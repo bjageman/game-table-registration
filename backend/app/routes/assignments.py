@@ -92,7 +92,9 @@ def register(context: ApplicationContext) -> None:
                 event.channel_id or destination(request).discord_channel_id
             )
             if creating:
-                enqueue(db, event, announcement_channel, run.result, run.snapshot)
+                enqueue(
+                    db, event, announcement_channel, current_result(db, run), run.snapshot
+                )
             else:
                 enqueue_instructions(db, event, announcement_channel)
             rows = list(

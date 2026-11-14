@@ -13,8 +13,10 @@ from app.models import Event, LotteryRun, PlayerProfile
 
 def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -> None:
     """Called only by the transaction that owns the event's state transition."""
+    from app.withdrawals import current_result
+
     snapshot: dict[str, Any] = run.snapshot
-    result: dict[str, Any] = run.result
+    result: dict[str, Any] = current_result(db, run)
     if snapshot.get("automatic_weight_adjustment", True):
         profiles = {
             p.discord_id: p

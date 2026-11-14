@@ -8,7 +8,7 @@ from flow_helpers import closing_event, closing_message, set_assignment_review
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.announcements import dispatch_due
+from app.announcements import dispatch_due, payloads
 from app.closing import close_and_assign
 from app.models import (
     Announcement,
@@ -17,6 +17,7 @@ from app.models import (
     LotteryRun,
     PlayerProfile,
 )
+from app.withdrawals import current_result
 
 
 def prepared(client, *, default_scope=False):
@@ -101,6 +102,52 @@ def test_approval_can_delete_signup_message_before_publishing(client):
     client.app.state.discord.at.return_value.delete_poll.assert_called_once_with(
         "message"
     )
+
+
+def test_approval_posts_edited_assignments_and_waitlists(client):
+    headers, event, path = prepared(client)
+    client.post(path + "/close", headers=headers)
+    engine = client.app.state.engine
+    with Session(engine) as db:
+        original = deepcopy(db.get(LotteryRun, event["id"]).result)
+    removed = next(iter(original["assignments"]))
+    assert client.delete(path + f"/manager-players/{removed}", headers=headers).status_code == 200
+    assert client.post(
+        path + f"/waitlisted-players/{removed}", headers=headers, json={"table": "B"}
+    ).status_code == 200
+    rows = client.get(path + "/signups").json()
+    waiting = next(
+        player["id"] for row in rows for player in row["waitlist"]
+        if player["id"] != removed
+    )
+    assert client.post(
+        path + f"/assigned-players/{waiting}", headers=headers, json={"table": "B"}
+    ).status_code == 200
+    with Session(engine) as db:
+        run = db.get(LotteryRun, event["id"])
+        edited = deepcopy(current_result(db, run))
+        expected = payloads(db.get(Event, event["id"]), "channel", edited, run.snapshot)
+        assert edited != original
+    assert client.post(path + "/assignments/approve", headers=headers).status_code == 200
+    with Session(engine) as db:
+        posts = list(db.scalars(select(Announcement).where(
+            Announcement.event_id == event["id"], Announcement.kind == "assignment"
+        ).order_by(Announcement.part)))
+        assert [post.payload for post in posts] == expected
+        run = db.get(LotteryRun, event["id"])
+        assert run.result == original
+        assert current_result(db, run) == edited
+        # Legacy events without announcement records must also use edited rosters.
+        db.execute(delete(Announcement).where(Announcement.event_id == event["id"]))
+        db.commit()
+    assert client.post(
+        path + "/announcement/retry", headers=headers, json={"confirm_repost": True}
+    ).status_code == 200
+    with Session(engine) as db:
+        posts = list(db.scalars(select(Announcement).where(
+            Announcement.event_id == event["id"], Announcement.kind == "assignment"
+        ).order_by(Announcement.part)))
+        assert [post.payload for post in posts] == expected
 
 
 def test_review_blocks_mutations_and_public_bypasses(client):
