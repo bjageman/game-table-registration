@@ -53,6 +53,7 @@ def test_five_point_scale_migration_preserves_history_and_runs_once(
     # Seed the historical schema without using today's Event model, which may
     # contain columns introduced after the revision being tested.
     events = Table("events", MetaData(), autoload_with=engine)
+    profiles = Table("player_profiles", MetaData(), autoload_with=engine)
     with Session(engine) as db:
         db.execute(
             events.insert().values(
@@ -67,9 +68,15 @@ def test_five_point_scale_migration_preserves_history_and_runs_once(
             )
         )
         for pid, weight in (("seated", 0.9), ("waiting", 1.1), ("custom", 3)):
-            db.add(
-                PlayerProfile(
-                    guild_id="guild", discord_id=pid, discord_name=pid, weighting=weight
+            db.execute(
+                profiles.insert().values(
+                    guild_id="guild",
+                    discord_id=pid,
+                    discord_name=pid,
+                    weighting=weight,
+                    real_name="",
+                    is_test=False,
+                    guaranteed_seat=False,
                 )
             )
         db.commit()
@@ -83,9 +90,9 @@ def test_five_point_scale_migration_preserves_history_and_runs_once(
             "custom": 10,
         }
         assert db.get(EventPlayerSetting, ("event", "custom")).weighting == 6
-        db.get(PlayerProfile, ("guild", "waiting")).weighting = 6
+        db.get(PlayerProfile, ("user:owner", "guild", "waiting")).weighting = 6
         db.commit()
     command.upgrade(config, "head")
     with Session(engine) as db:
-        assert db.get(PlayerProfile, ("guild", "waiting")).weighting == 6
+        assert db.get(PlayerProfile, ("user:owner", "guild", "waiting")).weighting == 6
     engine.dispose()

@@ -232,6 +232,7 @@ def test_disconnect_blocks_legacy_fallback_preserves_data_and_allows_reconnect(
         )
         db.add(
             PlayerProfile(
+                scope_key="user:owner",
                 guild_id="guild",
                 discord_id="123",
                 discord_name="Mary",
@@ -252,7 +253,7 @@ def test_disconnect_blocks_legacy_fallback_preserves_data_and_allows_reconnect(
     assert client.get("/api/settings/assignment").status_code == 200
     with DBSession(client.app.state.engine) as db:
         assert db.get(Event, event["id"]) is not None
-        assert db.get(PlayerProfile, ("guild", "123")).weighting == 1.2
+        assert db.get(PlayerProfile, ("user:owner", "guild", "123")).weighting == 1.2
         assert db.get(GuildSettings, "guild").automatic_weight_adjustment is False
         assert db.get(UserSettings, "other").disconnected is False
     headers = login(client)

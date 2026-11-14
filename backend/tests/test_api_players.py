@@ -15,6 +15,7 @@ def test_player_profiles_are_scoped_to_guild_and_global_weight_can_be_edited(cli
     with DBSession(client.app.state.engine) as db:
         db.add(
             PlayerProfile(
+                scope_key="user:owner",
                 guild_id="other",
                 discord_id="123",
                 discord_name="Other",
@@ -58,8 +59,10 @@ def test_player_profiles_are_scoped_to_guild_and_global_weight_can_be_edited(cli
     saved = client.put("/api/players/123", headers=headers, json={"real_name": "Mary"})
     assert saved.json()["weighting"] == 2.5
     with DBSession(client.app.state.engine) as db:
-        assert db.get(PlayerProfile, ("other", "123")).real_name == "Private"
-        assert db.get(PlayerProfile, ("other", "123")).weighting == 2.0
+        assert (
+            db.get(PlayerProfile, ("user:owner", "other", "123")).real_name == "Private"
+        )
+        assert db.get(PlayerProfile, ("user:owner", "other", "123")).weighting == 2.0
 
 
 def test_event_player_settings_are_scoped_and_frozen_for_assignment(client):
@@ -252,6 +255,7 @@ def test_display_names_are_guild_scoped_and_clear_to_discord_name(client):
     with DBSession(client.app.state.engine) as db:
         db.add(
             PlayerProfile(
+                scope_key="user:owner",
                 guild_id="other",
                 discord_id="123",
                 discord_name="OtherDiscord",
@@ -333,6 +337,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
         )
         db.add(
             PlayerProfile(
+                scope_key="user:owner",
                 guild_id="guild",
                 discord_id="1",
                 discord_name="Mary",
@@ -342,7 +347,11 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
         )
         db.add(
             PlayerProfile(
-                guild_id="other", discord_id="1", discord_name="Other", weighting=2.0
+                scope_key="user:owner",
+                guild_id="other",
+                discord_id="1",
+                discord_name="Other",
+                weighting=2.0,
             )
         )
         db.commit()
@@ -350,7 +359,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
     discord.poll_message.return_value = closing_message(finalized=False)
     assert client.post(path + "/close", headers=headers).status_code == 202
     with DBSession(client.app.state.engine) as db:
-        assert db.get(PlayerProfile, ("guild", "1")).weighting == 1.25
+        assert db.get(PlayerProfile, ("user:owner", "guild", "1")).weighting == 1.25
     # The setting is captured at the start of this closure, just like input weights.
     client.put(
         "/api/settings/assignment",
@@ -390,12 +399,14 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
     client.post(path + "/archive", headers=headers)
     assert current() == weights
     with DBSession(client.app.state.engine) as db:
-        assert db.get(PlayerProfile, ("other", "1")).weighting == 2.0
+        assert db.get(PlayerProfile, ("user:owner", "other", "1")).weighting == 2.0
         assert (
             db.get(AssignmentPreference, "user:other").automatic_weight_adjustment
             is not enabled
         )
-        assert db.get(PlayerProfile, ("guild", "1")).real_name == "Display"
+        assert (
+            db.get(PlayerProfile, ("user:owner", "guild", "1")).real_name == "Display"
+        )
 
 
 @pytest.mark.parametrize("player_id", ["999", "test-" + "a" * 24])
@@ -428,6 +439,7 @@ def test_add_known_player_after_assignment_updates_discord_without_redrawing(
         saved_result = deepcopy(run.result)
         db.add(
             PlayerProfile(
+                scope_key="user:owner",
                 guild_id="guild",
                 discord_id=player_id,
                 discord_name="Late Player",
@@ -486,7 +498,14 @@ def test_add_known_player_after_assignment_updates_discord_without_redrawing(
     )
     assert client.put(target, headers=headers, json=body).status_code == 409
     with DBSession(engine) as db:
-        db.add(PlayerProfile(guild_id="guild", discord_id="777", discord_name="Other"))
+        db.add(
+            PlayerProfile(
+                scope_key="user:owner",
+                guild_id="guild",
+                discord_id="777",
+                discord_name="Other",
+            )
+        )
         db.get(Event, event["id"]).archived_at = time.time()
         db.commit()
     assert (

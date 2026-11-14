@@ -20,6 +20,7 @@ from app.models import (
     LotteryRun,
     PlayerProfile,
 )
+from app.player_profiles import for_event as player_scope_for_event
 from app.signups import apply_manager_players
 from app.signups import players as signup_players
 
@@ -147,7 +148,7 @@ def close_and_assign(
                 p.discord_id: p.weighting
                 for p in db.scalars(
                     select(PlayerProfile).where(
-                        PlayerProfile.guild_id == event.guild_id
+                        *player_scope_for_event(event).filters()
                     )
                 )
             }
@@ -166,7 +167,7 @@ def close_and_assign(
                 }
                 for p in db.scalars(
                     select(PlayerProfile).where(
-                        PlayerProfile.guild_id == event.guild_id,
+                        *player_scope_for_event(event).filters(),
                         PlayerProfile.guaranteed_seat.is_(True),
                     )
                 )
@@ -190,6 +191,9 @@ def close_and_assign(
                 db, event
             ).review_assignments_before_discord
         seed = event.close_seed or secrets.token_hex(32)
+        pairs = event.close_pairs
+        if pairs is None:
+            pairs = player_scope_for_event(event).pairs(db)
         claimed = db.execute(
             update(Event)
             .where(
@@ -206,6 +210,7 @@ def close_and_assign(
                 close_started_at=now,
                 close_seed=seed,
                 close_weights=weights,
+                close_pairs=pairs,
                 close_guarantees=guarantees,
                 close_adjust_weights=adjust_weights,
                 close_review_assignments=review_required,
@@ -235,6 +240,7 @@ def close_and_assign(
         assert message_id is not None
 
     def with_guarantees(snapshot: dict[str, Any]) -> dict[str, Any]:
+        snapshot["pairs"] = pairs
         for player in snapshot["players"]:
             saved = guarantees.get(player["id"], {})
             player.update(
@@ -366,6 +372,7 @@ def close_and_assign(
                         close_token=None,
                         close_guarantees=None,
                         close_weights=None,
+                        close_pairs=None,
                         close_adjust_weights=None,
                         close_review_assignments=None,
                         close_error=str(failure)[:500],

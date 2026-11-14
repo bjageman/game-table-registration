@@ -4,7 +4,7 @@ import hashlib
 import math
 from typing import Any
 
-VERSION = "guaranteed-weighted-matching-v3"
+VERSION = "paired-weighted-matching-v4"
 
 
 class GuaranteeConflict(ValueError):
@@ -31,6 +31,11 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
             raise ValueError("Each player must select existing tables")
         if p.get("guaranteed_table") and p["guaranteed_table"] not in p["choices"]:
             raise ValueError("Guaranteed table must be one of the player's choices")
+
+    from app.paired_lottery import active_pairs, assign_pairs
+
+    if active_pairs(snapshot):
+        return assign_pairs(snapshot, seed)
 
     def digest(label: str) -> str:
         return hashlib.sha256(f"{seed}\0{label}".encode()).hexdigest()

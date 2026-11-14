@@ -11,8 +11,8 @@ from app.models import (
     Event,
     EventWaitlistAddition,
     LotteryRun,
-    PlayerProfile,
 )
+from app.player_profiles import for_event as player_scope_for_event
 from app.withdrawals import current_result, result_players
 
 
@@ -35,7 +35,9 @@ def add_player(
         if claimed is None:
             return False
         run = db.get(LotteryRun, event_id)
-        profile = db.get(PlayerProfile, (guild_id, player_id))
+        event = db.get(Event, event_id)
+        assert event is not None
+        profile = player_scope_for_event(event).get(db, player_id)
         if run is None:
             return False
         known = result_players(db, run).get(player_id)

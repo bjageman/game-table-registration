@@ -42,6 +42,7 @@ def test_close_waits_for_finalization_and_freezes_weights_before_retries(client)
     with DBSession(client.app.state.engine) as db:
         db.add(
             PlayerProfile(
+                scope_key="user:owner",
                 guild_id="guild",
                 discord_id="2",
                 discord_name="Dan",
@@ -63,7 +64,7 @@ def test_close_waits_for_finalization_and_freezes_weights_before_retries(client)
     with DBSession(client.app.state.engine) as db:
         assert db.get(LotteryRun, event["id"]) is None
         seed = db.get(Event, event["id"]).close_seed
-        db.get(PlayerProfile, ("guild", "2")).weighting = 9.0
+        db.get(PlayerProfile, ("user:owner", "guild", "2")).weighting = 9.0
         db.commit()
     assert client.post(path + "/close", headers=headers).status_code == 200
     run = client.get(path + "/assignments").json()

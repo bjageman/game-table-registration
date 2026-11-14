@@ -25,6 +25,8 @@ from app.models import (
     PlayerProfile,
     TableSignup,
 )
+from app.player_profiles import for_event as player_scope_for_event
+from app.player_profiles import remember_poll_players
 from app.publication import mark_signup_closed
 from app.schemas import (
     AssignedAddInput,
@@ -64,7 +66,7 @@ def register(context: ApplicationContext) -> None:
     @router.get("/api/events/{event_id}/signups")
     def event_signups(event_id: str, request: Request) -> list[dict[str, Any]]:
         authenticated(request)
-        custom_result: tuple[list[dict[str, Any]], str] | None = None
+        custom_result: list[dict[str, Any]] | None = None
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
             if event.status in ("assigned", "review"):
@@ -72,20 +74,17 @@ def register(context: ApplicationContext) -> None:
                 if run is None:
                     raise HTTPException(503, "Saved placements are unavailable")
                 rows: list[dict[str, Any]] = current_result(db, run)["tables"]
-                return list_names(rows, event.guild_id)
+                return list_names(rows, event_id, include_settings=False)
             message_id = event.message_id
             tables = event.tables
             population = event.test_signups
             if event.signup_mode in ("custom", "reactions"):
-                custom_result = (
-                    apply_manager_signups(
-                        db, event, add_to_rows(table_rows(db, event), population)
-                    ),
-                    event.guild_id,
+                custom_result = apply_manager_signups(
+                    db, event, add_to_rows(table_rows(db, event), population)
                 )
                 db.rollback()
         if custom_result is not None:
-            return list_names(custom_result[0], custom_result[1], event_id)
+            return list_names(custom_result, event_id)
         rows = (
             scoped_discord(request).table_signups(message_id, tables)
             if message_id
@@ -94,9 +93,9 @@ def register(context: ApplicationContext) -> None:
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
             rows = apply_manager_signups(db, event, add_to_rows(rows, population))
-            guild_id = event.guild_id
-            db.rollback()
-        return list_names(rows, guild_id, event_id)
+            remember_poll_players(db, event, rows)
+            db.commit()
+        return list_names(rows, event_id)
 
     @router.get("/api/events/{event_id}/signups.csv")
     def download_event_csv(event_id: str, request: Request) -> Response:
@@ -205,7 +204,7 @@ def register(context: ApplicationContext) -> None:
             event = context.scoped_event(db, event_id, request)
             if body.table not in {table["name"] for table in event.tables}:
                 raise HTTPException(422, "Unknown table")
-            profile = db.get(PlayerProfile, (event.guild_id, player_id))
+            profile = player_scope_for_event(event).get(db, player_id)
             if player_id.startswith("test-") and (
                 profile is None or not profile.is_test
             ):
@@ -360,7 +359,7 @@ def register(context: ApplicationContext) -> None:
             if "guaranteed_table" in fields:
                 setting.guaranteed_table = body.guaranteed_table
             db.commit()
-            profile = db.get(PlayerProfile, (event.guild_id, player_id))
+            profile = player_scope_for_event(event).get(db, player_id)
             return {
                 "weighting": setting.weighting
                 if setting.weighting is not None
@@ -447,7 +446,7 @@ def register(context: ApplicationContext) -> None:
                     db.scalars(
                         select(PlayerProfile)
                         .where(
-                            PlayerProfile.guild_id == event.guild_id,
+                            *player_scope_for_event(event).filters(),
                             PlayerProfile.is_test.is_(True),
                         )
                         .order_by(PlayerProfile.discord_name, PlayerProfile.discord_id)
@@ -470,6 +469,7 @@ def register(context: ApplicationContext) -> None:
                     player["weight"] = 5.0
                     db.add(
                         PlayerProfile(
+                            scope_key=player_scope_for_event(event).key,
                             guild_id=event.guild_id,
                             discord_id=player["id"],
                             discord_name=player["name"],

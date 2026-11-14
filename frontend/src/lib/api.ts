@@ -99,6 +99,7 @@ export interface EventRecord {
   archived_at?: number | null;
   signup_deleted_at?: number | null;
   close_error?: string | null;
+  pairing_warnings?: string[];
   is_test?: boolean;
   test_generation?: string | null;
   test_user_count?: number;
