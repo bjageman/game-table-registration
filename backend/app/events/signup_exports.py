@@ -107,8 +107,8 @@ def event_pdf(
         for table in rows
     )
     font_size = 10.5 if expanded else 8
-    leading = 11.5 if expanded else 8.5
-    row_padding = 1.5 if expanded else 0.5
+    leading = 10.5 if expanded else 8
+    row_padding = 2 if expanded else 0.75
     name_style = ParagraphStyle(
         "SignupName",
         fontName="SignupVera",
@@ -129,6 +129,13 @@ def event_pdf(
     )
     card_width = (page_width - 2 * margin) / 2 - 8
     cards: list[list[Any]] = []
+    pairs = getattr(event, "close_pairs", None) or {}
+    names = {
+        player.get("id"): player.get("display_name") or player["name"]
+        for table in rows
+        for key in ("players", "waitlist")
+        for player in table.get(key, [])
+    }
 
     def check_icon() -> Drawing:
         icon = Drawing(9, 9)
@@ -165,8 +172,9 @@ def event_pdf(
         values: list[list[Any]] = [
             [
                 check_icon(),
-                Paragraph("Display Name", header_style),
-                Paragraph("Username", header_style),
+                Paragraph("Display", header_style),
+                Paragraph("Discord", header_style),
+                Paragraph("Paired", header_style),
             ]
         ]
         sections: list[int] = []
@@ -179,6 +187,7 @@ def event_pdf(
                         Paragraph(status, header_style),
                         Spacer(0, 0),
                         Spacer(0, 0),
+                        Spacer(0, 0),
                     ]
                 )
                 last_status = status
@@ -187,6 +196,9 @@ def event_pdf(
                     Spacer(0, 0),
                     Paragraph(escape(player.get("display_name") or ""), name_style),
                     Paragraph(escape(player["name"]), name_style),
+                    Paragraph(
+                        escape(names.get(pairs.get(player.get("id")), "")), name_style
+                    ),
                 ]
             )
         if not players:
@@ -195,17 +207,24 @@ def event_pdf(
                     Spacer(0, 0),
                     Paragraph("No signups", name_style),
                     Spacer(0, 0),
+                    Spacer(0, 0),
                 ]
             )
         listing = Table(
             values,
-            colWidths=[17, card_width - 121, 104],
+            colWidths=[
+                17,
+                (card_width - 17) / 3,
+                (card_width - 17) / 3,
+                (card_width - 17) / 3,
+            ],
             hAlign="LEFT",
         )
         styling: list[tuple[Any, ...]] = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf2")),
             ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#b8c2cb")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (0, 0), "CENTER"),
             ("TOPPADDING", (0, 0), (-1, -1), row_padding),
             ("BOTTOMPADDING", (0, 0), (-1, -1), row_padding),
             ("LEFTPADDING", (0, 0), (-1, -1), 1.5),

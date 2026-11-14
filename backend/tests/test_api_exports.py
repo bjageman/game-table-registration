@@ -182,6 +182,7 @@ def test_pdf_fits_full_tables_on_one_portrait_page(table_count):
             "name": table["name"],
             "players": [
                 {
+                    "id": f"{table_index}-{number}",
                     "name": f"player-{table_index}-{number}",
                     "display_name": f"Player {number}",
                 }
@@ -194,6 +195,11 @@ def test_pdf_fits_full_tables_on_one_portrait_page(table_count):
         for table_index, table in enumerate(tables)
     ]
     event = SimpleNamespace(
+        close_pairs={
+            f"{index}-{number}": f"{index}-{number ^ 1}"
+            for index in range(table_count)
+            for number in range(14)
+        },
         title="Monday Tables",
         starts_at=1794265200,
         tables=tables,
