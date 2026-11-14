@@ -117,7 +117,7 @@ def register(context: ApplicationContext) -> None:
                 for warning in db.scalars(
                     select(Announcement).where(
                         Announcement.event_id == event_id,
-                        Announcement.kind == "warning",
+                        Announcement.kind.in_(["warning", "thread_starter"]),
                     )
                 ):
                     client = scoped_discord(request).at(

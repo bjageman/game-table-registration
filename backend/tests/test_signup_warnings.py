@@ -14,10 +14,11 @@ from app.events.signup_warnings import DEFAULT_WARNING_MESSAGE, enqueue_due
 from app.models import Announcement, Event
 
 
-def due_event(client, message=""):
+def due_event(client, message="", *, new_thread=False):
     headers, event, path, _ = closing_event(client)
     with Session(client.app.state.engine) as db:
         saved = db.get(Event, event["id"])
+        saved.update_thread_id = None if new_thread else "thread"
         saved.post_warning_message = True
         saved.warning_hours_before_close = 1
         saved.warning_message = message
@@ -209,7 +210,7 @@ def test_recurring_occurrences_inherit_warning_configuration(client):
 
 
 def test_warning_is_rechecked_if_thread_creation_runs_past_the_deadline(client):
-    _, event, _ = due_event(client)
+    _, event, _ = due_event(client, new_thread=True)
 
     def create_thread(*args):
         with Session(client.app.state.engine) as db:
@@ -220,7 +221,11 @@ def test_warning_is_rechecked_if_thread_creation_runs_past_the_deadline(client):
     client.app.state.discord.event_thread.side_effect = create_thread
     enqueue_due(client.app.state.engine)
     dispatch(client)
-    client.app.state.discord.send_announcement.assert_not_called()
+    assert client.app.state.discord.send_announcement.call_count == 1
+    assert (
+        "Event updates"
+        in client.app.state.discord.send_announcement.call_args.args[1]["content"]
+    )
 
 
 def test_warning_cleanup_finishes_when_its_thread_has_already_been_deleted(client):

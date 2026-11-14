@@ -45,7 +45,7 @@ def delete_discord_messages_batch(
             Announcement.kind != "refresh",
         )
         if promotions_only:
-            query = query.where(Announcement.kind == "promotion")
+            query = query.where(Announcement.kind.in_(["promotion", "thread_starter"]))
         rows = list(db.scalars(query.order_by(Announcement.part)))
 
         def progress(
@@ -76,7 +76,7 @@ def delete_discord_messages_batch(
 
         now = time.time()
         for row in rows:
-            if row.kind in ("promotion", "warning") and (
+            if row.kind in ("promotion", "warning", "thread_starter") and (
                 row.unknown or row.state == "needs_review"
             ):
                 discord = scoped_discord(request).at(event.guild_id, row.channel_id)

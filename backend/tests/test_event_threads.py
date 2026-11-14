@@ -64,9 +64,12 @@ def test_reaction_rsvp_creates_one_named_thread_and_adds_member_once(setup):
     change(engine, "event", "1️⃣", "123", "Dave", True, time.time())
     synchronize_event(engine, discord, "event")
     synchronize_event(engine, discord, "event")
-    discord.event_thread.assert_called_once_with("100", "200", "Monday Games")
+    discord.event_thread.assert_called_once_with("100", "300", "Monday Games")
     discord.add_thread_member.assert_called_once_with("200", "123")
-    discord.send_announcement.assert_not_called()
+    assert (
+        discord.send_announcement.call_args.args[1]["content"]
+        == "**Monday Games** — Event updates"
+    )
     with Session(engine) as db:
         assert db.get(Event, "event").update_thread_id == "200"
         assert db.get(EventThreadMember, ("event", "123")).added_at is not None
@@ -148,12 +151,13 @@ def test_assignments_stay_in_channel_and_table_change_notices_use_thread(setup):
     add_notice(engine, "promotion", 1)
     deliver_event(engine, discord, "event", limit=5)
     assert [call.args[0] for call in discord.send_announcement.call_args_list] == [
-        "100",
-        "200",
+        "100",  # Assignment post.
+        "100",  # Neutral thread starter.
+        "200",  # Table-change notice in the thread.
     ]
     with Session(engine) as db:
         notices = list(db.scalars(select(Announcement).order_by(Announcement.part)))
-        assert [notice.channel_id for notice in notices] == ["100", "200"]
+        assert [notice.channel_id for notice in notices] == ["100", "100", "200"]
         assert all(notice.state == "sent" for notice in notices)
 
 
@@ -162,7 +166,8 @@ def test_thread_creation_failure_retries_without_posting_update_in_main_channel(
     add_notice(engine, "promotion", 0)
     discord.event_thread.side_effect = DiscordRequestError(403)
     deliver_event(engine, discord, "event")
-    discord.send_announcement.assert_not_called()
+    assert discord.send_announcement.call_count == 1
+    assert "Event updates" in discord.send_announcement.call_args.args[1]["content"]
     with Session(engine) as db:
         notice = db.get(Announcement, "notice-0")
         assert notice.state == "pending"
@@ -171,7 +176,8 @@ def test_thread_creation_failure_retries_without_posting_update_in_main_channel(
         db.commit()
     discord.event_thread.side_effect = None
     deliver_event(engine, discord, "event")
-    discord.send_announcement.assert_called_once_with("200", {"content": "promotion"})
+    assert discord.send_announcement.call_count == 2
+    discord.send_announcement.assert_called_with("200", {"content": "promotion"})
 
 
 def test_disabled_setting_leaves_existing_channel_behavior(setup):
@@ -211,6 +217,8 @@ def test_start_thread_recovers_an_ambiguous_response_without_a_second_thread():
 
 def test_ambiguous_update_delivery_recovers_in_the_same_thread(setup):
     engine, discord = setup
+    synchronize_event(engine, discord, "event")
+    discord.reset_mock()
     add_notice(engine, "promotion", 0)
     discord.send_announcement.side_effect = DiscordRequestError(None)
     deliver_event(engine, discord, "event")
@@ -222,7 +230,7 @@ def test_ambiguous_update_delivery_recovers_in_the_same_thread(setup):
         db.commit()
     discord.find_announcement.return_value = "300"
     deliver_event(engine, discord, "event")
-    discord.event_thread.assert_called_once()
+    discord.event_thread.assert_not_called()
     discord.send_announcement.assert_called_once()
     assert discord.find_announcement.call_args.args[0] == "200"
     with Session(engine) as db:

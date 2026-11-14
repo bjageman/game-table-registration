@@ -96,3 +96,9 @@ SQLite broadcasts within the local API process. PostgreSQL uses transactional
 LISTEN/NOTIFY to reach other API workers, with one dedicated listener connection
 per process. External proxies must allow streaming without response buffering;
 the bundled nginx configuration does so. No schema migration is needed.
+
+New event threads start from a separate, short “Event updates” message rather
+than the signup post, so signup controls and rosters do not become the thread's
+starter. This message uses the existing announcement outbox for safe retries
+and cleanup. Existing threads are preserved with their discussion history and
+retain their original starter. No schema migration is needed.

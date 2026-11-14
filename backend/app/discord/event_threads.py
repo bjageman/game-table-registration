@@ -9,8 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.discord.discord_api import DiscordAPI
+from app.discord.thread_starters import starter_message
 from app.models import (
-    Announcement,
     Event,
     EventManagerSignup,
     EventThreadMember,
@@ -56,23 +56,15 @@ def update_channel(
             return channel_id
         if event.update_thread_id:
             return event.update_thread_id
-        message_id = event.message_id
-        if event.signup_deleted_at:
-            message_id = db.scalar(
-                select(Announcement.message_id)
-                .where(
-                    Announcement.event_id == event_id,
-                    Announcement.kind == "assignment",
-                    Announcement.message_id.is_not(None),
-                    Announcement.deleted_at.is_(None),
-                )
-                .order_by(Announcement.part)
-                .limit(1)
-            )
-        if not message_id:
-            raise ValueError(
-                "Publish signups or assignments before creating an event thread"
-            )
+    message_id = starter_message(engine, discord, event_id, channel_id)
+    with Session(engine) as db:
+        # Recheck after delivery. Concurrent attempts use the same starter ID,
+        # so Discord cannot create a second message-based thread.
+        event = db.get(Event, event_id)
+        if event is None or event.archived_at or not enabled(db, event):
+            raise ValueError("Event is unavailable for thread creation")
+        if event.update_thread_id:
+            return event.update_thread_id
         thread_id = discord.event_thread(channel_id, message_id, event.title)
         event.update_thread_id = thread_id
         db.commit()
