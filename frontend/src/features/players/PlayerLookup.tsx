@@ -64,7 +64,7 @@ export default function PlayerLookup({ session, onAccessError }: {
   }
 
   return <section id="player-lookup" className="panel" aria-labelledby="player-lookup-heading">
-    <div className="section-heading"><h2 id="player-lookup-heading">Player Lookup</h2></div>
+    <div className="section-heading"><h2 id="player-lookup-heading">Player Lookup{!loading && !error && ` (${visible.length} ${visible.length === 1 ? "Player" : "Players"})`}</h2></div>
     <FormField id="player-lookup-search" type="search" label="Search players" placeholder="Search by name or Discord ID"
       value={query} onChange={(event) => setQuery(event.target.value)} />
     <label className="archive-filter"><input id="player-lookup-hide-test-users" type="checkbox" checked={hideTestUsers}
@@ -72,7 +72,6 @@ export default function PlayerLookup({ session, onAccessError }: {
     {loading && <p><LoadingIndicator label="Loading players…" /></p>}
     {error && <p role="alert" className="error">Could not load players. {error} <button type="button" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Retry</button></p>}
     {!loading && !error && <>
-      <p>{visible.length} {visible.length === 1 ? "player" : "players"}</p>
       {visible.length ? <div className="player-lookup-table">
         <div className="player-lookup-columns">{sortHeaders.map(({ key, label }) => <button id={`player-lookup-sort-${key}`} key={key}
           type="button" className={`player-lookup-sort${key === "weighting" ? " player-lookup-sort-weight" : ""}`} aria-pressed={sort.key === key}
