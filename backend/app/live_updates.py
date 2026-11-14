@@ -29,6 +29,8 @@ class LiveUpdates:
         self.worker_wake = threading.Event()
         self.stop = threading.Event()
         self.lock = threading.Lock()
+        self.lifecycle_lock = threading.Lock()
+        self.users = 0
         self.subscribers: dict[
             str, tuple[asyncio.AbstractEventLoop, asyncio.Queue[None]]
         ] = {}
@@ -155,31 +157,41 @@ class LiveUpdates:
                 self.stop.wait(5)
 
     def start(self) -> None:
-        self.stop.clear()
-        event.listen(Session, "before_flush", self.before_flush)
-        event.listen(Session, "do_orm_execute", self.executing)
-        event.listen(Session, "before_commit", self.committing)
-        event.listen(Session, "after_commit", self.committed)
-        event.listen(Session, "after_rollback", self.rolled_back)
-        if self.engine.dialect.name == "postgresql":
-            self.listener_ready.clear()
-            self.shutdown_read, self.shutdown_write = socket.socketpair()
-            self.listener = threading.Thread(target=self.listen, daemon=True)
-            self.listener.start()
+        with self.lifecycle_lock:
+            self.users += 1
+            if self.users > 1:
+                return
+            self.stop.clear()
+            event.listen(Session, "before_flush", self.before_flush)
+            event.listen(Session, "do_orm_execute", self.executing)
+            event.listen(Session, "before_commit", self.committing)
+            event.listen(Session, "after_commit", self.committed)
+            event.listen(Session, "after_rollback", self.rolled_back)
+            if self.engine.dialect.name == "postgresql":
+                self.listener_ready.clear()
+                self.shutdown_read, self.shutdown_write = socket.socketpair()
+                self.listener = threading.Thread(target=self.listen, daemon=True)
+                self.listener.start()
 
     def close(self) -> None:
-        self.stop.set()
-        self.worker_wake.set()
-        event.remove(Session, "before_flush", self.before_flush)
-        event.remove(Session, "do_orm_execute", self.executing)
-        event.remove(Session, "before_commit", self.committing)
-        event.remove(Session, "after_commit", self.committed)
-        event.remove(Session, "after_rollback", self.rolled_back)
-        if self.shutdown_write:
-            self.shutdown_write.send(b"stop")
-        if self.listener:
-            self.listener.join(timeout=6)
-        if self.shutdown_read:
-            self.shutdown_read.close()
-        if self.shutdown_write:
-            self.shutdown_write.close()
+        with self.lifecycle_lock:
+            if self.users == 0:
+                return
+            self.users -= 1
+            if self.users:
+                return
+            self.stop.set()
+            self.worker_wake.set()
+            event.remove(Session, "before_flush", self.before_flush)
+            event.remove(Session, "do_orm_execute", self.executing)
+            event.remove(Session, "before_commit", self.committing)
+            event.remove(Session, "after_commit", self.committed)
+            event.remove(Session, "after_rollback", self.rolled_back)
+            if self.shutdown_write:
+                self.shutdown_write.send(b"stop")
+            if self.listener:
+                self.listener.join(timeout=6)
+            if self.shutdown_read:
+                self.shutdown_read.close()
+            if self.shutdown_write:
+                self.shutdown_write.close()

@@ -221,3 +221,37 @@ def test_poll_vote_add_and_remove_invalidate_live_rosters(promotion_db):
         asyncio.run(check())
     finally:
         hub.close()
+
+
+def test_shared_lifespans_keep_notifications_until_last_close(promotion_db):
+    hub = LiveUpdates(promotion_db)
+    hub.start()
+    first_listener = hub.listener
+    hub.start()
+    assert hub.listener is first_listener
+    hub.close()
+    assert not hub.stop.is_set()
+
+    async def check():
+        stream = hub.stream()
+        await anext(stream)
+        with Session(promotion_db) as db:
+            db.execute(
+                update(Event).where(Event.id == "event").values(title="Still live")
+            )
+            db.commit()
+        assert "event: change" in await asyncio.wait_for(anext(stream), 2)
+        await stream.aclose()
+
+    try:
+        asyncio.run(check())
+    finally:
+        hub.close()
+    assert hub.stop.is_set()
+    hub.close()  # Repeated cleanup is harmless.
+    hub.start()  # The same app can start again after complete shutdown.
+    try:
+        assert not hub.stop.is_set()
+        asyncio.run(check())
+    finally:
+        hub.close()
