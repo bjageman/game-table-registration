@@ -6,7 +6,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it("shows public seats and waitlists without player editing controls", async () => {
   const fetch = vi.fn(async () => new Response(JSON.stringify({
-    title: "Monday games", description: "Bring a friend", location: "Queen & Rook",
+    title: "Monday games", description: "Bring a friend", location: "Game Store",
     starts_at: 2000000000, archived: false,
     tables: [{ name: "One", capacity: 1, players: [{ name: "Mary" }], waitlist: [{ name: "Dan" }] }],
   })));

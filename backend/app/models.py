@@ -1,6 +1,15 @@
 from typing import Any
 
-from sqlalchemy import JSON, Float, ForeignKey, Index, String, UniqueConstraint, true
+from sqlalchemy import (
+    JSON,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    false,
+    true,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -26,7 +35,19 @@ class Session(Base):
     expires: Mapped[float] = mapped_column(Float)
 
 
-class Event(Base):
+class SignupWarningSettings:
+    post_warning_message: Mapped[bool] = mapped_column(
+        default=False, server_default=false()
+    )
+    warning_hours_before_close: Mapped[int] = mapped_column(
+        default=1, server_default="1"
+    )
+    warning_message: Mapped[str] = mapped_column(
+        String(1600), default="", server_default=""
+    )
+
+
+class Event(SignupWarningSettings, Base):
     __tablename__ = "events"
     __table_args__ = (UniqueConstraint("series_id", "starts_at"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -80,7 +101,7 @@ class Event(Base):
     scheduled_publish_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
-class RecurringSeries(Base):
+class RecurringSeries(SignupWarningSettings, Base):
     __tablename__ = "recurring_series"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     created_by: Mapped[str] = mapped_column(String(32))
@@ -109,7 +130,7 @@ class CanceledOccurrence(Base):
     starts_at: Mapped[float] = mapped_column(Float, primary_key=True)
 
 
-class EventTemplate(Base):
+class EventTemplate(SignupWarningSettings, Base):
     __tablename__ = "event_templates"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(32), index=True)

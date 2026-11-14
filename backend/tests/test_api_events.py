@@ -161,7 +161,7 @@ def test_templates_save_reusable_details_without_an_event_date_and_are_private(c
     body = {
         "title": "Friday games",
         "description": "Bring friends",
-        "location": "Queen & Rook",
+        "location": "Game Store",
         "duration_hours": 24,
         "tables": [{"name": "Clocktower", "capacity": 15}],
     }
@@ -169,7 +169,13 @@ def test_templates_save_reusable_details_without_an_event_date_and_are_private(c
     assert client.post("/api/templates", json=body).status_code == 403
     created = client.post("/api/templates", headers=headers, json=body)
     assert created.status_code == 201
-    assert created.json() == {"id": created.json()["id"], **body}
+    assert created.json() == {
+        "id": created.json()["id"],
+        **body,
+        "post_warning_message": False,
+        "warning_hours_before_close": 1,
+        "warning_message": "",
+    }
     assert client.get("/api/templates").json() == [created.json()]
     assert client.get("/api/events").json() == []
     assert (

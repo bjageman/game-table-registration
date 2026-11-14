@@ -10,7 +10,7 @@ def event(description: str):
         id="event",
         title="Game Night",
         description=description,
-        location="Queen & Rook",
+        location="Game Store",
         test_signups=None,
         starts_at=2000000000,
         tables=[{"name": "Table A", "capacity": 8}],
@@ -20,7 +20,7 @@ def event(description: str):
 def test_reaction_message_uses_existing_instructions_for_blank_description():
     content = reaction_publication(event(""), 1999990000)["embeds"][0]["description"]
     assert REACTION_DESCRIPTION in content
-    assert "Location: Queen & Rook" in content
+    assert "Location: Game Store" in content
 
 
 def test_custom_description_replaces_signup_instructions():

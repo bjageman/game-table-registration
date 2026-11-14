@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CanceledOccurrence, Event, RecurringSeries
+from app.signup_warnings import settings as warning_settings
 
 
 def occurrence(series: RecurringSeries, index: int) -> float | None:
@@ -62,6 +63,7 @@ def fill_schedule(db: Session, series: RecurringSeries, now: float) -> None:
             continue
         db.add(
             Event(
+                **warning_settings(series),
                 id=str(uuid.uuid4()),
                 series_id=series.id,
                 scheduled_publish_at=publish_at,

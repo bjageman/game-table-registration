@@ -73,6 +73,7 @@ it.each([24, null])("creates a draft with closing offset %s, capacities, and CSR
   expect(options[0]).toBe("/api/events");
   expect(options[1].headers).toMatchObject({ "X-CSRF-Token": "csrf" });
   expect(JSON.parse(options[1].body as string)).toEqual({
+    post_warning_message: false, warning_hours_before_close: 1, warning_message: "",
     title: "Friday games",
     description: "",
     location: "",
@@ -192,11 +193,11 @@ it("saves a template without an event date and keeps the draft open", async () =
   fireEvent.change(screen.getByLabelText(/^Event title/), { target: { value: "Friday games" } });
   fireEvent.change(screen.getAllByRole("textbox", { name: /^Name/ })[0], { target: { value: "Clocktower" } });
   fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Bring friends" } });
-  fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Queen & Rook" } });
+  fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Game Store" } });
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
   await waitFor(() => expect(screen.getByText("Template saved: Friday games.")).toBeVisible());
   const call = fetchMock.mock.calls.find(([path, options]) => path === "/api/templates" && options?.method === "POST");
-  expect(JSON.parse(call?.[1]?.body as string)).toEqual({ title: "Friday games", description: "Bring friends", location: "Queen & Rook", duration_hours: 24, tables: [{ name: "Clocktower", capacity: 15 }] });
+  expect(JSON.parse(call?.[1]?.body as string)).toEqual({ title: "Friday games", description: "Bring friends", location: "Game Store", duration_hours: 24, tables: [{ name: "Clocktower", capacity: 15 }], post_warning_message: false, warning_hours_before_close: 1, warning_message: "" });
   expect(props.onCreated).not.toHaveBeenCalled();
   expect(screen.getByRole("form", { name: "Create event" })).toBeVisible();
 });
@@ -221,7 +222,7 @@ it("saves an edited draft template using its signup closing offset", async () =>
 it("loads a template while preserving the selected event date", async () => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
-  const template = { id: "template", title: "Friday games", description: "Bring friends", location: "Queen & Rook", duration_hours: 48,
+  const template = { id: "template", title: "Friday games", description: "Bring friends", location: "Game Store", duration_hours: 48,
     tables: [{ name: "Clocktower", capacity: 15 }, { name: "Root", capacity: 8 }] };
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([template]))));
   renderForm();
@@ -232,7 +233,7 @@ it("loads a template while preserving the selected event date", async () => {
   expect(screen.getByLabelText(/^Event starts/)).toHaveValue("June 14, 2090 7:00 PM");
   expect(screen.getByLabelText(/^Event title/)).toHaveValue("Friday games");
   expect(screen.getByLabelText("Description")).toHaveValue("Bring friends");
-  expect(screen.getByLabelText("Location")).toHaveValue("Queen & Rook");
+  expect(screen.getByLabelText("Location")).toHaveValue("Game Store");
   fireEvent.click(screen.getByLabelText("Scheduled Event"));
   expect(screen.getByRole("spinbutton", { name: /^Close before event/ })).toHaveValue(48);
   expect(screen.getAllByRole("textbox", { name: /^Name/ })[1]).toHaveValue("Root");
@@ -259,4 +260,22 @@ it.each(["once", "weekly"])("uses the selected timezone when submitting %s event
   const body = JSON.parse(request[1].body as string);
   expect(body.starts_at).toBe("2090-06-15T02:00:00.000Z");
   if (frequency === "weekly") expect(body.time_zone).toBe("America/Los_Angeles");
+});
+
+it("reveals warning settings with a one-hour default and saves a custom message", async () => {
+  const fetchMock = vi.fn(async (path: string, options?: RequestInit) => new Response(path === "/api/templates" && options?.method !== "POST" ? "[]" : JSON.stringify({ id: "saved", title: "Friday games" })));
+  vi.stubGlobal("fetch", fetchMock);
+  renderForm(); fill();
+  expect(screen.queryByRole("spinbutton", { name: "Hours before close" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Post Warning Message" }));
+  const hours = screen.getByRole("spinbutton", { name: "Hours before close" });
+  expect(hours).toHaveValue(1);
+  const message = screen.getByRole("textbox", { name: "Warning message" });
+  expect(message).toHaveAttribute("placeholder", "Signups close soon! Don't forget to sign up.");
+  fireEvent.change(hours, { target: { value: "2" } });
+  fireEvent.change(message, { target: { value: "Last call!" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Create event" }));
+  await waitFor(() => expect(props.onCreated).toHaveBeenCalled());
+  const request = fetchMock.mock.calls.find(([path]) => path === "/api/events");
+  expect(JSON.parse(request?.[1]?.body as string)).toMatchObject({ post_warning_message: true, warning_hours_before_close: 2, warning_message: "Last call!" });
 });

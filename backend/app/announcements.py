@@ -23,6 +23,7 @@ from app.discord_format import (
 from app.event_description import signup_description, signup_location
 from app.event_threads import update_channel
 from app.models import Announcement, Event, LotteryRun
+from app.signup_warnings import can_send as can_send_warning
 
 
 def payloads(
@@ -333,6 +334,18 @@ def deliver_event(
                 .limit(1)
             )
             event = db.get(Event, event_id)
+            expired_warning = bool(
+                row and row.kind == "warning" and not can_send_warning(event, now)
+            )
+            if expired_warning:
+                assert row is not None
+                if not row.unknown and row.state != "sending":
+                    row.state = "sent"
+                    row.deleted_at = now
+                    row.token = None
+                    row.lease_until = None
+                    db.commit()
+                    continue
             if (
                 row is not None
                 and row.kind in ("promotion", "instructions", "refresh")
@@ -350,7 +363,11 @@ def deliver_event(
                 row.lease_until = None
                 db.commit()
                 continue
-            if row is None or row.state == "needs_review" or row.next_attempt > now:
+            if (
+                row is None
+                or row.state == "needs_review"
+                or (row.next_attempt > now and not expired_warning)
+            ):
                 return
             recovering = row.state == "sending"
             unknown = row.unknown or recovering
@@ -384,7 +401,7 @@ def deliver_event(
             row_kind = row.kind
         sending_message = False
         try:
-            if row_kind == "promotion" and not unknown:
+            if row_kind in ("promotion", "warning") and not unknown:
                 channel_id = update_channel(engine, discord, event_id, channel_id)
                 with Session(engine) as db:
                     db.execute(
@@ -396,6 +413,24 @@ def deliver_event(
                         .values(channel_id=channel_id)
                     )
                     db.commit()
+            if row_kind == "warning" and not unknown:
+                with Session(engine) as db:
+                    if not can_send_warning(db.get(Event, event_id), time.time()):
+                        db.execute(
+                            update(Announcement)
+                            .where(
+                                Announcement.id == row_id,
+                                Announcement.token == token,
+                            )
+                            .values(
+                                state="sent",
+                                deleted_at=time.time(),
+                                token=None,
+                                lease_until=None,
+                            )
+                        )
+                        db.commit()
+                        continue
             if row_kind == "refresh":
                 message_id = refresh_assignment_posts(engine, discord, event_id)
             elif unknown:
@@ -534,7 +569,12 @@ def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -
                         Event.archived_at.is_(None),
                     ),
                     Announcement.state.in_(["pending", "sending"]),
-                    Announcement.next_attempt <= time.time(),
+                    # Expired warnings must be canceled/reconciled even during
+                    # backoff, so they cannot hold later assignment posts up.
+                    or_(
+                        Announcement.next_attempt <= time.time(),
+                        Announcement.kind == "warning",
+                    ),
                     or_(
                         Announcement.token.is_(None),
                         Announcement.lease_until <= time.time(),

@@ -19,7 +19,18 @@ class TableInput(BaseModel):
         return value.strip()
 
 
-class EventInput(BaseModel):
+class SignupWarningInput(BaseModel):
+    post_warning_message: bool = False
+    warning_hours_before_close: int = Field(default=1, ge=1, le=767)
+    warning_message: str = Field(default="", max_length=1600)
+
+    @field_validator("warning_message")
+    @classmethod
+    def clean_warning(cls, value: str) -> str:
+        return value.strip()
+
+
+class EventInput(SignupWarningInput):
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=300)
     location: str = Field(default="", max_length=200)
@@ -37,6 +48,12 @@ class EventInput(BaseModel):
     def validate_event(self) -> "EventInput":
         if not self.title.strip():
             raise ValueError("Event title cannot be blank")
+        if (
+            self.post_warning_message
+            and not self.duration_hours
+            and self.closes_before_hours is None
+        ):
+            raise ValueError("Set a signup closing time to post a warning message")
         if self.starts_at.tzinfo is None:
             raise ValueError("Event time must include a timezone")
         if self.starts_at.timestamp() <= time.time() + self.duration_hours * 3600:
@@ -88,7 +105,7 @@ class RecurringInput(EventInput):
         return self
 
 
-class EventTemplateInput(BaseModel):
+class EventTemplateInput(SignupWarningInput):
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=300)
     location: str = Field(default="", max_length=200)

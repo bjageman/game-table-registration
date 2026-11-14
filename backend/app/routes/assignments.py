@@ -84,7 +84,9 @@ def register(context: ApplicationContext) -> None:
                 raise HTTPException(409, "Archived events cannot be announced again")
             existing = db.scalar(
                 select(Announcement.id)
-                .where(Announcement.event_id == event_id)
+                .where(
+                    Announcement.event_id == event_id, Announcement.kind == "assignment"
+                )
                 .limit(1)
             )
             creating = existing is None
