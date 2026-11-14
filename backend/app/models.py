@@ -381,3 +381,12 @@ class PromotionDM(Base):
     channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class EventTableRemoval(Base):
+    __tablename__ = "event_table_removals"
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    discord_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    table_name: Mapped[str] = mapped_column(String(35), primary_key=True)

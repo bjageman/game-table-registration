@@ -326,3 +326,26 @@ it.each([
   render(<EventTables csrf="csrf" event={{ ...event, ...settings }} readOnly={readOnly} onAccessError={() => false} />);
   expect(screen.queryByRole("button", { name: "Add Player to Waitlist" })).not.toBeInTheDocument();
 });
+
+it.each(["draft", "scheduled", "open"])("removes only the selected table during %s", async (status) => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  let removed = false;
+  const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === "DELETE") {
+      expect(url).toBe("/api/events/event/manager-players/1?table=Table%20A&waitlist=false");
+      removed = true;
+      return new Response("{}");
+    }
+    return new Response(JSON.stringify([
+      { name: "Table A", players: removed ? [] : [{ id: "1", name: "Player" }] },
+      { name: "Table B", players: [{ id: "1", name: "Player" }] },
+    ]));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={{ ...event, status, is_test: true }} onAccessError={() => false} />);
+  await screen.findAllByRole("button", { name: "Remove Player from signups" });
+  fireEvent.click(screen.getAllByRole("button", { name: "Remove Player from signups" })[0]);
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(screen.getAllByRole("button", { name: "Player" })).toHaveLength(1));
+});

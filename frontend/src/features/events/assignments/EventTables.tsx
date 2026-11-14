@@ -98,12 +98,12 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   async function removePlayer(player: SignupPlayer) {
     setSaving(true); setActionError("");
     try {
-      await api(`/events/${encodeURIComponent(event.id)}/manager-players/${encodeURIComponent(player.id)}${event.status === "open" && removing?.table ? `?table=${encodeURIComponent(removing.table)}` : ""}`,
+      await api(`/events/${encodeURIComponent(event.id)}/manager-players/${encodeURIComponent(player.id)}${removing?.table ? `?table=${encodeURIComponent(removing.table)}&waitlist=${Boolean(removing.fromWaitlist)}` : ""}`,
         { ...mutationOptions(csrf), method: "DELETE" });
       setRows((current) => current?.map((row) => ({
         ...row,
-        players: event.status === "open" && removing?.table !== row.name ? row.players : row.players.filter((entry) => entry.id !== player.id),
-        waitlist: row.waitlist?.filter((entry) => entry.id !== player.id),
+        players: removing?.table !== row.name ? row.players : row.players.filter((entry) => entry.id !== player.id),
+        waitlist: removing?.table !== row.name ? row.waitlist : row.waitlist?.filter((entry) => entry.id !== player.id),
       })));
       setRemoving(undefined);
       setAttempt((value) => value + 1);
@@ -310,7 +310,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               {onSelect ? <button id={`${tableId}-waitlist-profile-${player.id}`} type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
               {canRemoveSignups && <button id={`${tableId}-waitlist-remove-${player.id}`} type="button" className="remove-signup-player" disabled={saving}
                 aria-label={`Remove ${player.display_name || player.name} from waitlist`} title="Remove from waitlist"
-                onClick={() => onRemovePlayer?.(player, false, true)}><X size={16} aria-hidden="true" /></button>}
+                onClick={() => onRemovePlayer?.(player, false, true, table.name)}><X size={16} aria-hidden="true" /></button>}
             </li>)}</ul> : <p className="help">No players waiting.</p>}
             {canEditSignups && <button id={`${tableId}-add-waitlist-player`} type="button" className="add-signup-player" disabled={saving}
               onClick={() => onAddToWaitlist?.(table.name)}>Add Player to Waitlist</button>}
