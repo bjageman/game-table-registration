@@ -147,10 +147,10 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
                 timestamp={signupClosesAt - (event.warning_hours_before_close ?? 1) * 3600} />}
             </EventDateDetails>
             {event.is_test && <p className="notice">Test event: includes {event.test_user_count} simulated signups. Announcements will be marked TEST.</p>}
-            {event.status === "review" && <p role="status" className="notice">Review these assignments. Add or remove players as needed, then send the results to Discord.</p>}
+            {event.status === "review" && <p role="status" className="notice">{event.assignment_publication_pending ? "Waiting for Discord to confirm the assignment posts. The roster is locked while delivery is pending." : "Review these assignments. Add or remove players as needed, then send the results to Discord."}</p>}
             {!readOnly && event.discord_event_error && <p role="alert" className="notice">{event.discord_event_error}</p>}
             {!readOnly && event.pairing_warnings?.map((warning) => <p key={warning} role="alert" className="notice">{warning}</p>)}
-            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly || Boolean(event.assignment_publication_pending)} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
             </p>}
@@ -158,7 +158,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
               {!readOnly && event.status === "assigned" && !event.archived_at && event.discord_url && <DeleteSignupMessage event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
               {!readOnly && canPopulateTestUsers && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && <PopulateTestUsers event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
             </div>
-            {event.status === "assigned" && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} onLinkChange={setAnnouncementUrl} />}
+            {(event.status === "assigned" || event.assignment_publication_pending) && <AssignmentAnnouncement event={event} csrf={actions.csrf} readOnly={readOnly} onAccessError={actions.onAccessError} onLinkChange={setAnnouncementUrl} />}
             {(event.status === "publishing" ||
               event.status === "needs_review" ||
               event.status === "unconfirmed") && (

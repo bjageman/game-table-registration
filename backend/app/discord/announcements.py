@@ -478,6 +478,11 @@ def deliver_event(
                     )
                 )
                 if row_kind == "assignment":
+                    from app.assignments.assignment_finalization import (
+                        complete_review_delivery,
+                    )
+
+                    complete_review_delivery(db, event_id)
                     db.execute(
                         update(DiscordScheduledEvent)
                         .where(
