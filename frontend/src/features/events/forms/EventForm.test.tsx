@@ -336,10 +336,11 @@ it("defaults the end to four hours later and preserves a manually chosen end", (
   expect(screen.getByLabelText("Event ends")).toHaveValue("June 15, 2090 1:00 AM");
 });
 
-it("hides the end time when Discord event creation is disabled", async () => {
+it("shows the end time even when Discord event creation is disabled", () => {
   vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(
     path === "/api/settings/assignment" ? { create_discord_event: false } : [],
   ))));
   renderForm();
-  await waitFor(() => expect(screen.queryByLabelText("Event ends")).not.toBeInTheDocument());
+  fill();
+  expect(screen.getByLabelText("Event ends")).toHaveValue("June 14, 2090 11:00 PM");
 });
