@@ -26,7 +26,7 @@ def add_player(
             .where(
                 Event.id == event_id,
                 Event.guild_id == guild_id,
-                Event.status == "assigned",
+                Event.status.in_(["assigned", "review"]),
                 Event.archived_at.is_(None),
             )
             .values(status=Event.status)
@@ -78,6 +78,7 @@ def add_player(
         event = db.get(Event, event_id)
         assert event is not None
         queue_member(db, event, player_id)
-        enqueue_refresh(db, event)
+        if event.status == "assigned":
+            enqueue_refresh(db, event)
         db.commit()
         return True

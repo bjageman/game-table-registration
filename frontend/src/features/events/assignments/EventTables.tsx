@@ -54,7 +54,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
   const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
     `${player.discord_name} ${player.real_name} ${player.discord_id}`.toLocaleLowerCase().includes(normalizedQuery)
-      && (event.status !== "assigned" || !rows?.some((row) => row.players.some((seated) => seated.id === player.discord_id)))
+      && (!(event.status === "assigned" || event.status === "review") || !rows?.some((row) => row.players.some((seated) => seated.id === player.discord_id)))
       && (!addingToWaitlist || !rows?.find((row) => row.name === addingTable)?.waitlist?.some((entry) => entry.id === player.discord_id)),
   ).slice(0, 30) : [];
   function closeAddPlayer() {
