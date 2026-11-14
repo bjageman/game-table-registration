@@ -244,6 +244,7 @@ dialog::backdrop {
 }
 .active-organization { font-weight: 600; margin-right: 14px; }
 .organization-settings { display: grid; gap: 14px; max-width: 560px; padding-top: 20px; }
+.general-settings-heading { font-size: 1rem; font-weight: 650; margin: 20px 0 4px; }
 .general-setting-option { padding: 12px 0; }
 .general-setting-option + .general-setting-option { border-top: 1px solid #dce3d9; }
 .organization-settings form { display: grid; gap: 10px; }

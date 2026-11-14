@@ -86,20 +86,8 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
     {!loaded && !error && <p><LoadingIndicator label="Loading assignment settings…" /></p>}
     {error && <p role="alert" className="error">{error}{!loaded && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry</button>}</p>}
     {loaded && <form id="assignment-settings-form" aria-label="Assignment settings" onSubmit={(event) => event.preventDefault()}>
-      <div className="general-setting-option"><FormControlLabel label="Create an event when a signup is published" control={<Checkbox id="general-create-discord-event" checked={settings.create_discord_event} disabled={busy || restricted}
-        onChange={(event) => toggle("create_discord_event", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Review assignments before sending to Discord" control={<Checkbox id="general-review-assignments" checked={settings.review_assignments_before_discord} disabled={busy || restricted}
-        onChange={(event) => toggle("review_assignments_before_discord", event.target.checked)} />} /></div>
       <div className="general-setting-option"><FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox id="assignment-auto-weights" checked={settings.automatic_weight_adjustment} disabled={busy || restricted}
         onChange={(event) => toggle("automatic_weight_adjustment", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Announce Table Changes on Discord" control={<Checkbox id="assignment-announce-changes" checked={settings.announce_table_changes} disabled={busy || restricted}
-        onChange={(event) => toggle("announce_table_changes", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Post Discord updates to a new thread" control={<Checkbox id="assignment-thread-updates" checked={settings.post_discord_updates_to_thread} disabled={busy || restricted}
-        onChange={(event) => toggle("post_discord_updates_to_thread", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Show players in open Discord signups" control={<Checkbox id="general-show-signup-players" checked={settings.show_open_signup_players} disabled={busy || restricted}
-        onChange={(event) => toggle("show_open_signup_players", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Send private messages for waitlist promotions" control={<Checkbox id="general-dm-waitlist-promotions" checked={settings.dm_waitlist_promotions} disabled={busy || restricted}
-        onChange={(event) => toggle("dm_waitlist_promotions", event.target.checked)} />} /></div>
       <div className="general-setting-option general-timezone-setting">
         <FormField id="general-timezone" select label="Timezone" value={settings.timezone ?? ""} disabled={busy || restricted}
           slotProps={{ select: { native: true } }}
@@ -108,6 +96,21 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
           {timezones.map((zone) => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}
         </FormField>
       </div>
+      <section aria-labelledby="general-discord-heading">
+        <h3 id="general-discord-heading" className="general-settings-heading">Discord</h3>
+      <div className="general-setting-option"><FormControlLabel label="Create an event when a signup is published" control={<Checkbox id="general-create-discord-event" checked={settings.create_discord_event} disabled={busy || restricted}
+        onChange={(event) => toggle("create_discord_event", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Review assignments before sending to Discord" control={<Checkbox id="general-review-assignments" checked={settings.review_assignments_before_discord} disabled={busy || restricted}
+        onChange={(event) => toggle("review_assignments_before_discord", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Announce Table Changes on Discord" control={<Checkbox id="assignment-announce-changes" checked={settings.announce_table_changes} disabled={busy || restricted}
+        onChange={(event) => toggle("announce_table_changes", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Post Discord updates to a new thread" control={<Checkbox id="assignment-thread-updates" checked={settings.post_discord_updates_to_thread} disabled={busy || restricted}
+        onChange={(event) => toggle("post_discord_updates_to_thread", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Show players in open Discord signups" control={<Checkbox id="general-show-signup-players" checked={settings.show_open_signup_players} disabled={busy || restricted}
+        onChange={(event) => toggle("show_open_signup_players", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Send private messages for waitlist promotions" control={<Checkbox id="general-dm-waitlist-promotions" checked={settings.dm_waitlist_promotions} disabled={busy || restricted}
+        onChange={(event) => toggle("dm_waitlist_promotions", event.target.checked)} />} /></div>
+      </section>
       {busy && <p role="status">Saving…</p>}
       {saved && <p role="status">Settings saved.</p>}
     </form>}
