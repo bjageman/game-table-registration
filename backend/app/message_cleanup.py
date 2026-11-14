@@ -76,7 +76,9 @@ def delete_discord_messages_batch(
 
         now = time.time()
         for row in rows:
-            if row.kind == "promotion" and (row.unknown or row.state == "needs_review"):
+            if row.kind in ("promotion", "warning") and (
+                row.unknown or row.state == "needs_review"
+            ):
                 discord = scoped_discord(request).at(event.guild_id, row.channel_id)
                 message_id = None
                 try:
@@ -88,15 +90,23 @@ def delete_discord_messages_batch(
                     if message_id:
                         discord.delete_poll(message_id)
                 except DiscordRequestError as failure:
+                    if failure.discord_status == 404:
+                        # A missing channel/thread cannot retain this notice.
+                        row.state = "sent"
+                        row.deleted_at = now
+                        row.unknown = False
+                        row.error = None
+                        db.commit()
+                        continue
                     if message_id:
                         row.message_id = message_id
                         row.state = "sent"
-                        row.error = "Promotion notice deletion failed."
+                        row.error = "Discord notice deletion failed."
                         db.commit()
                     return failed(failure)
                 except HTTPException as failure:
                     return progress(
-                        error=f"Promotion notice cleanup failed: {failure.detail}"
+                        error=f"Discord notice cleanup failed: {failure.detail}"
                     )
                 row.message_id = message_id
                 row.state = "sent"

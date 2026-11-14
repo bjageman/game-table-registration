@@ -5,7 +5,7 @@ from functools import partial
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import delete, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
@@ -14,6 +14,7 @@ from app.message_cleanup import (
 )
 from app.message_cleanup import remove_signup_message as remove_signup_message_service
 from app.models import (
+    Announcement,
     Event,
     LotteryRun,
     SignupInteraction,
@@ -98,6 +99,25 @@ def register(context: ApplicationContext) -> None:
                     "can be deleted.",
                 )
             if delete_poll:
+                event = context.scoped_event(db, event_id, request)
+                for warning in db.scalars(
+                    select(Announcement).where(
+                        Announcement.event_id == event_id,
+                        Announcement.kind == "warning",
+                    )
+                ):
+                    client = scoped_discord(request).at(
+                        event.guild_id, warning.channel_id
+                    )
+                    message_id = warning.message_id
+                    if not message_id and warning.unknown:
+                        message_id = client.find_announcement(
+                            warning.channel_id,
+                            warning.payload,
+                            warning.attempted_at or warning.created_at,
+                        )
+                    if message_id and not warning.deleted_at:
+                        client.delete_poll(message_id)
                 # Retain the event transaction until every tracked message is
                 # deleted. A retry can safely repeat successful DELETEs (404).
                 ids = [item["id"] for item in changed.signup_roster_messages or []]
@@ -105,6 +125,7 @@ def register(context: ApplicationContext) -> None:
                     ids.append(changed.message_id)
                 for message_id in dict.fromkeys(ids):
                     scoped_discord(request).delete_poll(message_id)
+            db.execute(delete(Announcement).where(Announcement.event_id == event_id))
             db.execute(delete(LotteryRun).where(LotteryRun.event_id == event_id))
             db.execute(delete(Event).where(Event.id == event_id))
             db.execute(delete(TableSignup).where(TableSignup.event_id == event_id))

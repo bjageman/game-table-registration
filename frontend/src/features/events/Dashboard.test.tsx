@@ -151,3 +151,30 @@ it("confirms recurring event deletion and allows cancellation", async () => {
   expect(dialog).not.toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith("/api/recurring-series/series/stop", expect.objectContaining({ method: "POST" }));
 });
+
+it("confirms cancellation of one scheduled occurrence before sending the request", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  let canceled = false;
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url === "/api/events/event/cancel-scheduled") { canceled = true; return new Response(null, { status: 204 }); }
+    return new Response(JSON.stringify(url === "/api/recurring-series" ? [{ id: "series", title: "Weekly games", frequency: "weekly", time_zone: "UTC" }]
+      : canceled ? [] : [{ ...draft, status: "scheduled", series_id: "series", scheduled_publish_at: 1900000000 }]));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Dashboard {...props} />);
+  fireEvent.click(await screen.findByText("Weekly games - weekly"));
+  const trigger = await screen.findByRole("button", { name: "Cancel scheduled event" });
+  fireEvent.click(trigger);
+  let dialog = screen.getByRole("dialog", { name: "Cancel scheduled event?" });
+  expect(dialog).toHaveTextContent("Only this occurrence will be removed");
+  expect(canceled).toBe(false);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(canceled).toBe(false);
+  fireEvent.click(trigger);
+  dialog = screen.getByRole("dialog", { name: "Cancel scheduled event?" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  await screen.findByText(/^Canceled Friday games on/);
+  expect(canceled).toBe(true);
+  expect(fetchMock).toHaveBeenCalledWith("/api/events/event/cancel-scheduled", expect.objectContaining({ method: "POST" }));
+});

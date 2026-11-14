@@ -45,9 +45,10 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [series, setSeries] = useState<RecurringSeriesRecord[]>([]);
   const [deletingSchedule, setDeletingSchedule] = useState<RecurringSeriesRecord>();
-  const [deletingScheduleBusy, setDeletingScheduleBusy] = useState(false);
-  const [deleteScheduleError, setDeleteScheduleError] = useState("");
-  const stoppingSchedule = useRef(false);
+  const [cancelingScheduled, setCancelingScheduled] = useState<EventRecord>();
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
+  const scheduleMutation = useRef(false);
   const [scheduledDetails, setScheduledDetails] = useState<EventRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -117,24 +118,28 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
   }, [attempt, onAccessError]);
 
   async function cancelScheduled(event: EventRecord) {
+    if (scheduleMutation.current) return;
+    scheduleMutation.current = true; setScheduleBusy(true); setScheduleError("");
     try {
       await api(`/events/${event.id}/cancel-scheduled`, mutationOptions(session.csrf));
+      setCancelingScheduled(undefined);
       setNotice(`Canceled ${event.title} on ${formatTimestamp(event.starts_at, timezone)}.`);
       setAttempt((value) => value + 1);
-    } catch (failure) { if (!onAccessError(failure)) setNotice(errorMessage(failure)); }
+    } catch (failure) { if (!onAccessError(failure)) setScheduleError(errorMessage(failure)); }
+    finally { scheduleMutation.current = false; setScheduleBusy(false); }
   }
 
   async function stopSchedule(row: RecurringSeriesRecord) {
-    if (stoppingSchedule.current) return;
-    stoppingSchedule.current = true;
-    setDeletingScheduleBusy(true); setDeleteScheduleError("");
+    if (scheduleMutation.current) return;
+    scheduleMutation.current = true;
+    setScheduleBusy(true); setScheduleError("");
     try {
       await api(`/recurring-series/${row.id}/stop`, mutationOptions(session.csrf));
       setDeletingSchedule(undefined);
       setNotice(`Stopped ${row.title}. Upcoming unposted events were removed.`);
       setAttempt((value) => value + 1);
-    } catch (failure) { if (!onAccessError(failure)) setDeleteScheduleError(errorMessage(failure)); }
-    finally { stoppingSchedule.current = false; setDeletingScheduleBusy(false); }
+    } catch (failure) { if (!onAccessError(failure)) setScheduleError(errorMessage(failure)); }
+    finally { scheduleMutation.current = false; setScheduleBusy(false); }
   }
 
 
@@ -248,7 +253,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           <h3>Scheduled Events</h3>
           {series.map((row) => <details className="scheduled-event-group" key={row.id}>
             <summary><span>{row.title} - {row.frequency}</span>
-              {session.organization_role !== "user" && <button id={`schedule-delete-${row.id}`} type="button" className="delete-schedule-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setDeleteScheduleError(""); setDeletingSchedule(row); }}>Delete</button>}
+              {session.organization_role !== "user" && <button id={`schedule-delete-${row.id}`} type="button" className="delete-schedule-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setScheduleError(""); setDeletingSchedule(row); }}>Delete</button>}
             </summary>
             <div className="scheduled-event-occurrences">
               {events.filter((event) => event.status === "scheduled" && event.series_id === row.id).sort((a, b) => a.starts_at - b.starts_at).slice(0, 4).map((event) => <div key={event.id} className="scheduled-event-row">
@@ -259,7 +264,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
                 </span>
                 <div className="scheduled-event-actions">
                   <button id={`scheduled-event-view-${event.id}`} type="button" className="event-icon-action" aria-label="View scheduled event" title="View scheduled event" onClick={() => setScheduledDetails(event)}><Eye size={18} aria-hidden="true" /></button>
-                  {session.organization_role !== "user" && <button id={`scheduled-event-cancel-${event.id}`} type="button" className="event-icon-action" aria-label="Cancel scheduled event" title="Cancel scheduled event" onClick={() => void cancelScheduled(event)}><Trash2 size={18} aria-hidden="true" /></button>}
+                  {session.organization_role !== "user" && <button id={`scheduled-event-cancel-${event.id}`} type="button" className="event-icon-action" aria-label="Cancel scheduled event" title="Cancel scheduled event" onClick={() => { setScheduleError(""); setCancelingScheduled(event); }}><Trash2 size={18} aria-hidden="true" /></button>}
                 </div>
               </div>)}
               <div className="scheduled-event-row"><span>Timezone: {row.time_zone}</span></div>
@@ -267,8 +272,13 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
           </details>)}
         </div>
       </section>}
+      {cancelingScheduled && <ConfirmationDialog id="scheduled-event-cancel-dialog" title="Cancel scheduled event?"
+        busy={scheduleBusy} error={scheduleError} status="Canceling…"
+        onCancel={() => setCancelingScheduled(undefined)} onConfirm={() => void cancelScheduled(cancelingScheduled)}>
+        <p>Are you sure you want to cancel {cancelingScheduled.title} on {formatTimestamp(cancelingScheduled.starts_at, timezone)}? Only this occurrence will be removed; the recurring schedule will continue.</p>
+      </ConfirmationDialog>}
       {deletingSchedule && <ConfirmationDialog id="schedule-delete-dialog" title="Delete recurring event?"
-        busy={deletingScheduleBusy} error={deleteScheduleError} status="Deleting…"
+        busy={scheduleBusy} error={scheduleError} status="Deleting…"
         onCancel={() => setDeletingSchedule(undefined)} onConfirm={() => void stopSchedule(deletingSchedule)}>
         <p>Are you sure you want to delete {deletingSchedule.title}? Its recurring schedule and upcoming unposted events will be removed.</p>
       </ConfirmationDialog>}

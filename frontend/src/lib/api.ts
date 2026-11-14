@@ -83,7 +83,13 @@ export interface ModeratorSession {
   csrf: string;
 }
 
-export interface EventRecord {
+export interface SignupWarningSettings {
+  post_warning_message?: boolean;
+  warning_hours_before_close?: number;
+  warning_message?: string;
+}
+
+export interface EventRecord extends SignupWarningSettings {
   id: string;
   title: string;
   description?: string;
@@ -108,7 +114,7 @@ export interface EventRecord {
   discord_cleanup_error?: string | null;
 }
 
-export interface EventTemplateRecord {
+export interface EventTemplateRecord extends SignupWarningSettings {
   id: string;
   title: string;
   description?: string;

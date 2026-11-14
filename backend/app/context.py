@@ -27,6 +27,7 @@ from app.models import (
 from app.player_profiles import PlayerScope
 from app.player_profiles import for_event as player_scope_for_event
 from app.security import digest
+from app.signup_warnings import settings as warning_settings
 
 
 @dataclass
@@ -204,6 +205,7 @@ class ApplicationContext:
             if db and run and run.result.get("pairing_conflicts"):
                 warnings = current_result(db, run).get("pairing_warnings", [])
         return {
+            **warning_settings(event),
             "id": event.id,
             "title": event.title,
             "description": event.description,

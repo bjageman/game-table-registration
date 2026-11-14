@@ -30,6 +30,7 @@ from app.promotion_dms import dispatch_due as dispatch_promotion_dms
 from app.publication import mark_signup_closed
 from app.publication import publish_event as publish_event_service
 from app.recurrence import fill_schedule
+from app.signup_warnings import enqueue_due as enqueue_signup_warnings
 
 
 def application_lifespan(
@@ -179,6 +180,7 @@ def application_lifespan(
                         engine,
                         context.client_for_destination,
                     )
+                    enqueue_signup_warnings(engine)
                     dispatch_due(
                         engine,
                         context.client_for_destination,

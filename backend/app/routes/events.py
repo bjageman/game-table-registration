@@ -24,6 +24,7 @@ from app.schemas import (
     EventTemplateInput,
     RecurringInput,
 )
+from app.signup_warnings import settings as warning_settings
 
 
 def register(context: ApplicationContext) -> None:
@@ -52,6 +53,7 @@ def register(context: ApplicationContext) -> None:
 
     def serialize_template(template: EventTemplate) -> dict[str, Any]:
         return {
+            **warning_settings(template),
             "id": template.id,
             "title": template.title,
             "description": template.description,
@@ -78,6 +80,7 @@ def register(context: ApplicationContext) -> None:
         session = authenticated(request, True, require_destination=False)
         with DBSession(engine) as db:
             template = EventTemplate(
+                **warning_settings(body),
                 id=str(uuid.uuid4()),
                 user_id=session.user_id,
                 title=body.title.strip(),
@@ -96,6 +99,7 @@ def register(context: ApplicationContext) -> None:
         session = authenticated(request, True)
         with DBSession(engine) as db:
             event = Event(
+                **warning_settings(body),
                 id=str(uuid.uuid4()),
                 guild_id=destination(request).discord_guild_id,
                 channel_id=destination(request).discord_channel_id,
@@ -156,6 +160,7 @@ def register(context: ApplicationContext) -> None:
         target = destination(request)
         with DBSession(engine) as db:
             series = RecurringSeries(
+                **warning_settings(body),
                 id=str(uuid.uuid4()),
                 created_by=session.user_id,
                 organization_id=request.state.organization_id,
@@ -247,6 +252,7 @@ def register(context: ApplicationContext) -> None:
                     Event.status.in_(["draft", "scheduled"]),
                 )
                 .values(
+                    **warning_settings(body),
                     title=body.title.strip(),
                     description=body.description.strip(),
                     location=body.location.strip(),

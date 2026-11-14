@@ -21,6 +21,7 @@ import {
 } from "../../../lib/api";
 import { validateEvent, validateTemplate } from "./eventValidation";
 import TemplatePicker from "./TemplatePicker";
+import SignupWarningFields, { warningErrors } from "./SignupWarningFields";
 
 interface Props {
   csrf: string;
@@ -48,6 +49,14 @@ export default function EventForm({
   const [title, setTitle] = useState(draft?.title ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
   const [location, setLocation] = useState(draft?.location ?? "");
+  const [postWarning, setPostWarning] = useState(draft?.post_warning_message ?? false);
+  const [warningHours, setWarningHours] = useState(String(draft?.warning_hours_before_close ?? 1));
+  const [warningMessage, setWarningMessage] = useState(draft?.warning_message ?? "");
+  const warningSettings = {
+    post_warning_message: postWarning,
+    warning_hours_before_close: postWarning ? Number(warningHours) : 1,
+    warning_message: warningMessage.trim(),
+  };
   const [startsAt, setStartsAt] = useState<Dayjs | null>(
     draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
   );
@@ -167,6 +176,9 @@ export default function EventForm({
   }
 
   function loadTemplate(template: EventTemplateRecord) {
+    setPostWarning(template.post_warning_message ?? false);
+    setWarningHours(String(template.warning_hours_before_close ?? 1));
+    setWarningMessage(template.warning_message ?? "");
     setTitle(template.title);
     setDescription(template.description ?? "");
     setLocation(template.location ?? "");
@@ -186,7 +198,7 @@ export default function EventForm({
     const templateDuration = scheduled
       ? String(Number(opensBefore) - Number(closesBefore))
       : manualClosesBefore.trim() || duration;
-    const errors = validateTemplate({ title, duration: templateDuration, tables });
+    const errors = { ...validateTemplate({ title, duration: templateDuration, tables }), ...warningErrors(postWarning, warningHours) };
     setFieldErrors(errors);
     if (Object.keys(errors).length) {
       setError([...new Set(Object.values(errors))].join(" "));
@@ -197,6 +209,7 @@ export default function EventForm({
     setSaving(true);
     try {
       const saved = await api<EventTemplateRecord>("/templates", mutationOptions(csrf, {
+        ...warningSettings,
         title: title.trim(),
         description: description.trim(),
         location: location.trim(),
@@ -217,14 +230,14 @@ export default function EventForm({
     event.preventDefault();
     if (inFlight.current) return;
     setError("");
-    const errors = validateEvent({
+    const errors = { ...validateEvent({
       title,
       startsAt: startsAtLocal,
       timezone,
       duration: scheduled ? String(Number(opensBefore) - Number(closesBefore)) : duration,
       tables,
       explicitClosing: !scheduled,
-    });
+    }), ...warningErrors(postWarning, warningHours) };
     setFieldErrors(errors);
     if (Object.keys(errors).length) {
       setError([...new Set(Object.values(errors))].join(" "));
@@ -235,6 +248,10 @@ export default function EventForm({
     }
     const start = resolveLocalTime(startsAtLocal, timezone).date!;
     const hours = scheduled ? Number(opensBefore) - Number(closesBefore) : 0;
+    if (postWarning && !scheduled && !manualClosesBefore.trim()) {
+      setError("Set a signup closing time to post a warning message.");
+      return;
+    }
     if (!scheduled && manualClosesBefore.trim()) {
       const close = Number(manualClosesBefore);
       if (!Number.isInteger(close) || close < 1 || close > 767 || start.getTime() - close * 3600000 <= Date.now()) {
@@ -264,6 +281,7 @@ export default function EventForm({
         frequency !== "once" ? "/recurring-series" : draft ? `/events/${draft.id}` : "/events",
         {
           ...mutationOptions(csrf, {
+            ...warningSettings,
             title: title.trim(),
             description: description.trim(),
             location: location.trim(),
@@ -428,6 +446,9 @@ export default function EventForm({
               )}
             </div>
           </div>
+          <SignupWarningFields enabled={postWarning} hours={warningHours} message={warningMessage}
+            onEnabled={setPostWarning} onHours={setWarningHours} onMessage={setWarningMessage}
+            error={fieldErrors.warning_hours_before_close} />
           <div className="event-scheduling-options">
           <label className="scheduled-event-checkbox"><input id="event-scheduled-checkbox" type="checkbox" checked={scheduled} onChange={(event) => { setScheduled(event.target.checked); if (!event.target.checked) setFrequency("once"); }} /> Scheduled Event</label>
           <div className={`event-scheduling-inputs ${!scheduled ? "single" : ""}`}>
