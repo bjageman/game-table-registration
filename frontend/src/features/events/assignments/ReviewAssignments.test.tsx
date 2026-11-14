@@ -36,3 +36,19 @@ it("shows review status without approval controls for read-only users", () => {
   render(<ReviewAssignments event={event} csrf="csrf" readOnly onUpdated={vi.fn()} onAccessError={() => false} />);
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });
+
+it("shows an alert and retains review when Discord delivery fails", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  const updated = vi.fn();
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    ...event, assignment_publication_pending: true,
+    assignment_publication_error: "Discord rejected the announcement.",
+  }))));
+  render(<ReviewAssignments event={event} csrf="csrf" readOnly={false} onUpdated={updated} onAccessError={() => false} />);
+  fireEvent.click(screen.getByRole("button", { name: "Send to Discord" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Assignments have not been posted to Discord");
+  expect(screen.getByRole("dialog", { name: "Send assignments to Discord?" })).toBeVisible();
+  expect(updated).toHaveBeenCalledWith(expect.objectContaining({ status: "review" }));
+});

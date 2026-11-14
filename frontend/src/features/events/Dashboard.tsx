@@ -80,7 +80,7 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
 
   function updated(event: EventRecord, notice?: string) {
     setEvents((rows) => rows.map((row) => (row.id === event.id ? event : row)));
-    const message = event.status === "review" ? "Assignments ready for review" : event.status === "assigned" ? "Placements determined" : event.status === "closing" ? "Signups closing" : "Signups published";
+    const message = event.assignment_publication_pending ? "Assignments are waiting for Discord delivery" : event.status === "review" ? "Assignments ready for review" : event.status === "assigned" ? "Placements determined" : event.status === "closing" ? "Signups closing" : "Signups published";
     setNotice(notice ?? `${message}: ${event.title}.`);
   }
 

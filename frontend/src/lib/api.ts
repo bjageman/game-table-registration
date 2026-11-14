@@ -114,6 +114,8 @@ export interface EventRecord extends SignupWarningSettings {
   duration_hours: number;
   tables: { name: string; capacity: number }[];
   status: string;
+  assignment_publication_pending?: boolean;
+  assignment_publication_error?: string | null;
   closes_at: number | null;
   published_at?: number | null;
   series_id?: string | null;
