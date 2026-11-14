@@ -9,7 +9,7 @@ import { api, errorMessage, mutationOptions, type EventRecord } from "../../../l
 import LoadingIndicator from "../../../components/LoadingIndicator";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import { isBackdropClick } from "../../../lib/dialogBackdrop";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 interface SignupPlayer { id: string; name: string; display_name?: string; weighting?: number; guaranteed_table?: string | null; guaranteed_seat?: boolean }
 type SortColumn = "guarantee" | "player" | "weight";
@@ -310,7 +310,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               {onSelect ? <button id={`${tableId}-waitlist-profile-${player.id}`} type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
               {canRemoveSignups && <button id={`${tableId}-waitlist-remove-${player.id}`} type="button" className="remove-signup-player" disabled={saving}
                 aria-label={`Remove ${player.display_name || player.name} from waitlist`} title="Remove from waitlist"
-                onClick={() => onRemovePlayer?.(player, false, true)}>✕</button>}
+                onClick={() => onRemovePlayer?.(player, false, true)}><X size={16} aria-hidden="true" /></button>}
             </li>)}</ul> : <p className="help">No players waiting.</p>}
             {canEditSignups && <button id={`${tableId}-add-waitlist-player`} type="button" className="add-signup-player" disabled={saving}
               onClick={() => onAddToWaitlist?.(table.name)}>Add Player to Waitlist</button>}
