@@ -178,3 +178,26 @@ it("confirms cancellation of one scheduled occurrence before sending the request
   expect(canceled).toBe(true);
   expect(fetchMock).toHaveBeenCalledWith("/api/events/event/cancel-scheduled", expect.objectContaining({ method: "POST" }));
 });
+
+it.each([
+  { enabled: true, hours: 2, closesAt: 2000000000, expected: 1999992800 },
+  { enabled: true, hours: undefined, closesAt: 2000000000, expected: 1999996400 },
+  { enabled: false, hours: 2, closesAt: 2000000000, expected: null },
+  { enabled: true, hours: 2, closesAt: null, expected: null },
+])("shows the configured warning time only when enabled with a deadline: %j", async ({ enabled, hours, closesAt, expected }) => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  const event = { ...draft, post_warning_message: enabled, warning_hours_before_close: hours, closes_at: closesAt };
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+    url === "/api/events" ? [event] : [],
+  ))));
+  render(<Dashboard {...props} />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Friday games/ }));
+  const dialog = screen.getByRole("dialog", { name: "Friday games" });
+  if (expected === null) {
+    expect(within(dialog).queryByText("Warning Message")).not.toBeInTheDocument();
+  } else {
+    const row = within(dialog).getByText("Warning Message").parentElement!;
+    expect(row.querySelector("time")).toHaveAttribute("datetime", new Date(expected * 1000).toISOString());
+  }
+});
