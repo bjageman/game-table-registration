@@ -31,6 +31,7 @@ def register(context: ApplicationContext) -> None:
             saved = for_scope(db, key)
             return {
                 "automatic_weight_adjustment": saved.automatic_weight_adjustment,
+                "create_discord_event": saved.create_discord_event,
                 "announce_table_changes": saved.announce_table_changes,
                 "post_discord_updates_to_thread": saved.post_discord_updates_to_thread,
                 "timezone": saved.timezone,
@@ -54,6 +55,7 @@ def register(context: ApplicationContext) -> None:
             key = assignment_scope_key(request.state.organization_id, session.user_id)
             previous = db.get(AssignmentPreference, key)
             for field in (
+                "create_discord_event",
                 "review_assignments_before_discord",
                 "timezone",
                 "post_discord_updates_to_thread",
@@ -72,6 +74,7 @@ def register(context: ApplicationContext) -> None:
                         request.state.organization_id, session.user_id
                     ),
                     automatic_weight_adjustment=body.automatic_weight_adjustment,
+                    create_discord_event=body.create_discord_event,
                     announce_table_changes=body.announce_table_changes,
                     post_discord_updates_to_thread=body.post_discord_updates_to_thread,
                     timezone=body.timezone,

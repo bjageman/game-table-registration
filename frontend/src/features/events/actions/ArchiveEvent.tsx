@@ -15,13 +15,17 @@ export default function ArchiveEvent({ event, csrf, onUpdated, onAccessError }: 
   const [error, setError] = useState("");
   const [status, setStatus] = useState("Archiving…");
   const [deleteMessages, setDeleteMessages] = useRememberedCheckbox("delete-discord-messages-on-archive");
+  const [deleteDiscordEvent, setDeleteDiscordEvent] = useRememberedCheckbox("delete-discord-event-on-archive");
   const inFlight = useRef(false);
   async function archive() {
     if (inFlight.current) return;
     inFlight.current = true; setBusy(true); setError(""); setStatus("Archiving…");
     let archived: EventRecord | undefined;
     try {
-      const saved = await api<CleanupProgress>(`/events/${encodeURIComponent(event.id)}/archive${deleteMessages ? "?delete_discord_messages=true" : ""}`, mutationOptions(csrf));
+      const query = new URLSearchParams();
+      if (deleteMessages) query.set("delete_discord_messages", "true");
+      if (event.has_discord_event && deleteDiscordEvent) query.set("delete_discord_event", "true");
+      const saved = await api<CleanupProgress>(`/events/${encodeURIComponent(event.id)}/archive${query.size ? `?${query}` : ""}`, mutationOptions(csrf));
       archived = saved;
       const completed = deleteMessages
         ? await finishDiscordCleanup(event.id, csrf, (progress) => {
@@ -49,9 +53,10 @@ export default function ArchiveEvent({ event, csrf, onUpdated, onAccessError }: 
       onClick={() => { setError(""); setConfirming(true); }}><Archive size={18} aria-hidden="true" /></button>
     {confirming && <ConfirmationDialog id={`event-archive-dialog-${event.id}`} title={`Archive ${event.title}?`} busy={busy} error={error} status={status}
       onCancel={() => setConfirming(false)} onConfirm={() => void archive()}>
-      {null}
       <label className="delete-poll-option"><input type="checkbox" checked={deleteMessages} disabled={busy}
         onChange={(change) => setDeleteMessages(change.target.checked)} /> Also delete the signup and assignment messages on Discord</label>
+      {event.has_discord_event && <label className="delete-poll-option"><input type="checkbox" checked={deleteDiscordEvent} disabled={busy}
+        onChange={(change) => setDeleteDiscordEvent(change.target.checked)} /> Delete Discord event</label>}
     </ConfirmationDialog>}
   </>;
 }

@@ -8,12 +8,12 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app.discord.announcements import enqueue
-from app.models import Event, LotteryRun, PlayerProfile
+from app.models import Announcement, Event, LotteryRun, PlayerProfile
 from app.players.player_profiles import for_event as player_scope_for_event
 
 
-def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -> None:
-    """Called only by the transaction that owns the event's state transition."""
+def adjust_weights(db: Session, event: Event, run: LotteryRun) -> None:
+    """Apply the completed draw once, under the event transition lock."""
     from app.assignments.withdrawals import current_result
 
     snapshot: dict[str, Any] = run.snapshot
@@ -47,8 +47,42 @@ def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -
                     max(Decimal("0.1"), Decimal(str(profile.weighting)) + delta),
                 )
             )
+
+
+def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -> None:
+    """Immediate publication when organizer review is disabled."""
+    from app.assignments.withdrawals import current_result
+
+    adjust_weights(db, event, run)
     event.status = "assigned"
-    enqueue(db, event, event.channel_id or channel_id, result, snapshot)
+    enqueue(
+        db, event, event.channel_id or channel_id, current_result(db, run), run.snapshot
+    )
+
+
+def complete_review_delivery(db: Session, event_id: str) -> None:
+    rows = list(
+        db.scalars(
+            select(Announcement).where(
+                Announcement.event_id == event_id, Announcement.kind == "assignment"
+            )
+        )
+    )
+    if not rows or any(row.state != "sent" for row in rows):
+        return
+    claimed = db.execute(
+        update(Event)
+        .where(
+            Event.id == event_id, Event.status == "review", Event.archived_at.is_(None)
+        )
+        .values(status="assigned")
+        .returning(Event.id)
+    ).scalar_one_or_none()
+    if claimed:
+        event = db.get(Event, event_id)
+        run = db.get(LotteryRun, event_id)
+        if event and run:
+            adjust_weights(db, event, run)
 
 
 def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
@@ -70,5 +104,34 @@ def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
         if event is None or run is None:
             raise HTTPException(503, "Saved placements are unavailable")
         if event.status == "review":
-            finalize(db, event, run, channel_id)
+            from app.assignments.withdrawals import current_result
+
+            existing = db.scalar(
+                select(Announcement.id)
+                .where(
+                    Announcement.event_id == event_id, Announcement.kind == "assignment"
+                )
+                .limit(1)
+            )
+            if existing is None:
+                enqueue(
+                    db,
+                    event,
+                    event.channel_id or channel_id,
+                    current_result(db, run),
+                    run.snapshot,
+                )
+            else:
+                db.execute(
+                    update(Announcement)
+                    .where(
+                        Announcement.event_id == event_id,
+                        Announcement.kind == "assignment",
+                        Announcement.state.in_(["pending", "needs_review"]),
+                        Announcement.unknown.is_(False),
+                        Announcement.token.is_(None),
+                    )
+                    .values(state="pending", next_attempt=0, error=None)
+                )
+            complete_review_delivery(db, event_id)
         db.commit()

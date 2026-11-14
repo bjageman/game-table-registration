@@ -96,6 +96,7 @@ export interface RecurringSeriesRecord extends SignupWarningSettings {
   location: string;
   tables: { name: string; capacity: number }[];
   starts_at: number;
+  ends_at?: number | null;
   duration_hours: number;
   frequency: string;
   time_zone: string;
@@ -104,14 +105,18 @@ export interface RecurringSeriesRecord extends SignupWarningSettings {
 }
 
 export interface EventRecord extends SignupWarningSettings {
+  created_at?: number | null;
   id: string;
   title: string;
   description?: string;
   location?: string;
   starts_at: number;
+  ends_at?: number | null;
   duration_hours: number;
   tables: { name: string; capacity: number }[];
   status: string;
+  assignment_publication_pending?: boolean;
+  assignment_publication_error?: string | null;
   closes_at: number | null;
   published_at?: number | null;
   series_id?: string | null;
@@ -119,6 +124,8 @@ export interface EventRecord extends SignupWarningSettings {
   archived_at?: number | null;
   signup_deleted_at?: number | null;
   close_error?: string | null;
+  discord_event_error?: string | null;
+  has_discord_event?: boolean;
   pairing_warnings?: string[];
   is_test?: boolean;
   test_generation?: string | null;

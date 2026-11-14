@@ -70,9 +70,12 @@ def register(context: ApplicationContext) -> None:
         if user_id:
             params.update(
                 permissions=str(
-                    POLL_PERMISSIONS
-                    if config.discord_signup_mode == "poll"
-                    else SIGNUP_PERMISSIONS
+                    (
+                        POLL_PERMISSIONS
+                        if config.discord_signup_mode == "poll"
+                        else SIGNUP_PERMISSIONS
+                    )
+                    | (1 << 44)
                 ),
                 integration_type="0",
                 prompt="consent",

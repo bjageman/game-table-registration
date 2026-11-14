@@ -52,6 +52,7 @@ class EventDetailsInput(SignupWarningInput):
 
 
 class EventInput(EventDetailsInput):
+    ends_at: datetime | None = None
     starts_at: datetime
     duration_hours: int = Field(
         ge=0,
@@ -69,6 +70,11 @@ class EventInput(EventDetailsInput):
             and self.closes_before_hours is None
         ):
             raise ValueError("Set a signup closing time to post a warning message")
+        if self.ends_at is not None:
+            if self.ends_at.tzinfo is None:
+                raise ValueError("Event end time must include a timezone")
+            if self.starts_at.tzinfo is not None and self.ends_at <= self.starts_at:
+                raise ValueError("Event end time must be after the start time")
         if self.starts_at.tzinfo is None:
             raise ValueError("Event time must include a timezone")
         if self.starts_at.timestamp() <= time.time() + self.duration_hours * 3600:
@@ -123,6 +129,7 @@ class EventTemplateInput(EventDetailsInput):
 
 
 class AssignmentSettingsInput(BaseModel):
+    create_discord_event: bool = True
     review_assignments_before_discord: bool = True
     model_config = {"extra": "forbid"}
     automatic_weight_adjustment: bool

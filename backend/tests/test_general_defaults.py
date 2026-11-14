@@ -83,7 +83,9 @@ def test_defaults_migration_preserves_saved_false_and_sets_sql_defaults(tmp_path
     command.upgrade(migration, "20261113_waitlist_additions")
     engine = create_engine(url)
     columns = ", ".join(
-        key for key in DEFAULTS if key != "review_assignments_before_discord"
+        key
+        for key in DEFAULTS
+        if key not in {"review_assignments_before_discord", "create_discord_event"}
     )
     with engine.begin() as connection:
         connection.execute(

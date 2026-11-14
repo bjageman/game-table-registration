@@ -15,6 +15,7 @@ from app.discord.message_cleanup import (
 from app.discord.message_cleanup import (
     remove_signup_message as remove_signup_message_service,
 )
+from app.discord.scheduled_events import delete_scheduled_event
 from app.models import (
     Announcement,
     Event,
@@ -54,13 +55,18 @@ def register(context: ApplicationContext) -> None:
 
     @router.post("/api/events/{event_id}/archive")
     def archive_event(
-        event_id: str, request: Request, delete_discord_messages: bool = False
+        event_id: str,
+        request: Request,
+        delete_discord_messages: bool = False,
+        delete_discord_event: bool = False,
     ) -> dict[str, Any]:
         authenticated(request, True)
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
             if event.status != "assigned" or db.get(LotteryRun, event_id) is None:
                 raise HTTPException(409, "Only assigned events can be archived")
+            if delete_discord_event:
+                delete_scheduled_event(db, event, scoped_discord(request))
             db.execute(
                 update(Event)
                 .where(
@@ -78,7 +84,10 @@ def register(context: ApplicationContext) -> None:
 
     @router.delete("/api/events/{event_id}", status_code=204)
     def delete_event(
-        event_id: str, request: Request, delete_poll: bool = False
+        event_id: str,
+        request: Request,
+        delete_poll: bool = False,
+        delete_discord_event: bool = False,
     ) -> Response:
         authenticated(request, True)
         with DBSession(engine) as db:
@@ -100,6 +109,9 @@ def register(context: ApplicationContext) -> None:
                     "Only drafts, open signups, and assignments awaiting review "
                     "can be deleted.",
                 )
+            if delete_discord_event:
+                event = context.scoped_event(db, event_id, request)
+                delete_scheduled_event(db, event, scoped_discord(request))
             if delete_poll:
                 event = context.scoped_event(db, event_id, request)
                 for warning in db.scalars(

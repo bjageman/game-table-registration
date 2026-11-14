@@ -18,6 +18,7 @@ export default function EventActions({
   onAccessError: (error: unknown) => boolean;
 }) {
   const [deletePoll, setDeletePoll] = useRememberedCheckbox("delete-discord-signup-on-event-delete");
+  const [deleteDiscordEvent, setDeleteDiscordEvent] = useRememberedCheckbox("delete-discord-event-on-delete");
   const isDraft = event.status === "draft";
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -29,7 +30,10 @@ export default function EventActions({
     setBusy(true);
     setError("");
     try {
-      await api(`/events/${encodeURIComponent(event.id)}${deletePoll ? "?delete_poll=true" : ""}`, {
+      const query = new URLSearchParams();
+      if (deletePoll) query.set("delete_poll", "true");
+      if (event.has_discord_event && deleteDiscordEvent) query.set("delete_discord_event", "true");
+      await api(`/events/${encodeURIComponent(event.id)}${query.size ? `?${query}` : ""}`, {
         ...mutationOptions(csrf),
         method: "DELETE",
       });
@@ -72,6 +76,11 @@ export default function EventActions({
             <input id={`event-delete-discord-checkbox-${event.id}`} type="checkbox" checked={deletePoll} disabled={busy}
               onChange={(event) => setDeletePoll(event.target.checked)} />
             Also delete the signup message on Discord
+          </label>}
+          {event.has_discord_event && <label className="delete-poll-option">
+            <input type="checkbox" checked={deleteDiscordEvent} disabled={busy}
+              onChange={(change) => setDeleteDiscordEvent(change.target.checked)} />
+            Delete Discord event
           </label>}
         </ConfirmationDialog>
       )}

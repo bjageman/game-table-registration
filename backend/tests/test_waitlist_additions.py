@@ -284,3 +284,34 @@ def test_api_can_requeue_a_player_removed_from_a_table(client):
     updated = next(row for row in rows if row["name"] == table["name"])
     assert updated["waitlist"][-1]["id"] == player_id
     assert not any(p["id"] == player_id for row in rows for p in row["players"])
+
+
+@pytest.mark.parametrize("status", ["review", "assigned"])
+def test_direct_readd_preserves_replacement_and_allows_later_removal(
+    promotion_db, status
+):
+    from sqlalchemy import delete
+
+    engine = promotion_db
+    with Session(engine) as db:
+        db.get(Event, "event").status = status
+        if status == "review":
+            db.execute(delete(Announcement).where(Announcement.event_id == "event"))
+        db.commit()
+    assert manager_remove(engine, "guild", "event", "1")
+    # The plus control still requires a waitlist entry; organizer Add Player does not.
+    assert not manager_add(engine, "guild", "event", "1", "Table A")
+    assert manager_add(
+        engine, "guild", "event", "1", "Table A", allow_known_player=True
+    )
+    with Session(engine) as db:
+        current = current_result(db, db.get(LotteryRun, "event"))
+        assert current["assignments"] == {"1": "Table A", "2": "Table A"}
+    assert not manager_add(
+        engine, "guild", "event", "1", "Table A", allow_known_player=True
+    )
+    assert manager_remove(engine, "guild", "event", "1")
+    with Session(engine) as db:
+        current = current_result(db, db.get(LotteryRun, "event"))
+        assert current["assignments"] == {"2": "Table A"}
+        assert current["waitlist"] == ["3"]

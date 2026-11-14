@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.discord.discord_format import is_discord_user_id
 from app.models import Announcement, Event
 from app.settings.assignment_preferences import announce_changes
 
@@ -50,7 +51,7 @@ def enqueue_table_change(
                 "content": content,
                 "allowed_mentions": {
                     "parse": [],
-                    "users": [pid for pid in recipients if not pid.startswith("test-")],
+                    "users": [pid for pid in recipients if is_discord_user_id(pid)],
                 },
                 "nonce": hashlib.sha256(nonce_key.encode()).hexdigest()[:24],
                 "enforce_nonce": True,

@@ -42,3 +42,16 @@ it("remembers the delete choice when the dialog is reopened and remounted", () =
   fireEvent.click(screen.getByRole("button", { name: "Delete signup" }));
   expect(screen.getByRole("checkbox", { name: "Also delete the signup message on Discord" })).toBeChecked();
 });
+
+it("offers Discord event deletion alongside message deletion in the confirmation", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventActions event={{ ...event, has_discord_event: true }} csrf="csrf" onEdit={vi.fn()} onDeleted={vi.fn()} onAccessError={() => false} />);
+  fireEvent.click(screen.getByRole("button", { name: "Delete signup" }));
+  expect(screen.getByRole("checkbox", { name: "Also delete the signup message on Discord" })).toBeVisible();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Delete Discord event" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/events/event?delete_discord_event=true", expect.objectContaining({ method: "DELETE" })));
+});

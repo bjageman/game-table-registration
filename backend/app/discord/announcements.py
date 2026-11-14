@@ -16,13 +16,15 @@ from app.discord.discord_format import (
     TABLE_FIELD_CONTENT_LIMIT,
     clean,
     event_embed,
+    is_discord_user_id,
     paginate_fields,
+    sanitize_user_mentions,
     table_field,
 )
 from app.discord.event_threads import update_channel
 from app.events.event_description import signup_description, signup_location
 from app.events.signup_warnings import can_send as can_send_warning
-from app.models import Announcement, Event, LotteryRun
+from app.models import Announcement, DiscordScheduledEvent, Event, LotteryRun
 from app.settings.assignment_preferences import announce_changes
 
 
@@ -53,7 +55,8 @@ def payloads(
         )
         header = f"{clean(table['name'])} ({count})"
         table_entries = [
-            (name(p), p["id"] if not is_test else None) for p in table["players"]
+            (name(p), p["id"] if not is_test and is_discord_user_id(p["id"]) else None)
+            for p in table["players"]
         ]
         sections.append(
             (header, table_entries or [("No players assigned.", None)], True)
@@ -334,6 +337,8 @@ def deliver_event(
                 .limit(1)
             )
             event = db.get(Event, event_id)
+            if row is not None and row.state == "pending" and not row.unknown:
+                row.payload = sanitize_user_mentions(row.payload)
             expired_warning = bool(
                 row and row.kind == "warning" and not can_send_warning(event, now)
             )
@@ -477,6 +482,20 @@ def deliver_event(
                         unknown=False,
                     )
                 )
+                if row_kind == "assignment":
+                    from app.assignments.assignment_finalization import (
+                        complete_review_delivery,
+                    )
+
+                    complete_review_delivery(db, event_id)
+                    db.execute(
+                        update(DiscordScheduledEvent)
+                        .where(
+                            DiscordScheduledEvent.event_id == event_id,
+                            DiscordScheduledEvent.state != "creating",
+                        )
+                        .values(checked_at=None)
+                    )
                 db.commit()
         except Exception as failure:
             if row_kind == "refresh":
@@ -522,6 +541,9 @@ def deliver_event(
             error = (
                 "Delivery could not be confirmed. Check Discord before retrying."
                 if uncertain
+                else "Discord rejected the announcement. "
+                "Use Retry Announcement to try again."
+                if state == "needs_review"
                 else "Discord could not accept the announcement. "
                 "Automatic retry is queued."
             )

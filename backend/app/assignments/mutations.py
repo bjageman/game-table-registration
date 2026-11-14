@@ -1,9 +1,9 @@
 """Claim editable assignment state within the caller's transaction."""
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models import Event, LotteryRun
+from app.models import Announcement, Event, LotteryRun
 
 
 def locked_assignment(
@@ -25,4 +25,14 @@ def locked_assignment(
         return None
     event = db.get(Event, event_id)
     run = db.get(LotteryRun, event_id)
+    if (
+        event
+        and event.status == "review"
+        and db.scalar(
+            select(Announcement.id)
+            .where(Announcement.event_id == event_id, Announcement.kind == "assignment")
+            .limit(1)
+        )
+    ):
+        return None
     return (event, run) if event is not None and run is not None else None

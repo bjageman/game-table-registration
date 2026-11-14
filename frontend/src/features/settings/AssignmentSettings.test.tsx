@@ -41,7 +41,7 @@ it("saves assignment options for an admin", async () => {
   expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({
     method: "PUT",
     body: JSON.stringify({
-      review_assignments_before_discord: false, automatic_weight_adjustment: true, announce_table_changes: false,
+      create_discord_event: true, review_assignments_before_discord: false, automatic_weight_adjustment: true, announce_table_changes: false,
       post_discord_updates_to_thread: false, timezone: null, show_open_signup_players: false, dm_waitlist_promotions: false,
     }),
   }));
@@ -72,6 +72,6 @@ it("enables every General toggle by default before the first settings save", asy
   render(<AssignmentSettings csrf="csrf" onAccessError={() => false} />);
   await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
   const toggles = screen.getAllByRole("checkbox");
-  expect(toggles).toHaveLength(6);
+  expect(toggles).toHaveLength(7);
   toggles.forEach((toggle) => expect(toggle).toBeChecked());
 });

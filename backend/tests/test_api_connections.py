@@ -434,6 +434,7 @@ def test_organization_connection_is_independent_of_personal_and_other_orgs(clien
     )
     assert client.get("/api/settings").json()["selection"] is None
     preferences = {
+        "create_discord_event": False,
         "show_open_signup_players": False,
         "review_assignments_before_discord": True,
         "dm_waitlist_promotions": False,

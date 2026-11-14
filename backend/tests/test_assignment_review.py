@@ -292,3 +292,181 @@ def test_review_can_be_disabled_for_immediate_publication(client):
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).json()["status"] == "assigned"
     client.app.state.discord.send_announcement.assert_called()
+
+
+def test_rejected_approval_stays_in_review_and_can_retry(client):
+    from app.discord.discord_api import DiscordRequestError
+
+    headers, event, path = prepared(client)
+    client.post(path + "/close", headers=headers)
+    discord = client.app.state.discord
+    discord.send_announcement.side_effect = DiscordRequestError(400)
+    response = client.post(path + "/assignments/approve", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "review"
+    assert response.json()["assignment_publication_pending"] is True
+    assert response.json()["assignment_publication_error"]
+    with Session(client.app.state.engine) as db:
+        assert not list(db.scalars(select(PlayerProfile)))
+        run = db.get(LotteryRun, event["id"])
+        player = next(iter(run.result["assignments"]))
+        table = run.result["assignments"][player]
+    assert (
+        client.delete(
+            path + f"/manager-players/{player}",
+            headers=headers,
+            params={"table": table},
+        ).status_code
+        == 409
+    )
+    discord.send_announcement.side_effect = None
+    response = client.post(path + "/assignments/approve", headers=headers)
+    assert response.json()["status"] == "assigned"
+    with Session(client.app.state.engine) as db:
+        assert (
+            len(
+                list(
+                    db.scalars(
+                        select(Announcement).where(Announcement.kind == "assignment")
+                    )
+                )
+            )
+            == 1
+        )
+        assert all(p.weighting in (4.5, 5.5) for p in db.scalars(select(PlayerProfile)))
+
+
+def test_partial_publication_does_not_advance_or_repeat_delivered_parts(client):
+    from unittest.mock import patch
+
+    from app.discord.discord_api import DiscordRequestError
+
+    headers, event, path = prepared(client)
+    client.post(path + "/close", headers=headers)
+    discord = client.app.state.discord
+    discord.send_announcement.side_effect = [{"id": "first"}, DiscordRequestError(400)]
+    with patch(
+        "app.discord.announcements.payloads",
+        return_value=[{"content": "First roster"}, {"content": "Second roster"}],
+    ):
+        response = client.post(path + "/assignments/approve", headers=headers)
+    assert response.json()["status"] == "review"
+    with Session(client.app.state.engine) as db:
+        assert not list(db.scalars(select(PlayerProfile)))
+    discord.send_announcement.side_effect = None
+    discord.send_announcement.return_value = {"id": "second"}
+    assert (
+        client.post(path + "/assignments/approve", headers=headers).json()["status"]
+        == "assigned"
+    )
+    sent_contents = [
+        call.args[1]["content"] for call in discord.send_announcement.call_args_list
+    ]
+    assert sent_contents.count("First roster") == 1
+    assert sent_contents.count("Second roster") == 2
+
+
+def test_background_confirmation_advances_review_without_reposting(client):
+    from app.discord.discord_api import DiscordRequestError
+
+    headers, event, path = prepared(client)
+    client.post(path + "/close", headers=headers)
+    discord = client.app.state.discord
+    discord.send_announcement.side_effect = DiscordRequestError(None)
+    assert (
+        client.post(path + "/assignments/approve", headers=headers).json()["status"]
+        == "review"
+    )
+    with Session(client.app.state.engine) as db:
+        row = db.scalar(
+            select(Announcement).where(
+                Announcement.event_id == event["id"], Announcement.kind == "assignment"
+            )
+        )
+        assert row.unknown is True
+        row.next_attempt = 0
+        db.commit()
+    discord.send_announcement.side_effect = None
+    discord.find_announcement.return_value = "already-posted"
+    dispatch_due(client.app.state.engine, lambda guild, channel: discord)
+    with Session(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]).status == "assigned"
+        row = db.scalar(
+            select(Announcement).where(
+                Announcement.event_id == event["id"], Announcement.kind == "assignment"
+            )
+        )
+        assert row.message_id == "already-posted"
+    discord.find_announcement.assert_called_once()
+    # The only POST attempt was the original ambiguous request.
+    assignment_posts = [
+        call
+        for call in discord.send_announcement.call_args_list
+        if call.args[1].get("embeds")
+    ]
+    assert len(assignment_posts) == 1
+
+
+@pytest.mark.parametrize("review", [True, False])
+def test_mixed_real_and_manual_test_players_publish_in_both_modes(client, review):
+    from app.models import EventPlayerSetting
+
+    headers, event, path, _ = closing_event(client, review=review)
+    pid = "test-" + "c" * 24
+    with Session(client.app.state.engine) as db:
+        db.add(
+            PlayerProfile(
+                scope_key="user:owner",
+                guild_id="guild",
+                discord_id=pid,
+                discord_name="Test Player 003",
+                is_test=True,
+            )
+        )
+        db.add(
+            EventPlayerSetting(
+                event_id=event["id"], discord_id=pid, guaranteed_table="A"
+            )
+        )
+        db.commit()
+    assert (
+        client.put(
+            path + f"/manager-players/{pid}",
+            headers=headers,
+            json={"table": "A", "name": "Test Player 003"},
+        ).status_code
+        == 200
+    )
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    discord.table_signups.return_value = [
+        {"name": name, "players": []} for name in ("A", "B")
+    ]
+    closed = client.post(path + "/close", headers=headers)
+    assert closed.status_code == 200
+    if review:
+        assert closed.json()["status"] == "review"
+        assert (
+            client.post(path + "/assignments/approve", headers=headers).json()["status"]
+            == "assigned"
+        )
+    else:
+        assert closed.json()["status"] == "assigned"
+    sent = [
+        call.args[1]
+        for call in discord.send_announcement.call_args_list
+        if call.args[1].get("embeds")
+    ]
+    assert sent
+    assert any(
+        "Test Player 003" in field["value"]
+        for payload in sent
+        for embed in payload["embeds"]
+        for field in embed["fields"]
+    )
+    assert all(
+        user.isdecimal()
+        for payload in sent
+        for user in payload["allowed_mentions"]["users"]
+    )
+    assert all("<@test-" not in payload["content"] for payload in sent)

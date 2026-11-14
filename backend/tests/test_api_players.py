@@ -292,6 +292,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
 
     headers, event, path, _ = closing_event(client)
     assert client.get("/api/settings/assignment").json() == {
+        "create_discord_event": True,
         "show_open_signup_players": True,
         "review_assignments_before_discord": False,
         "dm_waitlist_promotions": True,
@@ -496,6 +497,7 @@ def test_add_known_player_after_assignment_updates_discord_without_redrawing(
         for row in client.get(path + "/signups").json()
         for player in row["players"]
     )
+    assert client.put(target, headers=headers, json=body).status_code == 200
     assert client.put(target, headers=headers, json=body).status_code == 409
     with DBSession(engine) as db:
         db.add(

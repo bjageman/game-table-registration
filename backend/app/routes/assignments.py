@@ -53,7 +53,7 @@ def register(context: ApplicationContext) -> None:
                 db.commit()
         approve(engine, event_id, destination(request).discord_channel_id)
         try:
-            deliver_event(engine, scoped_discord(request), event_id)
+            deliver_event(engine, scoped_discord(request), event_id, limit=10)
         except Exception:
             # The durable queue continues delivery after a transient failure.
             logging.getLogger(__name__).exception(
@@ -78,7 +78,7 @@ def register(context: ApplicationContext) -> None:
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
             run = db.get(LotteryRun, event_id)
-            if event.status != "assigned" or run is None:
+            if event.status not in ("assigned", "review") or run is None:
                 raise HTTPException(409, "Placements have not been determined yet")
             if event.archived_at is not None:
                 raise HTTPException(409, "Archived events cannot be announced again")
@@ -89,6 +89,8 @@ def register(context: ApplicationContext) -> None:
                 )
                 .limit(1)
             )
+            if event.status == "review" and existing is None:
+                raise HTTPException(409, "Approve assignments before retrying delivery")
             creating = existing is None
             announcement_channel = (
                 event.channel_id or destination(request).discord_channel_id
