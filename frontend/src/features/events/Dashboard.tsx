@@ -174,10 +174,12 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
             slotProps={{ htmlInput: { "aria-label": "Search events" }, input: {
               startAdornment: <InputAdornment position="start"><Search size={18} aria-hidden="true" /></InputAdornment>,
             } }} />
-          <button id="events-sort-button" type="button" className="event-icon-action" aria-label="Sort events" title="Sort Events"
+          <button id="events-sort-button" type="button" className="event-icon-action" aria-label="Sort events"
+            title={`${sortOptions.find((option) => option.value === sort.field)?.label}: ${sort.descending ? "Descending" : "Ascending"}`}
+            aria-description={`${sortOptions.find((option) => option.value === sort.field)?.label}, ${sort.descending ? "descending" : "ascending"}`}
             aria-haspopup="menu" aria-expanded={Boolean(sortAnchor)} aria-controls={sortAnchor ? "event-sort-menu" : undefined}
             onClick={(event) => setSortAnchor(event.currentTarget)}>
-            <ArrowDownWideNarrow size={18} aria-hidden="true" />
+            {sort.descending ? <ArrowDownWideNarrow size={18} aria-hidden="true" /> : <ArrowUpWideNarrow size={18} aria-hidden="true" />}
           </button>
           <button id="events-download-all-button" type="button" className="event-icon-action" aria-label="Download all event signups" title="Download All Event Signups"
             disabled={exporting || loading || Boolean(error)} onClick={() => {
