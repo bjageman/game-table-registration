@@ -16,6 +16,9 @@ body {
   min-width: 320px;
 }
 .loading-indicator { display: inline-flex; align-items: center; gap: 12px; }
+.profile-save-feedback { flex-shrink: 0; font-size: 0.875rem; }
+.profile-save-feedback .loading-indicator { gap: 6px; }
+.profile-save-feedback .loader { width: 36px; }
 .loader {
   display: inline-block;
   flex: none;
@@ -621,7 +624,7 @@ dd {
 .profile-weight-edit > div { flex: 1; min-width: 0; margin: 0; }
 .player-lookup-table { overflow-x: auto; }
 .player-lookup-columns,
-.player-lookup-item { min-width: 554px; display: grid; grid-template-columns: 68px minmax(130px, 1fr) minmax(130px, 1fr) 80px 90px; align-items: center; gap: 12px; }
+.player-lookup-item { min-width: 696px; display: grid; grid-template-columns: 68px minmax(130px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr) 80px 90px; align-items: center; gap: 12px; }
 .player-lookup-columns { padding: 0 4px 8px; color: #52665a; font-size: 0.875rem; font-weight: 650; }
 .player-lookup-sort { min-width: 0; display: inline-flex; align-items: center; justify-content: flex-start; gap: 3px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; white-space: nowrap; }
 .player-lookup-sort svg { flex: none; }
@@ -633,7 +636,8 @@ dd {
 .player-lookup-item { width: 100%; padding: 12px 4px; text-align: left; border: 0; background: transparent; }
 .player-lookup-star { display: grid; place-items: center; color: #a27618; }
 .player-lookup-username,
-.player-lookup-display-name { min-width: 0; overflow-wrap: anywhere; }
+.player-lookup-display-name,
+.player-lookup-partner { min-width: 0; overflow-wrap: anywhere; }
 .player-lookup-weight { text-align: center; font-variant-numeric: tabular-nums; color: #52665a; }
 .player-lookup-test { display: flex; }
 /* Reserve room for floating labels and keep spacing independent of field type. */

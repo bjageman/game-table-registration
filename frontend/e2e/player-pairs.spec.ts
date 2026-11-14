@@ -23,6 +23,8 @@ test("pairs players reciprocally after confirming replacement of an existing pai
     return route.fulfill({ json: { profile: profile(id) } });
   });
   await page.goto("/#/players");
+  await expect(page.getByRole("button", { name: "Sort by Linked Player" })).toBeVisible();
+  await expect(page.locator("#player-open-1 .player-lookup-partner")).toHaveText("Bob");
   await page.locator("#player-open-1").click();
   await expect(page.getByRole("combobox", { name: "Linked Player" })).toHaveValue("Bob");
   await page.getByRole("combobox", { name: "Linked Player" }).fill("Carol");
@@ -33,6 +35,8 @@ test("pairs players reciprocally after confirming replacement of an existing pai
   await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Linked Player" })).toHaveValue("Carol");
   await page.getByRole("button", { name: "Close player information" }).click();
+  await expect(page.locator("#player-open-1 .player-lookup-partner")).toHaveText("Carol");
+  await expect(page.locator("#player-open-2 .player-lookup-partner")).toHaveText("—");
   await page.locator("#player-open-3").click();
   await expect(page.getByRole("combobox", { name: "Linked Player" })).toHaveValue("Alice");
 });

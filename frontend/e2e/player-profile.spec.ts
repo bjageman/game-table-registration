@@ -24,7 +24,10 @@ test("edits a persistent player profile inside the event modal", async ({ page }
   await expect(profile.getByLabel("Global Weighting")).toHaveValue("1");
   await profile.getByLabel("Display Name", { exact: true }).fill("Mary Smith");
   await profile.getByLabel("Display Name", { exact: true }).blur();
-  await expect(profile.getByRole("status")).toHaveText("Display name saved.");
+  const saving = profile.locator(".player-profile-header").getByRole("status");
+  await expect(saving).toHaveText("Saving…");
+  await expect(saving).toHaveCount(0);
+  await expect(profile.getByText("Display name saved.", { exact: true })).toHaveCount(0);
   await profile.getByRole("button", { name: "Close player information" }).click();
   await expect(page.getByRole("dialog", { name: "Game Night", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Mary Smith", exact: true })).toBeFocused();
@@ -63,7 +66,7 @@ test("test profile fields have space for labels and guarantees use selected tabl
   await profile.getByLabel("Display Name").fill("Volunteer");
   await profile.getByLabel("Global Weighting").fill("2.5");
   await profile.getByLabel("Global Weighting").blur();
-  await expect(profile.getByRole("status")).toHaveText("Global weighting saved.");
+  await expect(profile.getByRole("status").filter({ hasText: "Global weighting saved." })).toBeVisible();
   expect(saved.guaranteed_seat).toBe(true);
   expect(saved.weighting).toBe(2.5);
 });

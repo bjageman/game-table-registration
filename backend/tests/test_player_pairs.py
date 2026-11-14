@@ -40,6 +40,9 @@ def test_links_are_reciprocal_and_replacement_requires_confirmation(client):
     save_profiles(client, headers)
     assert link(client, headers, "1", "2").json()["profile"]["partner"]["id"] == "2"
     assert client.get("/api/players/2").json()["partner"]["id"] == "1"
+    lookup = {p["discord_id"]: p for p in client.get("/api/players").json()}
+    assert lookup["1"]["partner"] == {"id": "2", "name": "Name 2"}
+    assert lookup["2"]["partner"] == {"id": "1", "name": "Name 1"}
     assert link(client, headers, "3", "4").status_code == 200
     needs_confirmation = link(client, headers, "1", "3").json()
     assert needs_confirmation["confirmation_required"]

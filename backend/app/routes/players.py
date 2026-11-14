@@ -16,6 +16,16 @@ def register(context: ApplicationContext) -> None:
     router = APIRouter()
     engine = context.engine
 
+    def partner_data(partner: PlayerProfile | None) -> dict[str, str] | None:
+        return (
+            {
+                "id": partner.discord_id,
+                "name": partner.real_name or partner.discord_name,
+            }
+            if partner
+            else None
+        )
+
     def profile_data(
         db: DBSession,
         request: Request,
@@ -29,14 +39,7 @@ def register(context: ApplicationContext) -> None:
             if profile and profile.partner_id
             else None
         )
-        result["partner"] = (
-            {
-                "id": partner.discord_id,
-                "name": partner.real_name or partner.discord_name,
-            }
-            if partner
-            else None
-        )
+        result["partner"] = partner_data(partner)
         return result
 
     def known_players(db: DBSession, request: Request) -> dict[str, dict[str, Any]]:
@@ -48,9 +51,18 @@ def register(context: ApplicationContext) -> None:
             else Event.organization_id.is_(None)
             & (Event.created_by == request.state.user_id),
         )
-        found = {
-            p.discord_id: context.player_data(p.discord_id, p)
+        profiles = {
+            p.discord_id: p
             for p in db.scalars(select(PlayerProfile).where(*scope.filters()))
+        }
+        found = {
+            pid: {
+                **context.player_data(pid, p),
+                "partner": partner_data(profiles.get(p.partner_id))
+                if p.partner_id
+                else None,
+            }
+            for pid, p in profiles.items()
         }
         for player_id, name in db.execute(
             select(TableSignup.discord_id, TableSignup.discord_name)

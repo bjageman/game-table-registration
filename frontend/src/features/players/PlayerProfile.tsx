@@ -30,6 +30,9 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
   const failed = useRef(false);
   const closing = useRef(false);
   const pairingBusy = useRef(false);
+  const pendingNames = useRef(0);
+  const nameFeedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [nameSaveFeedback, setNameSaveFeedback] = useState(false);
   const [profile, setProfile] = useState<Profile>();
   const [realName, setRealName] = useState("");
   const [weighting, setWeighting] = useState("5");
@@ -40,6 +43,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
   const [notice, setNotice] = useState("");
   const [attempt, setAttempt] = useState(0);
   const dialog = useDialog();
+  useEffect(() => () => clearTimeout(nameFeedbackTimer.current), []);
   useEffect(() => {
     const controller = new AbortController();
     api<Profile>(`/players/${encodeURIComponent(player.id)}?signup_name=${encodeURIComponent(player.name)}`, { signal: controller.signal })
@@ -53,10 +57,15 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
       .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
     return () => controller.abort();
   }, [player.id, player.name, attempt, onAccessError]);
-  function saveChange(change: ProfileChange, message: string): Promise<void> {
+  function saveChange(change: ProfileChange, message = ""): Promise<void> {
     Object.assign(submitted.current, change);
     pending.current += 1;
     setSaving(true); setError(""); setNotice("");
+    if (change.real_name !== undefined) {
+      pendingNames.current += 1;
+      clearTimeout(nameFeedbackTimer.current);
+      setNameSaveFeedback(true);
+    }
     const task = saveQueue.current.then(async () => {
       try {
         const updated = await api<Profile>(`/players/${encodeURIComponent(player.id)}`, {
@@ -79,6 +88,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
         setNotice(message);
         onSaved?.();
       } catch (failure) {
+        if (change.real_name !== undefined && pendingNames.current === 1) setNameSaveFeedback(false);
         failed.current = true;
         const current = profileRef.current;
         if (current) {
@@ -88,6 +98,10 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
         }
         if (!onAccessError(failure)) setError(errorMessage(failure));
       } finally {
+        if (change.real_name !== undefined) {
+          pendingNames.current -= 1;
+          if (pendingNames.current === 0) nameFeedbackTimer.current = setTimeout(() => setNameSaveFeedback(false), 1500);
+        }
         pending.current -= 1;
         if (pending.current === 0) setSaving(false);
       }
@@ -97,7 +111,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
   }
   function saveName() {
     if (profileRef.current && realName !== submitted.current.real_name) {
-      void saveChange({ real_name: realName }, "Display name saved.");
+      void saveChange({ real_name: realName });
     }
   }
   function saveGuarantee() {
@@ -147,6 +161,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
     }}>
     <ModalHeader className="player-profile-header">
       <h2 id={heading}>Player Information</h2>
+      {nameSaveFeedback && <span className="profile-save-feedback"><LoadingIndicator label="Saving…" /></span>}
       {profile?.is_test && <span className="badge">Test User</span>}
       <button id={`player-profile-close-${player.id}`} type="button" aria-label="Close player information" title="Close" onClick={() => void close()} autoFocus><X size={18} aria-hidden="true" /></button>
     </ModalHeader>
