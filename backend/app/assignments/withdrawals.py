@@ -473,14 +473,9 @@ def manager_add(
             return False
         if player_id in current["assignments"]:
             return False
-        if (
-            not waitlisted
-            and db.get(EventWithdrawal, (event_id, player_id)) is not None
-        ):
-            return False
         profile = player_scope_for_event(event).get(db, player_id)
         known = result_players(db, run)
-        if not waitlisted and profile is None:
+        if not waitlisted and profile is None and player_id not in known:
             return False
         if player_id not in known:
             assert profile is not None
@@ -500,6 +495,11 @@ def manager_add(
                 override.choices = [table_name]
                 override.removed = False
             known[player_id] = {"id": player_id, "name": profile.discord_name}
+        previous_withdrawal = db.get(EventWithdrawal, (event_id, player_id))
+        assigned_at = max(
+            time.time(),
+            previous_withdrawal.withdrawn_at + 0.000001 if previous_withdrawal else 0,
+        )
         assignment = db.get(EventManualAssignment, (event_id, player_id))
         if assignment is None:
             db.add(
@@ -507,12 +507,12 @@ def manager_add(
                     event_id=event_id,
                     discord_id=player_id,
                     table_name=table_name,
-                    assigned_at=time.time(),
+                    assigned_at=assigned_at,
                 )
             )
         else:
             assignment.table_name = table_name
-            assignment.assigned_at = time.time()
+            assignment.assigned_at = assigned_at
         set_removed(db, event_id, player_id, table_name, False)
         queue_member(db, event, player_id)
         if event.status == "assigned":
@@ -528,7 +528,7 @@ def manager_add(
                 event,
                 f"{name} has been {action} to **{clean(table_name)}**.",
                 [player_id],
-                nonce_key=f"{event_id}:manager-add:{player_id}",
+                nonce_key=f"{event_id}:manager-add:{player_id}:{assigned_at}",
                 created_at=time.time(),
             )
         if was_waitlisted:
