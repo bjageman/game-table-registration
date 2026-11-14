@@ -137,12 +137,12 @@ it("opens the organization name in an edit modal and saves it", async () => {
   });
   vi.stubGlobal("fetch", fetchMock);
   render(<OrganizationSettings csrf="csrf" userId="owner" onSaved={onSaved} onAccessError={() => false} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Edit", exact: true }));
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
   const dialog = screen.getByRole("dialog", { name: "Edit organization" });
   const name = within(dialog).getByRole("textbox", { name: "Organization name" });
   expect(name).toHaveValue("Friday Crew");
   fireEvent.change(name, { target: { value: "New Crew" } });
-  fireEvent.click(within(dialog).getByRole("button", { name: "Save", exact: true }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
   await waitFor(() => expect(dialog).not.toBeInTheDocument());
   expect(screen.getByRole("heading", { name: "New Crew" })).toBeVisible();
   expect(onSaved).toHaveBeenCalledOnce();

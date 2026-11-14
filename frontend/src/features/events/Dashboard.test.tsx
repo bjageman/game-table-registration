@@ -137,7 +137,7 @@ it("confirms recurring event deletion and allows cancellation", async () => {
   )));
   vi.stubGlobal("fetch", fetchMock);
   render(<Dashboard {...props} />);
-  const trigger = await screen.findByRole("button", { name: "Delete", exact: true });
+  const trigger = await screen.findByRole("button", { name: "Delete" });
   fireEvent.click(trigger);
   let dialog = screen.getByRole("dialog", { name: "Delete recurring event?" });
   expect(dialog).toHaveTextContent("Are you sure you want to delete Weekly games?");
