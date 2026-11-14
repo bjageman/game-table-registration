@@ -250,7 +250,7 @@ def register(context: ApplicationContext) -> None:
                 select(Event).where(Event.id == event_id, *event_scope(request))
             )
             if not event:
-                raise HTTPException(404, "Event not found")
+                raise HTTPException(409, "Only unpublished drafts can be edited.")
             if event.status == "scheduled" and (
                 body.opens_before_hours is None
                 or body.starts_at.timestamp() - body.opens_before_hours * 3600

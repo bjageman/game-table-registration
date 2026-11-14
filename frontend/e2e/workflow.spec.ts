@@ -345,7 +345,7 @@ test("edits a draft and requires confirmation before deleting it", async ({
   await expect(page.getByLabel(/^Capacity/).first()).toHaveValue("15");
   await page.getByLabel(/Event title/).fill("Saturday games");
   await page.getByLabel(/^Capacity/).first().fill("123");
-  await page.getByRole("button", { name: "Draft", exact: true }).click();
+  await page.getByRole("button", { name: "Save Changes", exact: true }).click();
   await expect(
     page.getByRole("button", { name: /^Saturday games/ }),
   ).toBeVisible();
