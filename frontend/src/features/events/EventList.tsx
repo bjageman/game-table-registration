@@ -121,7 +121,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
           {!readOnly && event.status === "assigned" && <ShareEvent eventId={event.id} csrf={actions.csrf} onAccessError={actions.onAccessError} />}
           {!readOnly && event.status === "assigned" && event.archived_at && <DeleteDiscordMessages event={event} csrf={actions.csrf} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />}
           {!readOnly && (event.status === "draft" || event.status === "scheduled") && <PublishEvent event={event} {...actions} />}
-          {!readOnly && (event.status === "draft" || event.status === "scheduled" || event.status === "open") && (
+          {!readOnly && (event.status === "draft" || event.status === "scheduled" || event.status === "open" || event.status === "review") && (
             <>
                 <EventActions
                   event={event}

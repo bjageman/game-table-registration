@@ -131,6 +131,17 @@ def test_review_blocks_mutations_and_public_bypasses(client):
     client.app.state.discord.send_announcement.assert_not_called()
 
 
+def test_review_can_be_deleted_without_publishing_or_changing_weights(client):
+    headers, event, path = prepared(client)
+    assert client.post(path + "/close", headers=headers).json()["status"] == "review"
+    assert client.delete(path, headers=headers).status_code == 204
+    with Session(client.app.state.engine) as db:
+        assert db.get(Event, event["id"]) is None
+        assert db.get(LotteryRun, event["id"]) is None
+        assert list(db.scalars(select(PlayerProfile))) == []
+    client.app.state.discord.send_announcement.assert_not_called()
+
+
 def test_approval_scope_and_missing_result_are_checked(client):
     headers, event, path = prepared(client)
     assert (

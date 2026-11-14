@@ -32,6 +32,7 @@ test("reviews a saved draw before confirming its publication to Discord", async 
   await page.getByRole("button", { name: "Close Signups", exact: true }).click();
   const review = page.locator("#event-dialog-event");
   await expect(review.getByText("Awaiting review", { exact: true })).toBeVisible();
+  await expect(review.getByRole("button", { name: "Delete signup", exact: true })).toBeVisible();
   await expect(review).toBeVisible();
   await expect(page.getByText("Alice", { exact: true })).toBeVisible();
   await expect(page.getByRole("list", { name: "Waitlist for Table A" })).toHaveText("Bob");
