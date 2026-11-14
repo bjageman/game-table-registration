@@ -83,7 +83,7 @@ def apply_manager_signups(
     )
     removed = {override.discord_id for override in overrides if override.removed}
     additions = {
-        override.discord_id: override for override in overrides if not override.removed
+        override.discord_id: override for override in overrides if override.choices
     }
     by_table = {row["name"]: row for row in rows}
     for row in rows:
@@ -116,7 +116,7 @@ def apply_manager_players(
     for override in overrides:
         if override.removed:
             by_id.pop(override.discord_id, None)
-        elif override.choices:
+        if override.choices:
             player = by_id.setdefault(
                 override.discord_id,
                 {

@@ -258,7 +258,7 @@ def register(context: ApplicationContext) -> None:
 
     @router.delete("/api/events/{event_id}/manager-players/{player_id}")
     def remove_manager_player(
-        event_id: str, player_id: str, request: Request
+        event_id: str, player_id: str, request: Request, table: str | None = None
     ) -> dict[str, Any]:
         authenticated(request, True)
         valid_player_id(player_id)
@@ -271,6 +271,15 @@ def register(context: ApplicationContext) -> None:
             if not manager_remove(engine, assigned_guild, event_id, player_id):
                 raise HTTPException(409, "Player is not currently assigned")
             return {"ok": True}
+        remaining = []
+        signup_name = ""
+        if table is not None:
+            for row in event_signups(event_id, request):
+                for player in row["players"]:
+                    if player["id"] == player_id:
+                        signup_name = player["name"]
+                        if row["name"] != table:
+                            remaining.append(row["name"])
         with DBSession(engine) as db:
             claimed = db.execute(
                 update(Event)
@@ -298,6 +307,8 @@ def register(context: ApplicationContext) -> None:
             else:
                 override.choices = []
                 override.removed = True
+            override.choices = remaining
+            override.discord_name = signup_name or override.discord_name
             if event.signup_mode in ("custom", "reactions"):
                 signup = db.get(TableSignup, (event_id, player_id))
                 if signup is not None:
