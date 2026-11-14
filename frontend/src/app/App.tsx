@@ -192,7 +192,7 @@ export default function App() {
         )}
         {auth.kind === "signed-out" && (
           <section id="sign-in-panel" className="panel sign-in" aria-labelledby="sign-in-heading">
-            <h2 id="sign-in-heading">Bring Everyone to the Table.</h2>
+            <h2 id="sign-in-heading">Login Required</h2>
             {auth.configured ? (
               <a id="discord-login-button" className="button primary" href="/api/auth/login">
                 Log in with Discord
