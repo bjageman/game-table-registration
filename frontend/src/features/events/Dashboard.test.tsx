@@ -64,7 +64,7 @@ it("offers PDF and CSV downloads for assigned events", async () => {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([{ ...draft, status: "assigned" }]))));
   render(<Dashboard {...props} />);
-  expect(await screen.findByRole("button", { name: "Download all event signups" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Download all event signups" })).not.toBeInTheDocument();
   fireEvent.click(await screen.findByRole("button", { name: /^Friday games/ }));
   fireEvent.click(screen.getByRole("button", { name: "Download event signups" }));
   expect(screen.getByRole("dialog", { name: "Download signups for Friday games" })).toBeVisible();
