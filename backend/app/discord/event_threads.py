@@ -166,3 +166,10 @@ def synchronize_due(
             logging.getLogger(__name__).exception(
                 "Could not synchronize event thread %s", event_id
             )
+
+
+def delete_event_thread(event: Event, discord: DiscordAPI) -> None:
+    """Shared thread cleanup; keep the saved ID if Discord deletion fails."""
+    if event.update_thread_id:
+        discord.delete_thread(event.update_thread_id)
+        event.update_thread_id = None
