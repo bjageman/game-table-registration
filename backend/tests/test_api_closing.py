@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DBSession
 
 
 def test_close_signups_assigns_once_and_replays_saved_results(client):
-    from app.lottery import assign
+    from app.assignments.lottery import assign
     from app.models import LotteryRun
 
     headers, event, path, _ = closing_event(client)
@@ -134,7 +134,7 @@ def test_concurrent_close_only_one_worker_claims_the_event(client):
 
 
 def test_expired_close_claim_can_be_recovered(client):
-    from app.closing import LEASE_SECONDS
+    from app.assignments.closing import LEASE_SECONDS
     from app.models import Event
 
     headers, event, path, _ = closing_event(client)

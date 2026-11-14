@@ -504,7 +504,7 @@ def test_organization_connection_is_independent_of_personal_and_other_orgs(clien
 def test_server_list_skips_inaccessible_servers_but_reports_discord_outages(
     client, discord_status
 ):
-    from app.discord_api import DiscordRequestError
+    from app.discord.discord_api import DiscordRequestError
 
     login(client)
     discord = client.app.state.discord

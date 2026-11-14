@@ -10,21 +10,21 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
-from app.event_scheduling import event_values, serialize_series, series_values
+from app.events.event_scheduling import event_values, serialize_series, series_values
+from app.events.publication import publish_event as publish_event_service
+from app.events.recurrence import fill_schedule
+from app.events.signup_warnings import settings as warning_settings
 from app.models import (
     CanceledOccurrence,
     Event,
     EventTemplate,
     RecurringSeries,
 )
-from app.publication import publish_event as publish_event_service
-from app.recurrence import fill_schedule
 from app.schemas import (
     EventInput,
     EventTemplateInput,
     RecurringInput,
 )
-from app.signup_warnings import settings as warning_settings
 
 
 def register(context: ApplicationContext) -> None:

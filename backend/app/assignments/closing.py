@@ -10,19 +10,21 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.assignment_finalization import finalize
-from app.assignment_preferences import for_event as assignment_preferences_for_event
-from app.discord_api import DiscordAPI
-from app.lottery import VERSION, GuaranteeConflict, assign
+from app.assignments.assignment_finalization import finalize
+from app.assignments.lottery import VERSION, GuaranteeConflict, assign
+from app.discord.discord_api import DiscordAPI
+from app.events.signups import apply_manager_players
+from app.events.signups import players as signup_players
 from app.models import (
     Event,
     EventPlayerSetting,
     LotteryRun,
     PlayerProfile,
 )
-from app.player_profiles import for_event as player_scope_for_event
-from app.signups import apply_manager_players
-from app.signups import players as signup_players
+from app.players.player_profiles import for_event as player_scope_for_event
+from app.settings.assignment_preferences import (
+    for_event as assignment_preferences_for_event,
+)
 
 LEASE_SECONDS = 120
 

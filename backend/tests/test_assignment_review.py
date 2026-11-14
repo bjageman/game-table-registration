@@ -8,8 +8,9 @@ from flow_helpers import closing_event, closing_message, set_assignment_review
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.announcements import dispatch_due, payloads
-from app.closing import close_and_assign
+from app.assignments.closing import close_and_assign
+from app.assignments.withdrawals import current_result
+from app.discord.announcements import dispatch_due, payloads
 from app.models import (
     Announcement,
     AssignmentPreference,
@@ -17,7 +18,6 @@ from app.models import (
     LotteryRun,
     PlayerProfile,
 )
-from app.withdrawals import current_result
 
 
 def prepared(client, *, default_scope=False):

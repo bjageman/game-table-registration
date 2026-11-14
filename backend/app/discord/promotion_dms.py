@@ -9,10 +9,10 @@ import uuid
 from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.assignment_preferences import for_event
-from app.discord_api import DiscordAPI, DiscordRequestError
-from app.discord_format import clean
+from app.discord.discord_api import DiscordAPI, DiscordRequestError
+from app.discord.discord_format import clean
 from app.models import Event, LotteryRun, PromotionDM
+from app.settings.assignment_preferences import for_event
 
 logger = logging.getLogger(__name__)
 BUTTON_PREFIX = "promotion:withdraw:"
@@ -82,7 +82,7 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
 
 
 def _eligible(db: Session, notice: PromotionDM) -> bool:
-    from app.withdrawals import current_result
+    from app.assignments.withdrawals import current_result
 
     event = db.get(Event, notice.event_id)
     if (
@@ -272,7 +272,7 @@ def withdraw(
     engine: Engine, notice_id: str, user_id: str, channel_id: str, message_id: str
 ) -> str:
     """Only the intended recipient may relinquish a current, future seat."""
-    from app.withdrawals import withdraw_seat
+    from app.assignments.withdrawals import withdraw_seat
 
     with Session(engine) as db:
         notice = db.get(PromotionDM, notice_id)

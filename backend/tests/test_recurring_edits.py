@@ -6,8 +6,8 @@ from unittest.mock import patch
 from flow_helpers import event_body, login
 from sqlalchemy.orm import Session
 
+from app.events.recurrence import fill_schedule
 from app.models import Event, RecurringSeries
-from app.recurrence import fill_schedule
 
 
 def setup_schedule(client):
@@ -120,7 +120,7 @@ def test_occurrence_becomes_individual_when_signup_open_time_arrives(client):
     # Exercise the same publication service as the worker at the exact opening time.
     from app.config import Settings
     from app.context import ApplicationContext
-    from app.publication import publish_event
+    from app.events.publication import publish_event
 
     context = ApplicationContext(
         client.app,
@@ -129,7 +129,9 @@ def test_occurrence_becomes_individual_when_signup_open_time_arrives(client):
         ),
         client.app.state.engine,
     )
-    with patch("app.publication.time.time", return_value=first["scheduled_publish_at"]):
+    with patch(
+        "app.events.publication.time.time", return_value=first["scheduled_publish_at"]
+    ):
         result = publish_event(
             context, first["id"], client.app.state.discord, "scheduled"
         )

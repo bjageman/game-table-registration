@@ -32,7 +32,7 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         if p.get("guaranteed_table") and p["guaranteed_table"] not in p["choices"]:
             raise ValueError("Guaranteed table must be one of the player's choices")
 
-    from app.paired_lottery import active_pairs, assign_pairs
+    from app.assignments.paired_lottery import active_pairs, assign_pairs
 
     if active_pairs(snapshot):
         return assign_pairs(snapshot, seed)

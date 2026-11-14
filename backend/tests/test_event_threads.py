@@ -7,11 +7,12 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.announcements import deliver_event
 from app.config import Settings
-from app.discord_api import DiscordAPI, DiscordRequestError
-from app.event_threads import queue_member, synchronize_event
-from app.gateway import SignupGateway
+from app.discord.announcements import deliver_event
+from app.discord.discord_api import DiscordAPI, DiscordRequestError
+from app.discord.event_threads import queue_member, synchronize_event
+from app.discord.gateway import SignupGateway
+from app.discord.reactions import change
 from app.models import (
     Announcement,
     AssignmentPreference,
@@ -20,7 +21,6 @@ from app.models import (
     EventThreadMember,
     TableSignup,
 )
-from app.reactions import change
 
 
 @pytest.fixture

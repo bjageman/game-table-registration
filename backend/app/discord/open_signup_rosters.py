@@ -10,13 +10,18 @@ from typing import Any
 from sqlalchemy import Engine, case, exists, literal, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.assignment_preferences import for_event
-from app.discord_api import DiscordAPI, DiscordRequestError
-from app.discord_format import clean, paginate_fields, split_field_lines, table_field
+from app.discord.discord_api import DiscordAPI, DiscordRequestError
+from app.discord.discord_format import (
+    clean,
+    paginate_fields,
+    split_field_lines,
+    table_field,
+)
+from app.discord.signup_messages import signup_body
+from app.events.signups import apply_manager_signups, table_rows
+from app.events.test_signups import add_to_rows
 from app.models import AssignmentPreference, Event
-from app.signup_messages import signup_body
-from app.signups import apply_manager_signups, table_rows
-from app.test_signups import add_to_rows
+from app.settings.assignment_preferences import for_event
 
 INTERVAL = 30
 MAX_EDITS_PER_PASS = 10

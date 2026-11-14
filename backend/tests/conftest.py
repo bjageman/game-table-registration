@@ -55,7 +55,7 @@ def promotion_db(tmp_path):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
-    from app.lottery import VERSION
+    from app.assignments.lottery import VERSION
     from app.models import Announcement, AssignmentPreference, Event, LotteryRun
 
     engine = create_engine(

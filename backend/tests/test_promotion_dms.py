@@ -9,8 +9,9 @@ from promotion_helpers import discord_client, queued
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import promotion_dms, withdrawals
-from app.discord_api import DiscordRequestError
+from app.assignments import withdrawals
+from app.discord import promotion_dms
+from app.discord.discord_api import DiscordRequestError
 from app.models import (
     AssignmentPreference,
     Event,

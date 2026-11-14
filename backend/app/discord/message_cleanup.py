@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
-from app.discord_api import DiscordRequestError
+from app.discord.discord_api import DiscordRequestError
 from app.models import (
     Announcement,
     Event,

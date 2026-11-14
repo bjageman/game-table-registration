@@ -9,9 +9,10 @@ import pytest
 from promotion_helpers import discord_client, queued
 from sqlalchemy.orm import Session
 
-from app import promotion_dms, withdrawals
+from app.assignments import withdrawals
 from app.config import Settings
-from app.gateway import SignupGateway
+from app.discord import promotion_dms
+from app.discord.gateway import SignupGateway
 from app.models import EventWithdrawal, LotteryRun
 
 

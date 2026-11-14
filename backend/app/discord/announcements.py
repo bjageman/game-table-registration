@@ -11,19 +11,19 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.assignment_preferences import announce_changes
-from app.discord_api import DiscordAPI, DiscordRequestError
-from app.discord_format import (
+from app.discord.discord_api import DiscordAPI, DiscordRequestError
+from app.discord.discord_format import (
     TABLE_FIELD_CONTENT_LIMIT,
     clean,
     event_embed,
     paginate_fields,
     table_field,
 )
-from app.event_description import signup_description, signup_location
-from app.event_threads import update_channel
+from app.discord.event_threads import update_channel
+from app.events.event_description import signup_description, signup_location
+from app.events.signup_warnings import can_send as can_send_warning
 from app.models import Announcement, Event, LotteryRun
-from app.signup_warnings import can_send as can_send_warning
+from app.settings.assignment_preferences import announce_changes
 
 
 def payloads(
@@ -219,7 +219,7 @@ def refresh_assignment_posts(
     engine: Engine, discord: DiscordAPI, event_id: str
 ) -> str | None:
     """Replace tracked assignment rosters with current saved placements."""
-    from app.withdrawals import current_result
+    from app.assignments.withdrawals import current_result
 
     with Session(engine) as db:
         event = db.get(Event, event_id)

@@ -11,9 +11,9 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy.orm import object_session
 
-from app.assignment_preferences import scope_key
 from app.config import Settings
-from app.discord_api import DiscordAPI
+from app.discord.discord_api import DiscordAPI
+from app.events.signup_warnings import settings as warning_settings
 from app.models import (
     Event,
     EventPlayerSetting,
@@ -24,10 +24,10 @@ from app.models import (
     Session,
     UserSettings,
 )
-from app.player_profiles import PlayerScope
-from app.player_profiles import for_event as player_scope_for_event
+from app.players.player_profiles import PlayerScope
+from app.players.player_profiles import for_event as player_scope_for_event
 from app.security import digest
-from app.signup_warnings import settings as warning_settings
+from app.settings.assignment_preferences import scope_key
 
 
 @dataclass
@@ -197,8 +197,8 @@ class ApplicationContext:
     def serialize(self, event: Event) -> dict[str, Any]:
         warnings: list[str] = []
         if event.status in ("review", "assigned") and event.close_pairs:
+            from app.assignments.withdrawals import current_result
             from app.models import LotteryRun
-            from app.withdrawals import current_result
 
             db = object_session(event)
             run = db.get(LotteryRun, event.id) if db else None

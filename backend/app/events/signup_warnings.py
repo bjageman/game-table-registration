@@ -8,7 +8,7 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.discord_format import clean
+from app.discord.discord_format import clean
 from app.models import Announcement, Event
 
 DEFAULT_WARNING_MESSAGE = "Signups close soon! Don't forget to sign up."

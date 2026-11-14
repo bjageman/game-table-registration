@@ -8,8 +8,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.assignment_preferences import for_event
-from app.discord_api import DiscordAPI
+from app.discord.discord_api import DiscordAPI
 from app.models import (
     Announcement,
     Event,
@@ -19,6 +18,7 @@ from app.models import (
     LotteryRun,
     TableSignup,
 )
+from app.settings.assignment_preferences import for_event
 
 
 def enabled(db: Session, event: Event) -> bool:

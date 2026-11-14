@@ -5,15 +5,15 @@ import time
 from sqlalchemy import Engine, update
 from sqlalchemy.orm import Session
 
-from app.announcements import enqueue_refresh
-from app.event_threads import queue_member
+from app.assignments.withdrawals import current_result, result_players
+from app.discord.announcements import enqueue_refresh
+from app.discord.event_threads import queue_member
 from app.models import (
     Event,
     EventWaitlistAddition,
     LotteryRun,
 )
-from app.player_profiles import for_event as player_scope_for_event
-from app.withdrawals import current_result, result_players
+from app.players.player_profiles import for_event as player_scope_for_event
 
 
 def add_player(

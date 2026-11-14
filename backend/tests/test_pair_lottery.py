@@ -6,7 +6,7 @@ from copy import deepcopy
 
 import pytest
 
-from app.lottery import assign
+from app.assignments.lottery import assign
 
 
 def draw(choices, capacities, **fields):

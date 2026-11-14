@@ -224,7 +224,7 @@ def test_archive_preserves_assignments_and_discord_and_is_idempotent(client):
 
 
 def test_close_can_delete_signup_message_and_archive_can_delete_announcements(client):
-    from app.announcements import dispatch_due
+    from app.discord.announcements import dispatch_due
 
     headers, event, path, _ = closing_event(client)
     client.app.state.discord.poll_message.return_value = closing_message()
@@ -266,8 +266,8 @@ def test_close_can_delete_signup_message_and_archive_can_delete_announcements(cl
 
 @pytest.mark.parametrize("status", [403, 429, 500])
 def test_thread_deletion_failure_preserves_archive_and_message_cleanup(client, status):
-    from app.announcements import dispatch_due
-    from app.discord_api import DiscordRequestError
+    from app.discord.announcements import dispatch_due
+    from app.discord.discord_api import DiscordRequestError
     from app.models import Event
 
     headers, event, path, _ = closing_event(client)
@@ -299,8 +299,8 @@ def test_thread_deletion_failure_preserves_archive_and_message_cleanup(client, s
 
 
 def test_failed_archive_discord_cleanup_can_be_retried(client):
-    from app.announcements import dispatch_due
-    from app.discord_api import DiscordRequestError
+    from app.discord.announcements import dispatch_due
+    from app.discord.discord_api import DiscordRequestError
 
     headers, event, path, _ = closing_event(client)
     client.app.state.discord.poll_message.return_value = closing_message()
@@ -342,8 +342,8 @@ def test_failed_archive_discord_cleanup_can_be_retried(client):
 
 
 def test_archive_cleanup_respects_rate_limit_and_resumes_after_plain_archive(client):
-    from app.announcements import dispatch_due
-    from app.discord_api import DiscordRequestError
+    from app.discord.announcements import dispatch_due
+    from app.discord.discord_api import DiscordRequestError
     from app.models import Announcement
 
     headers, event, path, _ = closing_event(client)
@@ -392,7 +392,7 @@ def test_archive_cleanup_respects_rate_limit_and_resumes_after_plain_archive(cli
 
 
 def test_discord_cleanup_can_start_after_event_was_archived_without_it(client):
-    from app.announcements import dispatch_due
+    from app.discord.announcements import dispatch_due
 
     headers, event, path, _ = closing_event(client)
     client.app.state.discord.poll_message.return_value = closing_message()
@@ -410,7 +410,7 @@ def test_discord_cleanup_can_start_after_event_was_archived_without_it(client):
 
 
 def test_archive_cleanup_waits_for_queued_announcements(client):
-    from app.announcements import dispatch_due
+    from app.discord.announcements import dispatch_due
 
     headers, event, path, _ = closing_event(client)
     client.app.state.discord.poll_message.return_value = closing_message()
@@ -483,7 +483,7 @@ def test_delete_open_event_handles_all_tracked_roster_messages(client, delete_po
 
 
 def test_partial_roster_cleanup_failure_retains_event_for_retry(client):
-    from app.discord_api import DiscordRequestError
+    from app.discord.discord_api import DiscordRequestError
     from app.models import Event
 
     headers = login(client)

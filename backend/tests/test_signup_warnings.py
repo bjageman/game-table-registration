@@ -8,10 +8,10 @@ from flow_helpers import closing_event, closing_message, event_body, login
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.announcements import dispatch_due
-from app.discord_api import DiscordRequestError
+from app.discord.announcements import dispatch_due
+from app.discord.discord_api import DiscordRequestError
+from app.events.signup_warnings import DEFAULT_WARNING_MESSAGE, enqueue_due
 from app.models import Announcement, Event
-from app.signup_warnings import DEFAULT_WARNING_MESSAGE, enqueue_due
 
 
 def due_event(client, message=""):
@@ -246,7 +246,7 @@ def test_warning_cleanup_finishes_when_its_thread_has_already_been_deleted(clien
 
 
 def test_backed_off_warning_does_not_block_automatic_assignment_delivery(client):
-    from app.closing import close_and_assign
+    from app.assignments.closing import close_and_assign
 
     _, event, path = due_event(client)
     enqueue_due(client.app.state.engine)

@@ -10,13 +10,29 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
-from app.announcements import (
+from app.assignments.closing import close_and_assign
+from app.assignments.waitlists import add_player as add_waitlist_player
+from app.assignments.withdrawals import current_result, manager_add, manager_remove
+from app.context import ApplicationContext
+from app.discord.announcements import (
     deliver_event,
 )
-from app.closing import close_and_assign
-from app.context import ApplicationContext
-from app.event_threads import queue_member
-from app.message_cleanup import remove_signup_message as remove_signup_message_service
+from app.discord.event_threads import queue_member
+from app.discord.message_cleanup import (
+    remove_signup_message as remove_signup_message_service,
+)
+from app.events.publication import mark_signup_closed
+from app.events.signup_exports import event_csv, event_pdf, summary_csv
+from app.events.signups import apply_manager_signups, table_rows
+from app.events.test_signups import (
+    add_to_rows,
+)
+from app.events.test_signups import (
+    allowed as test_users_allowed,
+)
+from app.events.test_signups import (
+    generate as generate_test_users,
+)
 from app.models import (
     Event,
     EventManagerSignup,
@@ -25,28 +41,14 @@ from app.models import (
     PlayerProfile,
     TableSignup,
 )
-from app.player_profiles import for_event as player_scope_for_event
-from app.player_profiles import remember_poll_players
-from app.publication import mark_signup_closed
+from app.players.player_profiles import for_event as player_scope_for_event
+from app.players.player_profiles import remember_poll_players
 from app.schemas import (
     AssignedAddInput,
     EventPlayerSettingInput,
     ManagerSignupInput,
     TestPopulationInput,
 )
-from app.signup_exports import event_csv, event_pdf, summary_csv
-from app.signups import apply_manager_signups, table_rows
-from app.test_signups import (
-    add_to_rows,
-)
-from app.test_signups import (
-    allowed as test_users_allowed,
-)
-from app.test_signups import (
-    generate as generate_test_users,
-)
-from app.waitlists import add_player as add_waitlist_player
-from app.withdrawals import current_result, manager_add, manager_remove
 
 
 def register(context: ApplicationContext) -> None:

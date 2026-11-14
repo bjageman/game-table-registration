@@ -3,9 +3,9 @@ from unittest.mock import Mock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.announcements import deliver_event, enqueue, payloads
-from app.discord_format import TABLE_FIELD_SPACER
-from app.event_description import REACTION_DESCRIPTION, signup_embed
+from app.discord.announcements import deliver_event, enqueue, payloads
+from app.discord.discord_format import TABLE_FIELD_SPACER
+from app.events.event_description import REACTION_DESCRIPTION, signup_embed
 from app.models import Announcement, Base, Event
 
 
@@ -159,7 +159,7 @@ def test_expired_delivery_claim_reconciles_the_existing_message(tmp_path):
 
 
 def test_multipart_retry_keeps_already_sent_parts(tmp_path):
-    from app.discord_api import DiscordRequestError
+    from app.discord.discord_api import DiscordRequestError
 
     engine = create_engine(f"sqlite:///{tmp_path}/parts.db")
     Base.metadata.create_all(engine)
@@ -259,7 +259,7 @@ def test_two_deliverers_cannot_post_the_same_pending_part(tmp_path):
 
 
 def test_long_event_details_do_not_overflow_assignment_embeds():
-    from app.discord_format import embed_length
+    from app.discord.discord_format import embed_length
 
     tables = []
     all_players = []

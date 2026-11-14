@@ -7,10 +7,10 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.events.recurrence import occurrence
+from app.events.signup_warnings import settings as warning_settings
 from app.models import Event, RecurringSeries
-from app.recurrence import occurrence
 from app.schemas import EventInput, RecurringInput
-from app.signup_warnings import settings as warning_settings
 
 
 def event_values(body: EventInput) -> dict[str, Any]:

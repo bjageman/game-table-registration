@@ -17,7 +17,7 @@ from app.models import Base
 
 @pytest.mark.parametrize("offset", [24, None])
 def test_signup_deadline_is_relative_to_event_or_open_ended(client, offset):
-    from app import reactions
+    from app.discord import reactions
 
     headers = login(client)
     body = {**event_body(), "duration_hours": 0, "closes_before_hours": offset}
@@ -294,8 +294,8 @@ def test_signup_endpoint_is_authorized_and_scoped_to_guild(client):
 
 
 def test_reaction_promotion_notice_has_no_table_update_heading(client):
+    from app.assignments.withdrawals import withdraw
     from app.models import Announcement
-    from app.withdrawals import withdraw
 
     headers, event, path, _ = closing_event(client)
     assert (
@@ -410,7 +410,7 @@ def test_table_change_notices_can_be_disabled_and_enabled(client):
         == 200
     )
     before = client.app.state.discord.send_announcement.call_count
-    from app.announcements import deliver_event
+    from app.discord.announcements import deliver_event
 
     deliver_event(
         client.app.state.engine, client.app.state.discord, event["id"], limit=5
@@ -425,8 +425,8 @@ def test_table_change_notices_can_be_disabled_and_enabled(client):
 
 
 def test_assignment_changes_refresh_existing_discord_message_with_retry(client):
-    from app.announcements import dispatch_due
-    from app.discord_api import DiscordRequestError
+    from app.discord.announcements import dispatch_due
+    from app.discord.discord_api import DiscordRequestError
     from app.models import Announcement
 
     headers, event, path, _ = closing_event(client)
@@ -522,7 +522,7 @@ def test_assignment_changes_refresh_existing_discord_message_with_retry(client):
 
 
 def test_optional_open_signup_rosters_publish_refresh_and_restore(client):
-    from app.open_signup_rosters import synchronize_due
+    from app.discord.open_signup_rosters import synchronize_due
 
     headers = login(client)
     settings = {

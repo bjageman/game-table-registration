@@ -8,8 +8,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.events.signup_warnings import settings as warning_settings
 from app.models import CanceledOccurrence, Event, RecurringSeries
-from app.signup_warnings import settings as warning_settings
 
 
 def occurrence(series: RecurringSeries, index: int) -> float | None:

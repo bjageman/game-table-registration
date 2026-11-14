@@ -6,8 +6,6 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import update
 from sqlalchemy.orm import Session as DBSession
 
-from app.assignment_preferences import for_scope
-from app.assignment_preferences import scope_key as assignment_scope_key
 from app.context import ApplicationContext
 from app.models import (
     AssignmentPreference,
@@ -16,6 +14,8 @@ from app.models import (
 from app.schemas import (
     AssignmentSettingsInput,
 )
+from app.settings.assignment_preferences import for_scope
+from app.settings.assignment_preferences import scope_key as assignment_scope_key
 
 
 def register(context: ApplicationContext) -> None:

@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
-from app.event_description import REACTION_DESCRIPTION
-from app.reactions import publication as reaction_publication
-from app.signups import publication as custom_publication
+from app.discord.reactions import publication as reaction_publication
+from app.events.event_description import REACTION_DESCRIPTION
+from app.events.signups import publication as custom_publication
 
 
 def event(description: str):

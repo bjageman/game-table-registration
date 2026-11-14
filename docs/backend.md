@@ -58,11 +58,18 @@ Discord signup messages use a rich embed ordered as title, description, then dat
 `app/main.py` composes the application. API paths and request schemas remain stable as features move into smaller modules:
 
 - `app/routes/` groups HTTP endpoints by authentication, organizations, preferences, players, events, signups, assignments, and cleanup.
+- `app/events/` owns publication, signup selections, recurring schedules, closing warnings, descriptions, and exports.
+- `app/assignments/` owns lottery algorithms, closing/finalization, withdrawals, promotions, and waitlist changes.
+- `app/discord/` owns the Discord API client, Gateway listener, message formatting/delivery/cleanup, reaction synchronization, rosters, threads, and promotion DMs.
+- `app/players/` owns organization-scoped player profile and pairing operations.
+- `app/settings/` owns assignment preferences and Discord connection settings.
 - `app/context.py` supplies shared request authorization, destination scoping, database access, and serialization. Read endpoints use `scoped_event`; mutations retain their atomic SQL guards.
-- `app/schemas.py` contains validated request bodies; `app/security.py` contains token hashing.
-- `app/lifecycle.py` owns startup and the synchronization worker. `app/publication.py` and `app/message_cleanup.py` hold shared publication and cleanup operations.
-- `app/signup_messages.py` renders signup posts consistently for initial publication and roster refreshes. `app/discord_format.py` packs signup and assignment fields using the complete embed size and notification limits.
-- `app/lottery.py` contains the weighted assignment algorithm. `app/closing.py` freezes its inputs, generates and saves the seed, and commits the draw exactly once.
+- `app/lifecycle.py` owns startup and the synchronization worker. `app/main.py` composes the application.
+- `app/models.py`, `app/schemas.py`, `app/config.py`, `app/branding.py`, and `app/security.py` contain shared database definitions, request bodies, configuration, branding, and token hashing.
+
+Package initializers are intentionally small. Import a service from its owning module, for example `from app.assignments.lottery import assign`, rather than re-exporting services through `app/__init__.py`.
+
+See [the duplication review](code-sharing-review.md) for candidates for further shared functions and components.
 
 API integration tests live in `backend/tests/test_api_*.py`, with the shared client fixture in `conftest.py` and workflow setup in `flow_helpers.py`. Run individual feature files or the full suite with `uv run pytest`.
 

@@ -4,10 +4,10 @@ from flow_helpers import login
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.assignment_preferences import DEFAULTS, for_event
-from app.event_threads import enabled as threads_enabled
+from app.assignments.withdrawals import manager_remove
+from app.discord.event_threads import enabled as threads_enabled
 from app.models import AssignmentPreference, Event, PromotionDM
-from app.withdrawals import manager_remove
+from app.settings.assignment_preferences import DEFAULTS, for_event
 
 
 def test_new_user_and_organization_defaults_and_explicit_opt_outs(client):

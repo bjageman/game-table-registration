@@ -8,10 +8,10 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.discord_format import clean
-from app.event_threads import queue_member
+from app.discord.discord_format import clean
+from app.discord.event_threads import queue_member
+from app.discord.signup_messages import signup_body
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
-from app.signup_messages import signup_body
 
 
 def publication(

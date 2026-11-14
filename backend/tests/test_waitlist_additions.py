@@ -8,7 +8,14 @@ from flow_helpers import closing_event, closing_message
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.announcements import payloads
+from app.assignments.waitlists import add_player
+from app.assignments.withdrawals import (
+    current_result,
+    manager_add,
+    manager_remove,
+    withdraw,
+)
+from app.discord.announcements import payloads
 from app.models import (
     Announcement,
     AssignmentPreference,
@@ -17,8 +24,6 @@ from app.models import (
     PlayerProfile,
     PromotionDM,
 )
-from app.waitlists import add_player
-from app.withdrawals import current_result, manager_add, manager_remove, withdraw
 
 
 def profile(engine, player_id="4"):

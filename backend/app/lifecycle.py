@@ -14,23 +14,23 @@ from fastapi import FastAPI, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
-from app.announcements import (
+from app.assignments.closing import close_and_assign
+from app.context import ApplicationContext
+from app.discord.announcements import (
     dispatch_due,
 )
-from app.closing import close_and_assign
-from app.context import ApplicationContext
-from app.event_threads import synchronize_due as synchronize_threads
-from app.gateway import SignupGateway
+from app.discord.event_threads import synchronize_due as synchronize_threads
+from app.discord.gateway import SignupGateway
+from app.discord.open_signup_rosters import synchronize_due as synchronize_open_rosters
+from app.discord.promotion_dms import dispatch_due as dispatch_promotion_dms
+from app.events.publication import mark_signup_closed
+from app.events.publication import publish_event as publish_event_service
+from app.events.recurrence import fill_schedule
+from app.events.signup_warnings import enqueue_due as enqueue_signup_warnings
 from app.models import (
     Event,
     RecurringSeries,
 )
-from app.open_signup_rosters import synchronize_due as synchronize_open_rosters
-from app.promotion_dms import dispatch_due as dispatch_promotion_dms
-from app.publication import mark_signup_closed
-from app.publication import publish_event as publish_event_service
-from app.recurrence import fill_schedule
-from app.signup_warnings import enqueue_due as enqueue_signup_warnings
 
 
 def application_lifespan(

@@ -7,8 +7,8 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.assignment_preferences import scope_key
 from app.models import Event, Organization, PlayerProfile, TableSignup, UserIdentity
+from app.settings.assignment_preferences import scope_key
 
 
 @dataclass(frozen=True)

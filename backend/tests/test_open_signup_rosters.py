@@ -5,7 +5,9 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.discord_api import DiscordRequestError
+from app.discord.discord_api import DiscordRequestError
+from app.discord.open_signup_rosters import base_embed, roster_pages, synchronize_due
+from app.discord.reactions import change
 from app.models import (
     AssignmentPreference,
     Base,
@@ -13,8 +15,6 @@ from app.models import (
     EventManagerSignup,
     TableSignup,
 )
-from app.open_signup_rosters import base_embed, roster_pages, synchronize_due
-from app.reactions import change
 
 
 @pytest.fixture
