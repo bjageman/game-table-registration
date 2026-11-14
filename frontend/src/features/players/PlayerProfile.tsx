@@ -117,14 +117,14 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
   }
   function saveGuarantee() {
     if (profileRef.current && guaranteedSeat !== submitted.current.guaranteed_seat) {
-      void saveChange({ guaranteed_seat: guaranteedSeat }, "Guaranteed seat saved.");
+      void saveChange({ guaranteed_seat: guaranteedSeat });
     }
   }
   function saveWeight(): boolean {
     if (!profileRef.current) return true;
     const entered = Number(weighting);
     const value = Math.min(10, Math.max(0.1, entered));
-    const message = entered > 10 ? "The maximum weight is 10. Weight set to 10." : entered < 0.1 ? "The minimum weight is 0.1. Weight set to 0.1." : "Global weighting saved.";
+    const message = entered > 10 ? "The maximum weight is 10. Weight set to 10." : entered < 0.1 ? "The minimum weight is 0.1. Weight set to 0.1." : "";
     if (!weighting.trim() || !Number.isFinite(entered)) {
       setError("Choose a weighting from 0.1 to 10.");
       return false;
@@ -189,7 +189,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
           onSaved?.();
         }} />
       <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat} disabled={readOnly}
-        onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }, "Guaranteed seat saved."); }} />} />
+        onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }); }} />} />
       </FormFields>
 
     </div>}
