@@ -87,12 +87,22 @@ def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         allocated: Allocation,
         visited: set[tuple[str, ...]],
         locked: set[tuple[str, ...]],
+        allow_split_existing: bool,
     ) -> Allocation | None:
         if group in visited:
             return None
         visited.add(group)
+        previous = allocated.get(group)
         for option in options[group]:
-            if allocated.get(group) == option:
+            if previous == option:
+                continue
+            if (
+                not allow_split_existing
+                and previous is not None
+                and len(group) == 2
+                and previous[0] == previous[1]
+                and option[0] != option[1]
+            ):
                 continue
             trial = {**allocated, group: option}
             while True:
@@ -117,7 +127,9 @@ def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
                         or full not in trial.get(occupant, ())
                     ):
                         continue
-                    moved = place(occupant, trial, visited, locked | {group})
+                    moved = place(
+                        occupant, trial, visited, locked | {group}, allow_split_existing
+                    )
                     if moved is not None:
                         trial = moved
                         break
@@ -128,7 +140,11 @@ def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
     allocated: Allocation = {}
     conflicts = []
     for group in groups:
-        placed = place(group, allocated, set(), set())
+        # Exhaust alternatives that preserve already-seated pairs first. A full
+        # preferred table must not split a pair when another choice has room.
+        placed = place(group, allocated, set(), set(), False)
+        if placed is None:
+            placed = place(group, allocated, set(), set(), True)
         if placed is not None:
             allocated = placed
         elif guaranteed(group):

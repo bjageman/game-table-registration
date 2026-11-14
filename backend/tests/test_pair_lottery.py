@@ -131,3 +131,28 @@ def test_pair_guarantee_conflict_does_not_abort_other_guaranteed_players():
     assert result["assignments"] == {"3": "A"}
     assert result["waitlist"] == ["1", "2"]
     assert result["pairing_warnings"]
+
+
+def test_later_player_uses_alternative_vacancy_without_splitting_a_seated_pair():
+    data = draw(
+        [["A", "C"], ["B", "C"], ["B", "C"]],
+        {"A": 1, "B": 1, "C": 2},
+        **{"1": {"weight": 10}, "2": {"weight": 10}, "3": {"weight": 0.1}},
+    )
+    for seed in map(str, range(40)):
+        result = assign(data, seed)
+        assert result["assignments"]["1"] == result["assignments"]["2"] == "C"
+        assert result["assignments"]["3"] == "B"
+
+
+def test_split_relocation_remains_available_when_no_pair_preserving_option_fits():
+    data = draw(
+        [["A", "C"], ["B", "C"], ["C"]],
+        {"A": 1, "B": 1, "C": 2},
+        **{"1": {"weight": 10}, "2": {"weight": 10}, "3": {"weight": 0.1}},
+    )
+    for seed in map(str, range(40)):
+        result = assign(data, seed)
+        assert set(result["assignments"]) == {"1", "2", "3"}
+        assert result["assignments"]["3"] == "C"
+        assert result["assignments"]["1"] != result["assignments"]["2"]

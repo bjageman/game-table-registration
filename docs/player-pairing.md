@@ -18,7 +18,7 @@ Links are frozen when closing signups begins and saved in the draw snapshot. Cha
 - Either member's guaranteed-seat flag extends to the pair for that draw, without changing the other member's profile. Guaranteed pairs cannot automatically split across tables.
 - Conflicting table guarantees or insufficient capacity for a guaranteed pair leave both members waitlisted and show an organizer alert. Existing individual guarantees are honored before attempting inherited pair guarantees. An organizer resolves the pair conflict with manual edits; it does not abort everyone else's draw.
 
-The paired allocator uses deterministic augmenting placements, keeps previously accepted groups seated, and bounds exploration by visiting each group once per insertion. Draws with no active pairs retain the existing individual matching algorithm. The saved seed, snapshot, and algorithm version allow replay.
+The paired allocator uses deterministic augmenting placements and keeps previously accepted groups seated. Each insertion first searches all choices without splitting an already-seated pair, then permits split relocations only if that search fails. Each group is visited once per search pass to bound exploration. Draws with no active pairs retain the existing individual matching algorithm. The saved seed, snapshot, and algorithm version allow replay.
 
 ## Automatic promotions
 
