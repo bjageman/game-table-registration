@@ -28,8 +28,8 @@ test("archives only after confirmation and keeps saved placements available", as
   await expect(page.getByRole("button", { name: /^Game Night/ })).toHaveCount(0);
   await page.getByRole("checkbox", { name: "Archived", exact: true }).check();
   await page.getByRole("button", { name: /^Game Night Archived/ }).click();
-  await expect(details.locator(".table-players").getByRole("button", { name: "Mary", exact: true })).toBeVisible();
-  await expect(details.locator(".table-waitlist").getByRole("button", { name: "Dan", exact: true })).toBeVisible();
+  await expect(details.locator(".table-players").getByText("Mary", { exact: true })).toBeVisible();
+  await expect(details.locator(".table-waitlist").getByText("Dan", { exact: true })).toBeVisible();
   await expect(details.getByRole("button", { name: "Archive event", exact: true })).toHaveCount(0);
   expect(archives).toBe(1);
   await page.reload();
