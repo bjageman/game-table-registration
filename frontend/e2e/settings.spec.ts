@@ -103,7 +103,7 @@ test("General settings are accessible after server authorization and persists it
   await page.goto("/#/settings");
   await expect(page.getByRole("link", { name: "Game Events", exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: "General", exact: true }).click();
-  const form = page.getByRole("form", { name: "Assignment settings" });
+  const form = page.getByRole("form", { name: "General settings" });
   const checkbox = form.getByLabel("Automatically Adjust Player Weights");
   await expect(checkbox).toBeChecked();
   await checkbox.uncheck();
