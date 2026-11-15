@@ -1,3 +1,4 @@
+import { pollWhileVisible } from "../../../lib/visiblePolling";
 import { formatTimestamp } from "../../../lib/timezone";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../lib/api";
@@ -13,19 +14,14 @@ export default function PublicEvent({ token }: { token: string }) {
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    let inFlight = false;
     async function refresh() {
-      if (inFlight) return;
-      inFlight = true;
       try {
         const result = await api<SharedEvent>(`/public/events/${encodeURIComponent(token)}`, { signal: controller.signal, cache: "no-store" });
         if (!controller.signal.aborted) { setEvent(result); setError(""); }
       } catch (failure) { if (!controller.signal.aborted) setError(errorMessage(failure)); }
-      finally { inFlight = false; }
     }
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 15000);
-    return () => { controller.abort(); window.clearInterval(timer); };
+    const stop = pollWhileVisible(refresh);
+    return () => { stop(); controller.abort(); };
   }, [token]);
   useEffect(() => { if (event) document.title = `${event.title} — Table assignments`; }, [event]);
   return <main id="public-event-page" className="public-event-page">

@@ -89,3 +89,10 @@ General → Timezone persists an IANA timezone for the selected organization or 
 The timezone preference adds a nullable column to assignment_preferences; run the normal Alembic upgrade to head before starting a backend without local automatic migrations.
 
 General → Send private messages for waitlist promotions lets an organizer opt into private bot notices when a waiting player receives a seat. It defaults off, follows the selected organization or personal scope, and is independent of Announce Table Changes on Discord. Each DM includes a Give up my seat button for the recipient to withdraw directly in Discord.
+
+Table rosters and public assignment pages poll every two seconds after the
+previous request completes. Pending Discord delivery checks run every second;
+other announcement checks run every 15 seconds. These use the shared
+`src/lib/visiblePolling.ts` helper, pause in hidden tabs, refresh immediately
+when the tab becomes visible, and never overlap requests. Event lists retain
+manual refresh. No SSE connection is opened.
