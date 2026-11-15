@@ -2,13 +2,19 @@
 
 import hashlib
 import logging
-import secrets
 import time
 import uuid
 
 from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.discord.delivery import (
+    claim_delivery,
+    complete_delivery,
+    delivery_is_uncertain,
+    resolve_message,
+    retry_delay,
+)
 from app.discord.discord_api import DiscordAPI, DiscordRequestError
 from app.discord.discord_format import clean
 from app.models import Event, LotteryRun, PromotionDM
@@ -105,7 +111,6 @@ def _eligible(db: Session, notice: PromotionDM) -> bool:
 
 def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
     now = time.time()
-    token = secrets.token_hex(16)
     with Session(engine) as db:
         notice = db.get(PromotionDM, notice_id)
         if (
@@ -116,23 +121,10 @@ def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
             return
         unknown = notice.unknown or notice.state == "sending"
         attempted_at = notice.attempted_at or now
-        changed = db.execute(
-            update(PromotionDM)
-            .where(
-                PromotionDM.id == notice_id,
-                PromotionDM.state.in_(["pending", "sending"]),
-                or_(PromotionDM.token.is_(None), PromotionDM.lease_until <= now),
-            )
-            .values(
-                state="sending",
-                token=token,
-                lease_until=now + 90,
-                attempts=PromotionDM.attempts + 1,
-                attempted_at=attempted_at,
-            )
-            .returning(PromotionDM.id)
-        ).scalar_one_or_none()
-        if changed is None:
+        token = claim_delivery(
+            db, PromotionDM, notice_id, now=now, attempted_at=attempted_at
+        )
+        if token is None:
             return
         db.refresh(notice)
         if not _eligible(db, notice):
@@ -165,8 +157,11 @@ def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
                 db.commit()
                 if not changed:
                     return
+        sending = not unknown
+        message_id = resolve_message(
+            discord, channel, body, attempted_at, unknown=unknown
+        )
         if unknown:
-            message_id = discord.find_announcement(channel, body, attempted_at)
             if message_id is None:
                 with Session(engine) as db:
                     db.execute(
@@ -188,35 +183,15 @@ def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
                     )
                     db.commit()
                 return
-        else:
-            sending = True
-            message_id = str(discord.send_announcement(channel, body)["id"])
         with Session(engine) as db:
-            db.execute(
-                update(PromotionDM)
-                .where(
-                    PromotionDM.id == notice_id,
-                    PromotionDM.token == token,
-                )
-                .values(
-                    state="sent",
-                    message_id=message_id,
-                    unknown=False,
-                    token=None,
-                    lease_until=None,
-                    error=None,
-                )
-            )
+            complete_delivery(db, PromotionDM, notice_id, token, message_id)
             db.commit()
     except Exception as error:
         status = (
             error.discord_status if isinstance(error, DiscordRequestError) else None
         )
-        ambiguous = unknown or (
-            sending and (not isinstance(error, DiscordRequestError) or error.ambiguous)
-        )
+        ambiguous = delivery_is_uncertain(error, unknown=unknown, sending=sending)
         terminal = status in (400, 403, 404) or attempts >= 8
-        retry_after = error.retry_after if isinstance(error, DiscordRequestError) else 0
         with Session(engine) as db:
             db.execute(
                 update(PromotionDM)
@@ -233,8 +208,7 @@ def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
                     unknown=ambiguous,
                     token=None,
                     lease_until=None,
-                    next_attempt=time.time()
-                    + max(retry_after, min(3600, 5 * 2 ** min(attempts, 10))),
+                    next_attempt=time.time() + retry_delay(error, attempts),
                     error=f"Private message delivery failed ({status or 'network'}).",
                 )
             )

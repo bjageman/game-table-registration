@@ -12,8 +12,8 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
+from app.discord.event_messages import EMOJIS, build_signup_message
 from app.discord.event_threads import queue_member
-from app.discord.signup_messages import EMOJIS, signup_body
 from app.models import Event, TableSignup
 
 GAP = (
@@ -122,7 +122,7 @@ def publication(
     event: Event, closes_at: float | None, include_roster: bool = True
 ) -> dict[str, Any]:
     return {
-        **signup_body(event, "reactions", closes_at, include_roster),
+        **build_signup_message(event, "reactions", closes_at, include_roster),
         "allowed_mentions": {"parse": []},
     }
 

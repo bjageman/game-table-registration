@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.discord.discord_format import clean
+from app.discord.event_messages import build_signup_message
 from app.discord.event_threads import queue_member
-from app.discord.signup_messages import signup_body
 from app.events.table_membership import filter_rows, removals
 from app.events.test_signups import add_to_rows
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
@@ -20,7 +20,7 @@ def publication(
     event: Event, closes_at: float, include_roster: bool = True
 ) -> dict[str, Any]:
     return {
-        **signup_body(event, "custom", closes_at, include_roster),
+        **build_signup_message(event, "custom", closes_at, include_roster),
         "allowed_mentions": {"parse": []},
         "components": [
             {

@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.assignments.mutations import locked_assignment
 from app.assignments.notifications import enqueue_table_change
-from app.discord.announcements import enqueue_refresh
 from app.discord.discord_format import clean
+from app.discord.event_messages import enqueue_roster_refresh
 from app.discord.event_threads import queue_member
 from app.discord.promotion_dms import enqueue as enqueue_promotion_dm
 from app.events.table_membership import removals, set_removed
@@ -365,7 +365,7 @@ def withdraw_seat(
             channel_id=channel_id,
         )
     notify_promoted(db, event, run, promoted_ids)
-    enqueue_refresh(db, event)
+    enqueue_roster_refresh(db, event)
     return True
 
 
@@ -407,7 +407,7 @@ def manager_remove(
                 return False
             set_removed(db, event.id, player_id, table_name, True)
             if event.status == "assigned":
-                enqueue_refresh(db, event)
+                enqueue_roster_refresh(db, event)
             db.commit()
             return True
         removed_at = time.time()
@@ -441,7 +441,7 @@ def manager_remove(
         )
         notify_promoted(db, event, run, promoted_ids)
         if event.status == "assigned":
-            enqueue_refresh(db, event)
+            enqueue_roster_refresh(db, event)
         db.commit()
         return True
 
@@ -534,6 +534,6 @@ def manager_add(
         if was_waitlisted:
             notify_promoted(db, event, run, [player_id])
         if event.status == "assigned":
-            enqueue_refresh(db, event)
+            enqueue_roster_refresh(db, event)
         db.commit()
         return True

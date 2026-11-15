@@ -17,9 +17,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.closing import close_and_assign
 from app.context import ApplicationContext
-from app.discord.announcements import (
-    dispatch_due,
-)
+from app.discord.announcements import dispatch_due
 from app.discord.discord_api import DiscordAPI
 from app.discord.event_threads import synchronize_due as synchronize_threads
 from app.discord.gateway import SignupGateway

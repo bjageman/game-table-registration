@@ -14,8 +14,8 @@ from app.config import Settings
 from app.discord import promotion_dms, reactions
 from app.discord.announcements import deliver_event
 from app.discord.discord_api import DiscordAPI
+from app.discord.event_messages import EMOJIS
 from app.discord.event_threads import queue_member
-from app.discord.signup_messages import EMOJIS
 from app.events.signups import handle
 from app.models import Event
 

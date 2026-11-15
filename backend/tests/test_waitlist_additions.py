@@ -15,7 +15,7 @@ from app.assignments.withdrawals import (
     manager_remove,
     withdraw,
 )
-from app.discord.announcements import payloads
+from app.discord.event_messages import build_assignment_messages
 from app.models import (
     Announcement,
     AssignmentPreference,
@@ -64,7 +64,9 @@ def test_append_order_draw_preservation_and_promotion(promotion_db, method, play
         assert current["waitlist"] == ["2", "3", player_id]
         assert (run.snapshot, run.result) == original
         assert not list(db.scalars(select(PromotionDM)))
-        posts = payloads(db.get(Event, "event"), "channel", current, run.snapshot)
+        posts = build_assignment_messages(
+            db.get(Event, "event"), "channel", current, run.snapshot
+        )
         assert (
             "Late Player" in str(posts)
             if player_id.startswith("test-")

@@ -101,3 +101,5 @@ optional thread setup and notices, so a thread-starter retry cannot hold up the
 results. Thread creation requests delivery of its own starter explicitly.
 Discord REST calls share an application-owned HTTP pool, and request permission
 checks release their database connection before contacting Discord.
+
+Discord message code is grouped by responsibility: `discord/event_messages.py` builds signup and assignment payloads and queues roster messages; `discord/event_threads.py` owns neutral thread starters, thread creation, membership, and cleanup. `discord/delivery.py` shares atomic delivery leases, token-protected completion, uncertain-send reconciliation, and retry delays. Announcement dispatch and promotion DMs retain their own eligibility, privacy, and terminal-failure policies. Thread starters use these shared mechanics directly, avoiding a dependency on assignment dispatch.

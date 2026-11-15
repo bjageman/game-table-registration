@@ -14,10 +14,11 @@ from app.discord.discord_api import DiscordAPI, DiscordRequestError
 from app.discord.discord_format import (
     clean,
     paginate_fields,
+    player_reference,
     split_field_lines,
     table_field,
 )
-from app.discord.signup_messages import signup_body
+from app.discord.event_messages import build_signup_message
 from app.events.signups import signup_rows
 from app.models import AssignmentPreference, Event
 from app.settings.assignment_preferences import for_event
@@ -35,12 +36,18 @@ def digest(value: Any) -> str:
 
 def base_embed(event: Event) -> dict[str, Any]:
     return dict(
-        signup_body(event, event.signup_mode, event.closes_at, True)["embeds"][0]
+        build_signup_message(event, event.signup_mode, event.closes_at, True)["embeds"][
+            0
+        ]
     )
 
 
 def base_content(event: Event) -> str:
-    return str(signup_body(event, event.signup_mode, event.closes_at, False)["content"])
+    return str(
+        build_signup_message(event, event.signup_mode, event.closes_at, False)[
+            "content"
+        ]
+    )
 
 
 def roster_pages(
@@ -67,10 +74,7 @@ def roster_pages(
         players = by_table.get(table["name"], {})
         label = labels[index] if labels else clean(table["name"])
         heading = f"{label} ({len(players)}/{table['capacity']})"
-        lines = [
-            clean(players[pid]["name"]) if pid.startswith("test-") else f"<@{pid}>"
-            for pid in sorted(players)
-        ]
+        lines = [player_reference(players[pid]) for pid in sorted(players)]
         chunks = split_field_lines(lines or ["No players signed up yet."])
         fields.extend(
             table_field(heading if part == 0 else f"{heading} (continued)", value)

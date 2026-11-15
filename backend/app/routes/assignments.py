@@ -13,13 +13,11 @@ from sqlalchemy.orm import Session as DBSession
 from app.assignments.assignment_finalization import approve
 from app.assignments.withdrawals import current_result
 from app.context import ApplicationContext
-from app.discord.announcements import (
-    deliver_event,
-    enqueue,
-    enqueue_instructions,
-)
-from app.discord.announcements import (
-    status as announcement_status,
+from app.discord.announcements import deliver_event
+from app.discord.announcements import status as announcement_status
+from app.discord.event_messages import (
+    enqueue_assignment_messages,
+    enqueue_withdrawal_instructions,
 )
 from app.discord.message_cleanup import remove_signup_message
 from app.models import (
@@ -96,7 +94,7 @@ def register(context: ApplicationContext) -> None:
                 event.channel_id or destination(request).discord_channel_id
             )
             if creating:
-                enqueue(
+                enqueue_assignment_messages(
                     db,
                     event,
                     announcement_channel,
@@ -104,7 +102,7 @@ def register(context: ApplicationContext) -> None:
                     run.snapshot,
                 )
             else:
-                enqueue_instructions(db, event, announcement_channel)
+                enqueue_withdrawal_instructions(db, event, announcement_channel)
             rows = list(
                 db.scalars(
                     select(Announcement).where(
