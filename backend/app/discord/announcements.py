@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import Engine, func, or_, select, update
+from sqlalchemy import Engine, case, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.discord.discord_api import DiscordAPI, DiscordRequestError
@@ -26,6 +26,8 @@ from app.events.event_description import signup_description, signup_location
 from app.events.signup_warnings import can_send as can_send_warning
 from app.models import Announcement, DiscordScheduledEvent, Event, LotteryRun
 from app.settings.assignment_preferences import announce_changes
+
+PRIMARY_KINDS = ("assignment", "instructions", "refresh")
 
 
 def payloads(
@@ -321,7 +323,12 @@ def enqueue_instructions(
 
 
 def deliver_event(
-    engine: Engine, discord: DiscordAPI, event_id: str, limit: int = 1
+    engine: Engine,
+    discord: DiscordAPI,
+    event_id: str,
+    limit: int = 1,
+    *,
+    kind: str | None = None,
 ) -> None:
     for _ in range(limit):
         token = secrets.token_hex(16)
@@ -332,8 +339,12 @@ def deliver_event(
                 .where(
                     Announcement.event_id == event_id,
                     Announcement.state.in_(["pending", "sending"]),
+                    *([Announcement.kind == kind] if kind else []),
                 )
-                .order_by(Announcement.part)
+                .order_by(
+                    case((Announcement.kind.in_(PRIMARY_KINDS), 0), else_=1),
+                    Announcement.part,
+                )
                 .limit(1)
             )
             event = db.get(Event, event_id)
@@ -572,7 +583,15 @@ def deliver_event(
 def dispatch_due(engine: Engine, client_for: Callable[[str, str], DiscordAPI]) -> None:
     with Session(engine) as db:
         first = (
-            select(Announcement.event_id, func.min(Announcement.part).label("part"))
+            select(
+                Announcement.event_id,
+                func.coalesce(
+                    func.min(
+                        case((Announcement.kind.in_(PRIMARY_KINDS), Announcement.part))
+                    ),
+                    func.min(Announcement.part),
+                ).label("part"),
+            )
             .where(Announcement.state.in_(["pending", "sending"]))
             .group_by(Announcement.event_id)
             .subquery()

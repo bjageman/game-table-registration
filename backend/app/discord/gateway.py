@@ -121,8 +121,11 @@ class SignupGateway(discord.Client):
         await self.sync_reactions()
 
     async def on_disconnect(self) -> None:
-        async with self.reaction_lock:
-            await asyncio.to_thread(reactions.mark_gap, self.engine)
+        # Register before waiting for reaction writes so closing observes a
+        # disconnect that occurred while it was draining the pending backlog.
+        with reactions.reaction_queue(self.engine).connection_change():
+            async with self.reaction_lock:
+                await asyncio.to_thread(reactions.mark_gap, self.engine)
 
     async def sync_reactions(self) -> None:
         async with self.reaction_lock:
@@ -168,6 +171,28 @@ class SignupGateway(discord.Client):
         self, event: discord.RawReactionActionEvent, added: bool
     ) -> None:
         observed = time.time()
+        if event.guild_id is None or event.emoji.name not in EMOJIS:
+            await self._reaction_change(event, added, observed)
+            return
+        key = (str(event.guild_id), str(event.channel_id), str(event.message_id))
+        # Register before waiting for the async lock or doing any database work.
+        queue = reactions.reaction_queue(self.engine)
+        while True:
+            with queue.track(key) as accepted:
+                if accepted:
+                    try:
+                        await self._reaction_change(event, added, observed)
+                    except Exception:
+                        await asyncio.to_thread(reactions.mark_gap, self.engine)
+                        logger.exception("Could not read a table reaction")
+                    return
+            # Defer post-cutoff arrivals without blocking the event loop. If
+            # closing fails they still apply; after success the DB rejects them.
+            await queue.wait_until_open(key)
+
+    async def _reaction_change(
+        self, event: discord.RawReactionActionEvent, added: bool, observed: float
+    ) -> None:
         if event.guild_id is None or event.emoji.id is not None:
             return
         if self.user and event.user_id == self.user.id:
@@ -282,6 +307,29 @@ class SignupGateway(discord.Client):
         self, guild: int | None, channel: int, message: int, emoji: str | None
     ) -> None:
         observed = time.time()
+        key = (str(guild), str(channel), str(message))
+        queue = reactions.reaction_queue(self.engine)
+        while True:
+            with queue.track(key) as accepted:
+                if accepted:
+                    try:
+                        await self._clear_reactions(
+                            guild, channel, message, emoji, observed
+                        )
+                    except Exception:
+                        await asyncio.to_thread(reactions.mark_gap, self.engine)
+                        logger.exception("Could not clear table reactions")
+                    return
+            await queue.wait_until_open(key)
+
+    async def _clear_reactions(
+        self,
+        guild: int | None,
+        channel: int,
+        message: int,
+        emoji: str | None,
+        observed: float,
+    ) -> None:
         async with self.reaction_lock:
             event_id = await asyncio.to_thread(
                 reactions.event_for, self.engine, str(guild), str(channel), str(message)

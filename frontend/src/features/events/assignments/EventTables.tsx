@@ -34,6 +34,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   onRefreshingChange?: (refreshing: boolean) => void;
   onAccessError: (error: unknown) => boolean;
 }) {
+  const rosterReadOnly = readOnly || Boolean(event.archived_at);
   const [selectedPlayer, setSelectedPlayer] = useState<{ id: string; name: string }>();
   const [rows, setRows] = useState<TableSignups[]>();
   const [error, setError] = useState("");
@@ -51,8 +52,8 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   const [removing, setRemoving] = useState<{ player: SignupPlayer; willPromote: boolean; fromWaitlist?: boolean; table?: string }>();
   const [assigning, setAssigning] = useState<{ table: string; player: SignupPlayer }>();
   const addDialog = useDialog(Boolean(addingTable));
-  const canEditSignups = !readOnly && !event.archived_at && (event.status === "draft" || event.status === "scheduled" || event.status === "open" || event.status === "assigned" || event.status === "review");
-  const canRemoveSignups = !readOnly && (canEditSignups || event.status === "assigned");
+  const canEditSignups = !rosterReadOnly && !event.archived_at && (event.status === "draft" || event.status === "scheduled" || event.status === "open" || event.status === "assigned" || event.status === "review");
+  const canRemoveSignups = canEditSignups;
   const normalizedQuery = playerQuery.trim().toLocaleLowerCase();
   const suggestions = normalizedQuery ? availablePlayers.filter((player) =>
     matchesPlayer(player, normalizedQuery)
@@ -156,7 +157,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     return () => { stop(); controller.abort(); };
   }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, attempt, refreshToken, onAccessError, onRefreshingChange]);
   return <>
-    {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf} readOnly={readOnly}
+    {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf} readOnly={rosterReadOnly}
       onSaved={() => setAttempt((value) => value + 1)} onClose={() => setSelectedPlayer(undefined)} onAccessError={onAccessError} />}
     {addingTable && <dialog id={`event-add-player-dialog-${event.id}`} ref={addDialog} className="event-modal" aria-labelledby="add-player-heading"
       onCancel={(event) => { event.preventDefault(); closeAddPlayer(); }}
@@ -196,11 +197,11 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     </p>}
     {weightNotice && <p role="status" className="notice">{weightNotice}</p>}
     {actionError && !assigning && !addingTable && <p role="alert" className="error">{actionError}</p>}
-    <TableColumns event={event} rows={rows} error={error} onSelect={readOnly ? undefined : setSelectedPlayer}
+    <TableColumns event={event} rows={rows} error={error} onSelect={rosterReadOnly ? undefined : setSelectedPlayer}
       canEditSignups={canEditSignups} canRemoveSignups={canRemoveSignups} onAddPlayer={(table) => { setPlayersLoading(true); setActionError(""); setAddingToWaitlist(false); setAddingTable(table); }}
       onAddToWaitlist={(table) => { setPlayersLoading(true); setActionError(""); setAddingToWaitlist(true); setAddingTable(table); }} onRemovePlayer={(player, willPromote, fromWaitlist, table) => setRemoving({ player, willPromote, fromWaitlist, table })}
-      onAssignWaitlisted={!readOnly && (event.status === "assigned" || event.status === "review") ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}
-      editingWeight={editingWeight} weight={weight} saving={saving} readOnly={readOnly} onWeightChange={setWeight}
+      onAssignWaitlisted={canEditSignups && (event.status === "assigned" || event.status === "review") ? (player, table) => { setActionError(""); setAssigning({ player, table }); } : undefined}
+      editingWeight={editingWeight} weight={weight} saving={saving} readOnly={rosterReadOnly} onWeightChange={setWeight}
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 5)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
       onSaveWeight={(player) => {

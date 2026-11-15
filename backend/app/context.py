@@ -169,18 +169,18 @@ class ApplicationContext:
                 raise HTTPException(
                     409, "Choose a server and channel in Settings first."
                 )
-            discord = self.client_for(target)
-            if organization:
-                pass
-            elif saved and not require_channel:
-                discord.manager_context(session.user_id, target.discord_guild_id)
-            elif saved:
-                discord.authorize_destination(session.user_id)
-            else:
-                discord.authorize(session.user_id)
-            request.state.destination = target
-            request.state.discord = discord
-            return session
+        discord = self.client_for(target)
+        if organization:
+            pass
+        elif saved and not require_channel:
+            discord.manager_context(session.user_id, target.discord_guild_id)
+        elif saved:
+            discord.authorize_destination(session.user_id)
+        else:
+            discord.authorize(session.user_id)
+        request.state.destination = target
+        request.state.discord = discord
+        return session
 
     def serialize(self, event: Event) -> dict[str, Any]:
         from app.models import Announcement, DiscordScheduledEvent

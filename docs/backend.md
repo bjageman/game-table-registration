@@ -88,3 +88,16 @@ than the signup post, so signup controls and rosters do not become the thread's
 starter. This message uses the existing announcement outbox for safe retries
 and cleanup. Existing threads are preserved with their discussion history and
 retain their original starter. No schema migration is needed.
+
+Closing reaction signups now waits for already received Gateway actions for
+that signup message to finish saving before taking the draw snapshot. New
+actions arriving during closing wait for its outcome: closed events reject
+them, while a failed close lets them apply. A write failure, disconnect gap, or
+60-second backlog timeout prevents drawing. This coordination runs within the
+single API/Gateway process documented above.
+
+Assignment posts and their instructions/roster edits take precedence over
+optional thread setup and notices, so a thread-starter retry cannot hold up the
+results. Thread creation requests delivery of its own starter explicitly.
+Discord REST calls share an application-owned HTTP pool, and request permission
+checks release their database connection before contacting Discord.
