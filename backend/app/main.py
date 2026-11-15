@@ -9,7 +9,6 @@ from app.config import Settings
 from app.context import ApplicationContext
 from app.discord.discord_api import DiscordAPI
 from app.lifecycle import application_lifespan
-from app.live_updates import LiveUpdates
 from app.models import Event
 from app.routes import (
     assignments,
@@ -21,7 +20,6 @@ from app.routes import (
     preferences,
     signups,
 )
-from app.routes import live as live_routes
 from app.settings.connection_settings import register_settings
 
 
@@ -34,7 +32,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.router.lifespan_context = application_lifespan(
         context, auto_migrate=settings is None
     )
-    app.state.live_updates = LiveUpdates(engine)
     app.state.engine = engine
     app.state.discord = DiscordAPI(config)
 
@@ -62,7 +59,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     for feature in (
         auth,
-        live_routes,
         organizations,
         preferences,
         players,

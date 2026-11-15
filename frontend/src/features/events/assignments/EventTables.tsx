@@ -1,4 +1,4 @@
-import { subscribeLiveUpdates } from "../../../lib/liveUpdates";
+import { pollWhileVisible } from "../../../lib/visiblePolling";
 import { parseWeightInput } from "../../../lib/weightInput";
 import { matchesPlayer, type PlayerSummary } from "../../../lib/players";
 import useDialog from "../../../hooks/useDialog";
@@ -139,12 +139,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   }
   useEffect(() => {
     const controller = new AbortController();
-    let inFlight = false;
-    let refreshAgain = false;
     async function refresh() {
-      if (document.hidden || controller.signal.aborted) return;
-      if (inFlight) { refreshAgain = true; return; }
-      inFlight = true;
       onRefreshingChange?.(true);
       try {
         const result = await api<TableSignups[]>(`/events/${encodeURIComponent(event.id)}/signups`, { signal: controller.signal });
@@ -152,16 +147,13 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       } catch (failure) {
         if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure));
       } finally {
-        inFlight = false;
-        if (refreshAgain) { refreshAgain = false; void refresh(); }
         if (!controller.signal.aborted) {
           onRefreshingChange?.(false);
         }
       }
     }
-    void refresh();
-    const unsubscribe = subscribeLiveUpdates(() => void refresh());
-    return () => { unsubscribe(); controller.abort(); };
+    const stop = pollWhileVisible(refresh);
+    return () => { stop(); controller.abort(); };
   }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, attempt, refreshToken, onAccessError, onRefreshingChange]);
   return <>
     {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf} readOnly={readOnly}

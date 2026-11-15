@@ -1,4 +1,4 @@
-import { subscribeLiveUpdates } from "../../../lib/liveUpdates";
+import { pollWhileVisible } from "../../../lib/visiblePolling";
 import { formatTimestamp } from "../../../lib/timezone";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../lib/api";
@@ -14,21 +14,14 @@ export default function PublicEvent({ token }: { token: string }) {
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    let inFlight = false;
-    let refreshAgain = false;
     async function refresh() {
-      if (document.hidden || controller.signal.aborted) return;
-      if (inFlight) { refreshAgain = true; return; }
-      inFlight = true;
       try {
         const result = await api<SharedEvent>(`/public/events/${encodeURIComponent(token)}`, { signal: controller.signal, cache: "no-store" });
         if (!controller.signal.aborted) { setEvent(result); setError(""); }
       } catch (failure) { if (!controller.signal.aborted) setError(errorMessage(failure)); }
-      finally { inFlight = false; if (refreshAgain) { refreshAgain = false; void refresh(); } }
     }
-    void refresh();
-    const unsubscribe = subscribeLiveUpdates(() => void refresh(), `/api/public/live/${encodeURIComponent(token)}`);
-    return () => { unsubscribe(); controller.abort(); };
+    const stop = pollWhileVisible(refresh);
+    return () => { stop(); controller.abort(); };
   }, [token]);
   useEffect(() => { if (event) document.title = `${event.title} — Table assignments`; }, [event]);
   return <main id="public-event-page" className="public-event-page">

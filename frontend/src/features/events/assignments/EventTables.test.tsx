@@ -350,39 +350,6 @@ it.each(["draft", "scheduled", "open"])("removes only the selected table during 
   await waitFor(() => expect(screen.getAllByRole("button", { name: "Player" })).toHaveLength(1));
 });
 
-it("refreshes from SSE before polling and preserves changes received during a fetch", async () => {
-  vi.useFakeTimers();
-  class Source extends EventTarget {
-    static instance: Source;
-    onopen?: () => void;
-    onerror?: () => void;
-    close = vi.fn();
-    constructor() { super(); Source.instance = this; }
-  }
-  vi.stubGlobal("EventSource", Source);
-  let complete!: (response: Response) => void;
-  const fetch = vi.fn()
-    .mockImplementationOnce(() => new Promise<Response>((resolve) => { complete = resolve; }))
-    .mockResolvedValue(new Response(JSON.stringify([
-      { name: "Table A", players: [{ id: "1", name: "Mary" }] },
-      { name: "Table B", players: [] },
-    ])));
-  vi.stubGlobal("fetch", fetch);
-  const view = render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
-  Source.instance.onopen?.();
-  Source.instance.dispatchEvent(new Event("change"));
-  await act(async () => { await vi.advanceTimersByTimeAsync(150); });
-  expect(fetch).toHaveBeenCalledTimes(1);
-  await act(async () => {
-    complete(new Response(JSON.stringify([{ name: "Table A", players: [] }, { name: "Table B", players: [] }])));
-    await vi.advanceTimersByTimeAsync(0);
-  });
-  expect(fetch).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole("button", { name: "Mary" })).toBeVisible();
-  view.unmount();
-  expect(Source.instance.close).toHaveBeenCalledOnce();
-});
-
 it("keeps the weight limit notice when blur fires during a pending save", async () => {
   let finishSave!: (response: Response) => void;
   const fetchMock = vi.fn(async (_path: string, options?: RequestInit) => {

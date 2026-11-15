@@ -1,4 +1,4 @@
-import { subscribeLiveUpdates } from "../../../lib/liveUpdates";
+import { pollWhileVisible } from "../../../lib/visiblePolling";
 import { useEffect, useRef, useState } from "react";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import { api, errorMessage, mutationOptions, type EventRecord } from "../../../lib/api";
@@ -18,20 +18,15 @@ export default function ReviewAssignments({ event, csrf, readOnly, onUpdated, on
   useEffect(() => {
     if (!event.assignment_publication_pending) return;
     const controller = new AbortController();
-    let loading = false;
-    function refresh() {
-      if (loading || document.hidden) return;
-      loading = true;
-      api<EventRecord[]>("/events", { signal: controller.signal }).then((events) => {
+    const stop = pollWhileVisible(async () => {
+      await api<EventRecord[]>("/events", { signal: controller.signal }).then((events) => {
         if (controller.signal.aborted) return;
         const current = events.find((row) => row.id === event.id);
         if (current?.status === "assigned") onUpdated(current);
         else if (current?.assignment_publication_error) setError(`Assignments have not been posted to Discord. ${current.assignment_publication_error}`);
-      }).catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); }).finally(() => { loading = false; });
-    }
-    const timer = setInterval(refresh, 1000);
-    const unsubscribe = subscribeLiveUpdates(refresh);
-    return () => { unsubscribe(); controller.abort(); clearInterval(timer); };
+      }).catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    }, 1000);
+    return () => { stop(); controller.abort(); };
   }, [event.id, event.assignment_publication_pending, onUpdated, onAccessError]);
   async function approve() {
     if (inFlight.current) return;
