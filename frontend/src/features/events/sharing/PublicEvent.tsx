@@ -1,4 +1,3 @@
-import { subscribeLiveUpdates } from "../../../lib/liveUpdates";
 import { formatTimestamp } from "../../../lib/timezone";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../lib/api";
@@ -15,20 +14,18 @@ export default function PublicEvent({ token }: { token: string }) {
   useEffect(() => {
     const controller = new AbortController();
     let inFlight = false;
-    let refreshAgain = false;
     async function refresh() {
-      if (document.hidden || controller.signal.aborted) return;
-      if (inFlight) { refreshAgain = true; return; }
+      if (inFlight) return;
       inFlight = true;
       try {
         const result = await api<SharedEvent>(`/public/events/${encodeURIComponent(token)}`, { signal: controller.signal, cache: "no-store" });
         if (!controller.signal.aborted) { setEvent(result); setError(""); }
       } catch (failure) { if (!controller.signal.aborted) setError(errorMessage(failure)); }
-      finally { inFlight = false; if (refreshAgain) { refreshAgain = false; void refresh(); } }
+      finally { inFlight = false; }
     }
     void refresh();
-    const unsubscribe = subscribeLiveUpdates(() => void refresh(), `/api/public/live/${encodeURIComponent(token)}`);
-    return () => { unsubscribe(); controller.abort(); };
+    const timer = window.setInterval(() => void refresh(), 15000);
+    return () => { controller.abort(); window.clearInterval(timer); };
   }, [token]);
   useEffect(() => { if (event) document.title = `${event.title} — Table assignments`; }, [event]);
   return <main id="public-event-page" className="public-event-page">

@@ -1,4 +1,3 @@
-import { subscribeLiveUpdates } from "../../lib/liveUpdates";
 import { useTimezone, formatTimestamp } from "../../lib/timezone";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, RefreshCw, Search, Eye, Trash2, Pencil } from "lucide-react";
@@ -97,46 +96,26 @@ export default function Dashboard({ session, onAccessError }: DashboardProps) {
 
   useEffect(() => {
     const controller = new AbortController();
-    let inFlight = false;
-    let refreshAgain = false;
-    function refresh() {
-      if (document.hidden || controller.signal.aborted) return;
-      if (inFlight) { refreshAgain = true; return; }
-      inFlight = true;
-      api<EventRecord[]>("/events", { signal: controller.signal })
-        .then((value) => {
-          if (!controller.signal.aborted) setEvents(value);
-        })
-        .catch((failure) => {
-          if (!controller.signal.aborted && !onAccessError(failure))
-            setError(errorMessage(failure));
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
-          inFlight = false;
-          if (refreshAgain) { refreshAgain = false; refresh(); }
-        });
-    }
-    refresh();
-    const unsubscribe = subscribeLiveUpdates(refresh);
-    return () => { unsubscribe(); controller.abort(); };
+    api<EventRecord[]>("/events", { signal: controller.signal })
+      .then((value) => {
+        if (!controller.signal.aborted) setEvents(value);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted && !onAccessError(failure))
+          setError(errorMessage(failure));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
   }, [attempt, onAccessError]);
 
   useEffect(() => {
     const controller = new AbortController();
-    let inFlight = false;
-    let refreshAgain = false;
-    function refresh() {
-      if (document.hidden || controller.signal.aborted) return;
-      if (inFlight) { refreshAgain = true; return; }
-      inFlight = true;
-      api<RecurringSeriesRecord[]>("/recurring-series", { signal: controller.signal })
-        .then((rows) => { if (!controller.signal.aborted) setSeries(rows); })
-        .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); }).finally(() => { inFlight = false; if (refreshAgain) { refreshAgain = false; void refresh(); } });
-    }
-    refresh();
-    const unsubscribe = subscribeLiveUpdates(refresh);
-    return () => { unsubscribe(); controller.abort(); };
+    api<RecurringSeriesRecord[]>("/recurring-series", { signal: controller.signal })
+      .then((rows) => { if (!controller.signal.aborted) setSeries(rows); })
+      .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
+    return () => controller.abort();
   }, [attempt, onAccessError]);
 
   async function cancelScheduled(event: EventRecord) {
