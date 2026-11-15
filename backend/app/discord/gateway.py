@@ -17,6 +17,7 @@ from app.discord.discord_api import DiscordAPI
 from app.discord.event_threads import queue_member
 from app.discord.signup_messages import EMOJIS
 from app.events.signups import handle
+from app.live_updates import request_refresh
 from app.models import Event
 
 logger = logging.getLogger("uvicorn.error")
@@ -245,6 +246,16 @@ class SignupGateway(discord.Client):
     async def on_raw_poll_vote_add(
         self, payload: discord.RawPollVoteActionEvent
     ) -> None:
+        await self.poll_vote_change(payload, added=True)
+
+    async def on_raw_poll_vote_remove(
+        self, payload: discord.RawPollVoteActionEvent
+    ) -> None:
+        await self.poll_vote_change(payload, added=False)
+
+    async def poll_vote_change(
+        self, payload: discord.RawPollVoteActionEvent, *, added: bool
+    ) -> None:
         if payload.guild_id is None or (self.user and payload.user_id == self.user.id):
             return
 
@@ -262,7 +273,9 @@ class SignupGateway(discord.Client):
                     .with_for_update()
                 )
                 if event and (event.closes_at is None or event.closes_at > time.time()):
-                    queue_member(db, event, str(payload.user_id))
+                    if added:
+                        queue_member(db, event, str(payload.user_id))
+                    request_refresh(db)
                     db.commit()
 
         try:

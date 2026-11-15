@@ -151,3 +151,42 @@ it("opens the organization name in an edit modal and saves it", async () => {
     headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }),
   }));
 });
+
+it("requires confirmation to leave an organization and keeps failures in the dialog", async () => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  let attempts = 0;
+  let left = false;
+  const onSaved = vi.fn(async () => {});
+  vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/organizations") return new Response(JSON.stringify({
+      selected_id: left ? null : "org",
+      organizations: left ? [] : [{ id: "org", name: "Game Store", created_by: "owner", role: "user" }],
+    }));
+    if (url === "/api/organizations/org/members") return new Response("[]");
+    if (url === "/api/organizations/org/members/me" && options?.method === "DELETE") {
+      attempts++;
+      if (attempts === 1) return new Response(JSON.stringify({ detail: "Please try again" }), { status: 503 });
+      left = true;
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  render(<OrganizationSettings csrf="csrf" userId="member" onSaved={onSaved} onAccessError={() => false} />);
+  const leave = await screen.findByRole("button", { name: "Leave organization" });
+  fireEvent.click(leave);
+  let dialog = screen.getByRole("dialog", { name: "Leave organization?" });
+  expect(dialog).toHaveTextContent("Are you sure you want to leave Game Store?");
+  expect(attempts).toBe(0);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(dialog).not.toBeInTheDocument();
+  expect(attempts).toBe(0);
+  fireEvent.click(leave);
+  dialog = screen.getByRole("dialog", { name: "Leave organization?" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Please try again");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  expect(attempts).toBe(2);
+  expect(onSaved).toHaveBeenCalledOnce();
+});

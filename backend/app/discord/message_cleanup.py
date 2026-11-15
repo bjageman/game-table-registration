@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
 from app.discord.discord_api import DiscordRequestError
+from app.discord.event_threads import delete_event_thread
 from app.models import (
     Announcement,
     Event,
@@ -45,7 +46,7 @@ def delete_discord_messages_batch(
             Announcement.kind != "refresh",
         )
         if promotions_only:
-            query = query.where(Announcement.kind == "promotion")
+            query = query.where(Announcement.kind.in_(["promotion", "thread_starter"]))
         rows = list(db.scalars(query.order_by(Announcement.part)))
 
         def progress(
@@ -76,7 +77,7 @@ def delete_discord_messages_batch(
 
         now = time.time()
         for row in rows:
-            if row.kind in ("promotion", "warning") and (
+            if row.kind in ("promotion", "warning", "thread_starter") and (
                 row.unknown or row.state == "needs_review"
             ):
                 discord = scoped_discord(request).at(event.guild_id, row.channel_id)
@@ -160,7 +161,7 @@ def delete_discord_messages_batch(
             db.commit()
         if event.update_thread_id:
             try:
-                scoped_discord(request).delete_thread(event.update_thread_id)
+                delete_event_thread(event, scoped_discord(request))
             except DiscordRequestError as failure:
                 if failure.discord_status == 403:
                     return progress(
@@ -168,6 +169,5 @@ def delete_discord_messages_batch(
                         "Give the bot Manage Threads permission and retry cleanup."
                     )
                 return failed(failure)
-            event.update_thread_id = None
             db.commit()
         return progress()

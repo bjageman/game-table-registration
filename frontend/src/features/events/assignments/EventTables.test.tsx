@@ -71,16 +71,16 @@ it("refreshes names and counts when votes are added and removed, and stops on cl
   const view = render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(screen.getByText("0/8")).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(screen.getByText("Mary")).toBeVisible();
   expect(screen.getByRole("button", { name: "Mary" })).toHaveAttribute("aria-haspopup", "dialog");
   expect(screen.getByText("1/8")).toBeVisible();
   expect(screen.getByText("Dan")).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(screen.queryByText("Mary")).not.toBeInTheDocument();
   expect(screen.getByText("0/8")).toBeVisible();
   expect(screen.getByText("Dan")).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(screen.getByRole("alert")).toHaveTextContent("Showing the last loaded list");
   expect(screen.getByText("Dan")).toBeVisible();
   expect(screen.getByText("0/8")).toBeVisible();
@@ -104,11 +104,11 @@ it("refreshes assigned placements while the modal is open", async () => {
   const view = render(<EventTables csrf="csrf" event={{ ...event, status: "assigned" }} onAccessError={() => false} />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(screen.getByText("1/8")).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(screen.getByText("2/8")).toBeVisible();
   expect(screen.getByRole("button", { name: "Dan" })).toBeVisible();
   view.unmount();
-  await vi.advanceTimersByTimeAsync(15000);
+  await vi.advanceTimersByTimeAsync(2000);
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
@@ -348,4 +348,62 @@ it.each(["draft", "scheduled", "open"])("removes only the selected table during 
   fireEvent.click(screen.getAllByRole("button", { name: "Remove Player from signups" })[0]);
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
   await waitFor(() => expect(screen.getAllByRole("button", { name: "Player" })).toHaveLength(1));
+});
+
+it("refreshes from SSE before polling and preserves changes received during a fetch", async () => {
+  vi.useFakeTimers();
+  class Source extends EventTarget {
+    static instance: Source;
+    onopen?: () => void;
+    onerror?: () => void;
+    close = vi.fn();
+    constructor() { super(); Source.instance = this; }
+  }
+  vi.stubGlobal("EventSource", Source);
+  let complete!: (response: Response) => void;
+  const fetch = vi.fn()
+    .mockImplementationOnce(() => new Promise<Response>((resolve) => { complete = resolve; }))
+    .mockResolvedValue(new Response(JSON.stringify([
+      { name: "Table A", players: [{ id: "1", name: "Mary" }] },
+      { name: "Table B", players: [] },
+    ])));
+  vi.stubGlobal("fetch", fetch);
+  const view = render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
+  Source.instance.onopen?.();
+  Source.instance.dispatchEvent(new Event("change"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(150); });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    complete(new Response(JSON.stringify([{ name: "Table A", players: [] }, { name: "Table B", players: [] }])));
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("button", { name: "Mary" })).toBeVisible();
+  view.unmount();
+  expect(Source.instance.close).toHaveBeenCalledOnce();
+});
+
+it("keeps the weight limit notice when blur fires during a pending save", async () => {
+  let finishSave!: (response: Response) => void;
+  const fetchMock = vi.fn(async (_path: string, options?: RequestInit) => {
+    if (options?.method === "PUT") return new Promise<Response>((resolve) => { finishSave = resolve; });
+    return new Response(JSON.stringify([
+      { name: "Table A", players: [{ id: "1", name: "Mary", weighting: 5 }] },
+    ]));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Edit weight for Mary: 5.0" }));
+  const input = screen.getByRole("textbox", { name: "Weight for Mary" });
+  fireEvent.change(input, { target: { value: "11" } });
+  fireEvent.submit(input.closest("form")!);
+  expect(input).toBeDisabled();
+  fireEvent.blur(input);
+  expect(screen.getByText("The maximum weight is 10. Weight set to 10.")).toBeVisible();
+  expect(fetchMock.mock.calls.filter(([, options]) => options?.method === "PUT")).toHaveLength(1);
+  await act(async () => {
+    finishSave(new Response(JSON.stringify({ weighting: 10, guaranteed_table: null, guaranteed_seat: false })));
+  });
+  expect(screen.getByRole("button", { name: "Edit weight for Mary: 10.0" })).toBeVisible();
+  expect(screen.getByText("The maximum weight is 10. Weight set to 10.")).toBeVisible();
 });

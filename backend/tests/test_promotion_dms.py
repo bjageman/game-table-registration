@@ -263,7 +263,7 @@ def test_forged_private_controls_cannot_change_a_seat(
 ):
     notice_id = queued(promotion_db)
     promotion_dms.dispatch_due(promotion_db, discord_client())
-    assert "cannot be used" in promotion_dms.withdraw(
+    assert "Please contact the host for assistance" in promotion_dms.withdraw(
         promotion_db, notice_id, user, channel, message
     )
     with Session(promotion_db) as db:
