@@ -283,7 +283,7 @@ def withdraw(
             or notice.channel_id != channel_id
             or notice.message_id != message_id
         ):
-            return "This private message cannot be used to change your seat."
+            return "Something went wrong. Please contact the host for assistance."
         claimed = db.execute(
             update(Event)
             .where(

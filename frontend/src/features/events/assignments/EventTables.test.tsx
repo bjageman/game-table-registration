@@ -382,3 +382,28 @@ it("refreshes from SSE before polling and preserves changes received during a fe
   view.unmount();
   expect(Source.instance.close).toHaveBeenCalledOnce();
 });
+
+it("keeps the weight limit notice when blur fires during a pending save", async () => {
+  let finishSave!: (response: Response) => void;
+  const fetchMock = vi.fn(async (_path: string, options?: RequestInit) => {
+    if (options?.method === "PUT") return new Promise<Response>((resolve) => { finishSave = resolve; });
+    return new Response(JSON.stringify([
+      { name: "Table A", players: [{ id: "1", name: "Mary", weighting: 5 }] },
+    ]));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Edit weight for Mary: 5.0" }));
+  const input = screen.getByRole("textbox", { name: "Weight for Mary" });
+  fireEvent.change(input, { target: { value: "11" } });
+  fireEvent.submit(input.closest("form")!);
+  expect(input).toBeDisabled();
+  fireEvent.blur(input);
+  expect(screen.getByText("The maximum weight is 10. Weight set to 10.")).toBeVisible();
+  expect(fetchMock.mock.calls.filter(([, options]) => options?.method === "PUT")).toHaveLength(1);
+  await act(async () => {
+    finishSave(new Response(JSON.stringify({ weighting: 10, guaranteed_table: null, guaranteed_seat: false })));
+  });
+  expect(screen.getByRole("button", { name: "Edit weight for Mary: 10.0" })).toBeVisible();
+  expect(screen.getByText("The maximum weight is 10. Weight set to 10.")).toBeVisible();
+});
