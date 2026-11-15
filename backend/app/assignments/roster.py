@@ -1,33 +1,114 @@
 """Project the saved draw and subsequent edits into the current roster."""
 
+from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.events.table_membership import removals
 from app.models import (
     EventManagerSignup,
     EventManualAssignment,
+    EventTableRemoval,
     EventWaitlistAddition,
     EventWithdrawal,
     LotteryRun,
 )
 
 
-def build_roster_players(db: Session, run: LotteryRun) -> dict[str, Any]:
+@dataclass
+class RosterRecords:
+    withdrawals: list[EventWithdrawal] = field(default_factory=list)
+    manual: list[EventManualAssignment] = field(default_factory=list)
+    additions: list[EventWaitlistAddition] = field(default_factory=list)
+    signups: list[EventManagerSignup] = field(default_factory=list)
+    exclusions: list[EventTableRemoval] = field(default_factory=list)
+
+
+def _load_changes[
+    RosterChange: (
+        EventWithdrawal,
+        EventManualAssignment,
+        EventWaitlistAddition,
+        EventManagerSignup,
+        EventTableRemoval,
+    )
+](
+    db: Session, model: type[RosterChange], event_ids: list[str], *ordering: Any
+) -> dict[str, list[RosterChange]]:
+    grouped: dict[str, list[RosterChange]] = {}
+    for row in db.scalars(
+        select(model).where(model.event_id.in_(event_ids)).order_by(*ordering)
+    ):
+        grouped.setdefault(row.event_id, []).append(row)
+    return grouped
+
+
+def load_roster_records(db: Session, event_ids: list[str]) -> dict[str, RosterRecords]:
+    """Load roster changes in five queries regardless of the number of events."""
+    if not event_ids:
+        return {}
+    withdrawals = _load_changes(
+        db,
+        EventWithdrawal,
+        event_ids,
+        EventWithdrawal.withdrawn_at,
+        EventWithdrawal.discord_id,
+    )
+    manual = _load_changes(
+        db,
+        EventManualAssignment,
+        event_ids,
+        EventManualAssignment.assigned_at,
+        EventManualAssignment.discord_id,
+    )
+    additions = _load_changes(
+        db,
+        EventWaitlistAddition,
+        event_ids,
+        EventWaitlistAddition.added_at,
+        EventWaitlistAddition.discord_id,
+        EventWaitlistAddition.table_name,
+    )
+    signups = _load_changes(db, EventManagerSignup, event_ids)
+    exclusions = _load_changes(db, EventTableRemoval, event_ids)
+    return {
+        event_id: RosterRecords(
+            withdrawals=withdrawals.get(event_id, []),
+            manual=manual.get(event_id, []),
+            additions=additions.get(event_id, []),
+            signups=signups.get(event_id, []),
+            exclusions=exclusions.get(event_id, []),
+        )
+        for event_id in event_ids
+    }
+
+
+def build_roster_players(
+    db: Session, run: LotteryRun, *, records: RosterRecords | None = None
+) -> dict[str, Any]:
     """Collect player identities from the draw and organizer-added memberships."""
     players = {player["id"]: player for player in run.snapshot["players"]}
-    for signup in db.scalars(
-        select(EventManagerSignup).where(EventManagerSignup.event_id == run.event_id)
+    for signup in (
+        records.signups
+        if records is not None
+        else db.scalars(
+            select(EventManagerSignup).where(
+                EventManagerSignup.event_id == run.event_id
+            )
+        )
     ):
         players.setdefault(
             signup.discord_id,
             {"id": signup.discord_id, "name": signup.discord_name},
         )
-    for addition in db.scalars(
-        select(EventWaitlistAddition).where(
-            EventWaitlistAddition.event_id == run.event_id
+    for addition in (
+        records.additions
+        if records is not None
+        else db.scalars(
+            select(EventWaitlistAddition).where(
+                EventWaitlistAddition.event_id == run.event_id
+            )
         )
     ):
         players.setdefault(
@@ -37,31 +118,21 @@ def build_roster_players(db: Session, run: LotteryRun) -> dict[str, Any]:
     return players
 
 
-def build_current_roster(db: Session, run: LotteryRun) -> dict[str, Any]:
+def build_current_roster(
+    db: Session, run: LotteryRun, *, records: RosterRecords | None = None
+) -> dict[str, Any]:
     """Build current seats and waitlists without modifying the saved draw."""
     result = run.result
-    rows = list(
-        db.scalars(
-            select(EventWithdrawal)
-            .where(EventWithdrawal.event_id == run.event_id)
-            .order_by(EventWithdrawal.withdrawn_at, EventWithdrawal.discord_id)
-        )
-    )
+    if records is None:
+        records = load_roster_records(db, [run.event_id])[run.event_id]
+    rows = records.withdrawals
     withdrawn = {row.discord_id: row.withdrawn_at for row in rows}
     assignments = {
         player_id: table
         for player_id, table in result["assignments"].items()
         if player_id not in withdrawn
     }
-    manual = list(
-        db.scalars(
-            select(EventManualAssignment)
-            .where(EventManualAssignment.event_id == run.event_id)
-            .order_by(
-                EventManualAssignment.assigned_at, EventManualAssignment.discord_id
-            )
-        )
-    )
+    manual = records.manual
     placements = [
         (row.withdrawn_at, row.promoted_id, row.table_name)
         for row in rows
@@ -71,20 +142,10 @@ def build_current_roster(db: Session, run: LotteryRun) -> dict[str, Any]:
         if placed_at > withdrawn.get(player_id, float("-inf")):
             assignments[player_id] = table_name
 
-    additions = list(
-        db.scalars(
-            select(EventWaitlistAddition)
-            .where(EventWaitlistAddition.event_id == run.event_id)
-            .order_by(
-                EventWaitlistAddition.added_at,
-                EventWaitlistAddition.discord_id,
-                EventWaitlistAddition.table_name,
-            )
-        )
-    )
+    additions = records.additions
     added_tables = {(row.discord_id, row.table_name) for row in additions}
-    by_id = build_roster_players(db, run)
-    excluded = removals(db, run.event_id)
+    by_id = build_roster_players(db, run, records=records)
+    excluded = {(row.discord_id, row.table_name) for row in records.exclusions}
     tables = []
     for table in result["tables"]:
         name = table["name"]
@@ -123,6 +184,7 @@ def build_current_roster(db: Session, run: LotteryRun) -> dict[str, Any]:
                 ],
             }
         )
+    waitlisted = {player["id"] for table in tables for player in table["waitlist"]}
     return {
         **result,
         "pairing_warnings": [
@@ -135,11 +197,7 @@ def build_current_roster(db: Session, run: LotteryRun) -> dict[str, Any]:
             dict.fromkeys(
                 pid
                 for pid in [*result["waitlist"], *[row.discord_id for row in additions]]
-                if any(
-                    player["id"] == pid
-                    for table in tables
-                    for player in table["waitlist"]
-                )
+                if pid in waitlisted
             )
         ),
         "tables": tables,

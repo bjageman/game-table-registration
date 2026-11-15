@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from app.assignments.player_changes import remove_player_from_roster
 from app.discord.event_threads import enabled as threads_enabled
 from app.models import AssignmentPreference, Event, PromotionDM
-from app.settings.assignment_preferences import DEFAULTS, for_event
+from app.settings.assignment_preferences import for_event
+from app.settings.general_settings import BOOLEAN_DEFAULTS as DEFAULTS
 
 
 def test_new_user_and_organization_defaults_and_explicit_opt_outs(client):

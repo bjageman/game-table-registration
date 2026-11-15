@@ -5,7 +5,7 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import MenuItem from "@mui/material/MenuItem";
 import DisconnectDiscord from "./DisconnectDiscord";
-import AssignmentSettings from "./AssignmentSettings";
+import GeneralSettings from "./GeneralSettings";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import OrganizationSettings from "./OrganizationSettings";
@@ -148,7 +148,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
     </>}
     </div>
     <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
-      {setup ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} onSaved={onSaved} />
+      {setup ? <GeneralSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} onSaved={onSaved} />
         : <p><LoadingIndicator label="Loading settings…" /></p>}
     </div>
     <div role="tabpanel" id={`${tabId}-organization-panel`} aria-labelledby={`${tabId}-organization-tab`} hidden={tab !== "organization"}>

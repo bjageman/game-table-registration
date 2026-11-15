@@ -11,10 +11,9 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy.orm import object_session
 
-from app.assignments.roster import build_current_roster
 from app.config import Settings
 from app.discord.discord_api import DiscordAPI
-from app.events.signup_warnings import settings as warning_settings
+from app.events.event_views import EventRelatedData, serialize_event
 from app.models import (
     Event,
     EventPlayerSetting,
@@ -184,80 +183,18 @@ class ApplicationContext:
         return session
 
     def serialize(self, event: Event) -> dict[str, Any]:
-        from app.models import Announcement, DiscordScheduledEvent
+        db = object_session(event)
+        related = EventRelatedData.load(db, [event]) if db else EventRelatedData()
+        return serialize_event(event, self.config.discord_channel_id, related)
 
-        session = object_session(event)
-        discord_event = (
-            session.get(DiscordScheduledEvent, event.id) if session else None
-        )
-        delivery = (
-            list(
-                session.scalars(
-                    select(Announcement).where(
-                        Announcement.event_id == event.id,
-                        Announcement.kind == "assignment",
-                    )
-                )
-            )
-            if session and event.status == "review"
-            else []
-        )
-        warnings: list[str] = []
-        if event.status in ("review", "assigned") and event.close_pairs:
-            from app.models import LotteryRun
-
-            db = object_session(event)
-            run = db.get(LotteryRun, event.id) if db else None
-            if db and run and run.result.get("pairing_conflicts"):
-                warnings = build_current_roster(db, run).get("pairing_warnings", [])
-        return {
-            **warning_settings(event),
-            "id": event.id,
-            "title": event.title,
-            "description": event.description,
-            "location": event.location,
-            "starts_at": event.starts_at,
-            "created_at": event.created_at,
-            "ends_at": event.ends_at,
-            "discord_event_error": discord_event.error if discord_event else None,
-            "has_discord_event": bool(
-                discord_event and discord_event.state != "deleted"
-            ),
-            "duration_hours": event.duration_hours,
-            "tables": event.tables,
-            "status": event.status,
-            "assignment_publication_pending": bool(delivery),
-            "assignment_publication_error": next(
-                (row.error for row in delivery if row.error), None
-            ),
-            "signup_mode": event.signup_mode,
-            "closes_at": event.closes_at
-            if event.closes_at is not None
-            else event.scheduled_publish_at + event.duration_hours * 3600
-            if event.series_id and event.scheduled_publish_at is not None
-            else None,
-            "published_at": event.published_at,
-            "series_id": event.series_id,
-            "scheduled_publish_at": event.scheduled_publish_at,
-            "archived_at": event.archived_at,
-            "signup_deleted_at": event.signup_deleted_at,
-            "close_error": event.close_error or event.reaction_error,
-            "pairing_warnings": warnings,
-            "is_test": bool(event.test_signups),
-            "test_generation": event.test_signups.get("generation")
-            if event.test_signups
-            else None,
-            "test_user_count": len(event.test_signups["players"])
-            if event.test_signups
-            else 0,
-            "discord_url": (
-                f"https://discord.com/channels/{event.guild_id}/"
-                f"{event.channel_id or self.config.discord_channel_id}/"
-                f"{event.message_id}"
-            )
-            if event.message_id and not event.signup_deleted_at
-            else None,
-        }
+    def serialize_events(
+        self, db: DBSession, events: list[Event]
+    ) -> list[dict[str, Any]]:
+        related = EventRelatedData.load(db, events)
+        return [
+            serialize_event(event, self.config.discord_channel_id, related)
+            for event in events
+        ]
 
     def discord_name(self, player_id: str) -> str:
         discord: DiscordAPI = self.app.state.discord
@@ -303,11 +240,18 @@ class ApplicationContext:
             if event is None:
                 raise ValueError("An event is required to resolve scoped player names")
             scope = player_scope_for_event(event)
+            player_ids = {
+                player["id"]
+                for row in rows
+                for key in ("players", "waitlist")
+                for player in row.get(key, [])
+            }
             profiles = {
                 profile.discord_id: profile
                 for profile in db.scalars(
                     select(PlayerProfile).where(
                         *scope.filters(),
+                        PlayerProfile.discord_id.in_(player_ids),
                     )
                 )
             }
@@ -316,7 +260,8 @@ class ApplicationContext:
                     setting.discord_id: setting
                     for setting in db.scalars(
                         select(EventPlayerSetting).where(
-                            EventPlayerSetting.event_id == event_id
+                            EventPlayerSetting.event_id == event_id,
+                            EventPlayerSetting.discord_id.in_(player_ids),
                         )
                     )
                 }

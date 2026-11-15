@@ -44,12 +44,12 @@ def register(context: ApplicationContext) -> None:
     def events(request: Request) -> list[dict[str, Any]]:
         authenticated(request)
         with DBSession(engine) as db:
-            return [
-                serialize(event)
-                for event in db.scalars(
+            selected = list(
+                db.scalars(
                     select(Event).where(*event_scope(request)).order_by(Event.starts_at)
                 )
-            ]
+            )
+            return context.serialize_events(db, selected)
 
     def serialize_template(template: EventTemplate) -> dict[str, Any]:
         return {

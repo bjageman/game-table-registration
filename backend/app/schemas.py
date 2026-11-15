@@ -128,28 +128,6 @@ class EventTemplateInput(EventDetailsInput):
     duration_hours: int = Field(ge=1, le=768)
 
 
-class AssignmentSettingsInput(BaseModel):
-    create_discord_event: bool = True
-    review_assignments_before_discord: bool = True
-    model_config = {"extra": "forbid"}
-    automatic_weight_adjustment: bool
-    announce_table_changes: bool
-    post_discord_updates_to_thread: bool = True
-    timezone: str | None = Field(default=None, max_length=64)
-    show_open_signup_players: bool = True
-    dm_waitlist_promotions: bool = True
-
-    @field_validator("timezone")
-    @classmethod
-    def valid_timezone(cls, value: str | None) -> str | None:
-        if value is not None:
-            try:
-                ZoneInfo(value)
-            except (ZoneInfoNotFoundError, ValueError) as error:
-                raise ValueError("Choose a valid timezone") from error
-        return value
-
-
 class PlayerPairInput(BaseModel):
     model_config = {"extra": "forbid"}
     partner_id: str | None

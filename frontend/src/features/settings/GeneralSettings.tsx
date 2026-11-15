@@ -5,33 +5,12 @@ import { api, errorMessage, mutationOptions } from "../../lib/api";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import { FormField } from "../../components/FormFields";
 import { browserTimezone } from "../../lib/timezone";
+import { GENERAL_SETTINGS_DEFAULTS, type GeneralSettingsValues } from "../../lib/generalSettings";
 
-interface Settings {
-  create_discord_event: boolean;
-  review_assignments_before_discord: boolean;
-  automatic_weight_adjustment: boolean;
-  announce_table_changes: boolean;
-  post_discord_updates_to_thread: boolean;
-  timezone: string | null;
-  show_open_signup_players: boolean;
-  dm_waitlist_promotions: boolean;
-}
-
-const DEFAULTS: Settings = {
-  create_discord_event: true,
-  review_assignments_before_discord: true,
-  automatic_weight_adjustment: true,
-  announce_table_changes: true,
-  post_discord_updates_to_thread: true,
-  timezone: null,
-  show_open_signup_players: true,
-  dm_waitlist_promotions: true,
-};
-
-export default function AssignmentSettings({ csrf, restricted = false, onAccessError, onSaved }: {
+export default function GeneralSettings({ csrf, restricted = false, onAccessError, onSaved }: {
   csrf: string; restricted?: boolean; onAccessError: (error: unknown) => boolean; onSaved?: () => Promise<void>;
 }) {
-  const [settings, setSettings] = useState<Settings>(DEFAULTS);
+  const [settings, setSettings] = useState<GeneralSettingsValues>(GENERAL_SETTINGS_DEFAULTS);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -42,9 +21,9 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
 
   useEffect(() => {
     const controller = new AbortController();
-    api<Partial<Settings>>("/settings/assignment", { signal: controller.signal }).then((value) => {
+    api<Partial<GeneralSettingsValues>>("/settings/assignment", { signal: controller.signal }).then((value) => {
       if (!controller.signal.aborted) {
-        setSettings({ ...DEFAULTS, ...value });
+        setSettings({ ...GENERAL_SETTINGS_DEFAULTS, ...value });
         setLoaded(true);
         setError("");
       }
@@ -52,7 +31,7 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
     return () => controller.abort();
   }, [attempt, onAccessError]);
 
-  async function updateSettings(patch: Partial<Settings>) {
+  async function updateSettings(patch: Partial<GeneralSettingsValues>) {
     if (inFlight.current || !loaded || restricted) return;
     const previous = settings;
     const next = { ...previous, ...patch };
@@ -62,11 +41,11 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
     setError("");
     setSettings(next);
     try {
-      const result = await api<Settings>("/settings/assignment", {
+      const result = await api<GeneralSettingsValues>("/settings/assignment", {
         ...mutationOptions(csrf, next),
         method: "PUT",
       });
-      setSettings({ ...DEFAULTS, ...result });
+      setSettings({ ...GENERAL_SETTINGS_DEFAULTS, ...result });
       await onSaved?.();
       setSaved(true);
     } catch (failure) {
@@ -78,14 +57,14 @@ export default function AssignmentSettings({ csrf, restricted = false, onAccessE
     }
   }
 
-  function toggle(field: keyof Omit<Settings, "timezone">, value: boolean) {
+  function toggle(field: keyof Omit<GeneralSettingsValues, "timezone">, value: boolean) {
     void updateSettings({ [field]: value });
   }
 
-  return <section id="assignment-settings" className="assignment-settings" aria-label="Assignment settings">
-    {!loaded && !error && <p><LoadingIndicator label="Loading assignment settings…" /></p>}
+  return <section id="assignment-settings" className="assignment-settings" aria-label="General settings">
+    {!loaded && !error && <p><LoadingIndicator label="Loading general settings…" /></p>}
     {error && <p role="alert" className="error">{error}{!loaded && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry</button>}</p>}
-    {loaded && <form id="assignment-settings-form" aria-label="Assignment settings" onSubmit={(event) => event.preventDefault()}>
+    {loaded && <form id="assignment-settings-form" aria-label="General settings" onSubmit={(event) => event.preventDefault()}>
       <div className="general-setting-option"><FormControlLabel label="Create an event when a signup is published" control={<Checkbox id="general-create-discord-event" checked={settings.create_discord_event} disabled={busy || restricted}
         onChange={(event) => toggle("create_discord_event", event.target.checked)} />} /></div>
       <div className="general-setting-option"><FormControlLabel label="Review assignments before sending to Discord" control={<Checkbox id="general-review-assignments" checked={settings.review_assignments_before_discord} disabled={busy || restricted}
