@@ -212,6 +212,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       onEditWeight={(player, table) => { setEditingWeight(`${player.id}:${table}`); setWeight(String(player.weighting ?? 5)); }}
       onCancelWeight={() => setEditingWeight(undefined)}
       onSaveWeight={(player) => {
+        if (saving) return;
         const parsed = parseWeightInput(weight);
         if (!parsed) { setActionError("Enter a valid weight."); return; }
         const { value, notice } = parsed;
