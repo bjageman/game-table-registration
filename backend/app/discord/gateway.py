@@ -425,30 +425,80 @@ class SignupGateway(discord.Client):
         self, interaction: discord.Interaction[discord.Client], custom_id: str
     ) -> None:
         message = interaction.message
-        if (
-            interaction.guild_id is not None
-            or str(interaction.application_id) != self.config.discord_client_id
-            or interaction.user.bot
-            or message is None
-            or str(message.author.id) != self.config.discord_client_id
-        ):
+        notice_id = custom_id.removeprefix(promotion_dms.BUTTON_PREFIX)
+        context = (
+            notice_id,
+            interaction.id,
+            interaction.user.id,
+            interaction.channel_id,
+            message.id if message else None,
+        )
+        reasons = [
+            reason
+            for reason, failed in (
+                ("not_private", interaction.guild_id is not None),
+                (
+                    "wrong_application",
+                    str(interaction.application_id) != self.config.discord_client_id,
+                ),
+                ("bot_user", interaction.user.bot),
+                ("missing_message", message is None),
+                (
+                    "wrong_message_author",
+                    message is not None
+                    and str(message.author.id) != self.config.discord_client_id,
+                ),
+            )
+            if failed
+        ]
+        if reasons:
+            logger.warning(
+                "Promotion DM interaction ignored reason=%s "
+                "notice_id=%s interaction_id=%s user_id=%s channel_id=%s message_id=%s "
+                "application_id=%s configured_application_id=%s "
+                "author_id=%s guild_id=%s",
+                ",".join(reasons),
+                *context,
+                interaction.application_id,
+                self.config.discord_client_id,
+                message.author.id if message else None,
+                interaction.guild_id,
+            )
             return
+        assert message is not None
+        logger.info(
+            "Promotion DM withdrawal received notice_id=%s interaction_id=%s "
+            "user_id=%s channel_id=%s message_id=%s",
+            *context,
+        )
         try:
             await interaction.response.defer(ephemeral=True, thinking=True)
-        except discord.HTTPException:
-            logger.warning("Discord could not acknowledge a private withdrawal")
+        except discord.HTTPException as failure:
+            logger.warning(
+                "Promotion DM withdrawal acknowledgement failed notice_id=%s "
+                "interaction_id=%s user_id=%s channel_id=%s message_id=%s "
+                "http_status=%s discord_code=%s",
+                *context,
+                failure.status,
+                failure.code,
+            )
             return
         try:
             content = await asyncio.to_thread(
                 player_changes.withdraw_from_promotion_dm,
                 self.engine,
-                custom_id.removeprefix(promotion_dms.BUTTON_PREFIX),
+                notice_id,
                 str(interaction.user.id),
                 str(interaction.channel_id),
                 str(message.id),
             )
         except Exception:
-            logger.exception("Could not process a private promotion withdrawal")
+            logger.exception(
+                "Promotion DM withdrawal processing failed "
+                "notice_id=%s interaction_id=%s "
+                "user_id=%s channel_id=%s message_id=%s",
+                *context,
+            )
             content = (
                 "Could not process your withdrawal. "
                 "Please try again to check your seat."
@@ -458,8 +508,15 @@ class SignupGateway(discord.Client):
                 content=content,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-        except discord.HTTPException:
-            logger.warning("Could not display the private withdrawal result")
+        except discord.HTTPException as failure:
+            logger.warning(
+                "Promotion DM withdrawal response failed "
+                "notice_id=%s interaction_id=%s "
+                "user_id=%s channel_id=%s message_id=%s http_status=%s discord_code=%s",
+                *context,
+                failure.status,
+                failure.code,
+            )
 
     async def run_listener(self) -> None:
         try:

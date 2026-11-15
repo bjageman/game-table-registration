@@ -1,5 +1,6 @@
 """Apply player seating, waitlist, and withdrawal changes under an event lock."""
 
+import logging
 import time
 from typing import Any
 
@@ -28,6 +29,8 @@ from app.models import (
     PromotionDM,
 )
 from app.players.player_profiles import for_event as player_scope_for_event
+
+logger = logging.getLogger("uvicorn.error")
 
 
 def lock_assignment_for_edit(
@@ -521,14 +524,39 @@ def withdraw_from_promotion_dm(
 
     with Session(engine) as db:
         notice = db.get(PromotionDM, notice_id)
-        if (
-            notice is None
-            or notice.discord_id != user_id
-            or notice.state != "sent"
-            or notice.channel_id != channel_id
-            or notice.message_id != message_id
-        ):
+        context = (notice_id, user_id, channel_id, message_id)
+        reasons = (
+            ["notice_not_found"]
+            if notice is None
+            else [
+                reason
+                for reason, failed in (
+                    ("recipient_mismatch", notice.discord_id != user_id),
+                    ("notice_not_sent", notice.state != "sent"),
+                    ("channel_mismatch", notice.channel_id != channel_id),
+                    ("message_mismatch", notice.message_id != message_id),
+                )
+                if failed
+            ]
+        )
+        if reasons:
+            logger.warning(
+                "Promotion DM withdrawal rejected reason=%s "
+                "notice_id=%s user_id=%s channel_id=%s message_id=%s "
+                "event_id=%s expected_user_id=%s expected_channel_id=%s "
+                "expected_message_id=%s notice_state=%s attempts=%s unknown=%s",
+                ",".join(reasons),
+                *context,
+                notice.event_id if notice else None,
+                notice.discord_id if notice else None,
+                notice.channel_id if notice else None,
+                notice.message_id if notice else None,
+                notice.state if notice else None,
+                notice.attempts if notice else None,
+                notice.unknown if notice else None,
+            )
             return "Something went wrong. Please contact the host for assistance."
+        assert notice is not None
         claimed = db.execute(
             update(Event)
             .where(
@@ -541,14 +569,47 @@ def withdraw_from_promotion_dm(
             .returning(Event.id)
         ).scalar_one_or_none()
         if claimed is None:
+            event = db.get(Event, notice.event_id)
+            logger.warning(
+                "Promotion DM withdrawal rejected reason=event_not_accepting "
+                "notice_id=%s user_id=%s channel_id=%s message_id=%s "
+                "event_id=%s event_status=%s archived_at=%s starts_at=%s now=%s",
+                *context,
+                notice.event_id,
+                event.status if event else None,
+                event.archived_at if event else None,
+                event.starts_at if event else None,
+                time.time(),
+            )
             return "This event has started or is no longer accepting withdrawals."
         event = db.get(Event, notice.event_id)
         run = db.get(LotteryRun, notice.event_id)
         if event is None or run is None:
+            logger.warning(
+                "Promotion DM withdrawal rejected reason=event_or_draw_missing "
+                "notice_id=%s user_id=%s channel_id=%s message_id=%s "
+                "event_id=%s event_exists=%s draw_exists=%s",
+                *context,
+                notice.event_id,
+                event is not None,
+                run is not None,
+            )
             return "This event is no longer available."
         if not withdraw_player_seat(db, event, run, user_id, event.channel_id or ""):
+            logger.info(
+                "Promotion DM withdrawal unchanged reason=no_current_seat "
+                "notice_id=%s user_id=%s channel_id=%s message_id=%s event_id=%s",
+                *context,
+                notice.event_id,
+            )
             return "You no longer have a seat at this event."
         db.commit()
+        logger.info(
+            "Promotion DM withdrawal completed "
+            "notice_id=%s user_id=%s channel_id=%s message_id=%s event_id=%s",
+            *context,
+            notice.event_id,
+        )
         return (
             f"You have withdrawn from {clean(event.title)}. "
             "Your seat is now available to the next waitlisted player."
