@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.assignments.mutations import locked_assignment
 from app.assignments.withdrawals import current_result, result_players
-from app.discord.announcements import enqueue_refresh
+from app.discord.event_messages import enqueue_roster_refresh
 from app.discord.event_threads import queue_member
 from app.events.table_membership import set_removed
 from app.models import (
@@ -65,6 +65,6 @@ def add_player(
         set_removed(db, event_id, player_id, table_name, False)
         queue_member(db, event, player_id)
         if event.status == "assigned":
-            enqueue_refresh(db, event)
+            enqueue_roster_refresh(db, event)
         db.commit()
         return True

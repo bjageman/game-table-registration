@@ -3,9 +3,14 @@ from unittest.mock import Mock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.discord.announcements import deliver_event, enqueue, payloads
+from app.discord.announcements import deliver_event
 from app.discord.discord_format import TABLE_FIELD_SPACER
-from app.events.event_description import REACTION_DESCRIPTION, signup_embed
+from app.discord.event_messages import (
+    REACTION_DESCRIPTION,
+    build_assignment_messages,
+    enqueue_assignment_messages,
+    signup_embed,
+)
 from app.models import Announcement, Base, Event
 
 
@@ -21,7 +26,7 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
         ],
         "waitlist": ["3"],
     }
-    messages = payloads(
+    messages = build_assignment_messages(
         event, "channel", result, {"players": [one, two, waiting], "is_test": True}
     )
     assert len(messages) == 1
@@ -50,7 +55,7 @@ def test_assignment_embed_shares_signup_title_and_event_layout():
         message_id="signup",
         tables=[{"name": "A", "capacity": 4}],
     )
-    assignment = payloads(
+    assignment = build_assignment_messages(
         event,
         "channel",
         {"tables": [{"name": "A", "players": []}], "waitlist": []},
@@ -86,7 +91,7 @@ def test_large_announcements_are_complete_bounded_and_private():
         "tables": [{"name": "A", "players": players[:300]}],
         "waitlist": [p["id"] for p in players[300:]],
     }
-    chunks = payloads(event, "channel", result, snapshot)
+    chunks = build_assignment_messages(event, "channel", result, snapshot)
     assert len(chunks) > 1
     assert len({p["nonce"] for p in chunks}) == len(chunks)
     assert all(len(p["content"]) <= 2000 for p in chunks)
@@ -113,7 +118,7 @@ def test_large_announcements_are_complete_bounded_and_private():
     for player in players[300:]:
         assert f"<@{player['id']}>" not in content
         assert roster.count(f"<@{player['id']}>") == 1
-    assert chunks == payloads(event, "channel", result, snapshot)
+    assert chunks == build_assignment_messages(event, "channel", result, snapshot)
     assert all("Signup message" in p["embeds"][0]["description"] for p in chunks)
 
 
@@ -133,7 +138,7 @@ def test_expired_delivery_claim_reconciles_the_existing_message(tmp_path):
     with Session(engine) as db:
         db.add(event)
         db.flush()
-        enqueue(
+        enqueue_assignment_messages(
             db,
             event,
             "channel",
@@ -180,7 +185,7 @@ def test_multipart_retry_keeps_already_sent_parts(tmp_path):
     with Session(engine) as db:
         db.add(event)
         db.flush()
-        enqueue(
+        enqueue_assignment_messages(
             db,
             event,
             "channel",
@@ -228,7 +233,7 @@ def test_two_deliverers_cannot_post_the_same_pending_part(tmp_path):
     with Session(engine) as db:
         db.add(event)
         db.flush()
-        enqueue(
+        enqueue_assignment_messages(
             db,
             event,
             "channel",
@@ -283,7 +288,7 @@ def test_long_event_details_do_not_overflow_assignment_embeds():
         message_id="signup",
         tables=[{"name": table["name"], "capacity": 15} for table in tables],
     )
-    messages = payloads(
+    messages = build_assignment_messages(
         event,
         "channel",
         {"tables": tables, "waitlist": []},
@@ -306,7 +311,7 @@ def test_mixed_assignment_roster_only_notifies_real_discord_users():
         {"id": "123", "name": "Real Player"},
         {"id": "test-" + "a" * 24, "name": "Test Player 003"},
     ]
-    message = payloads(
+    message = build_assignment_messages(
         event,
         "channel",
         {

@@ -13,9 +13,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.assignments.closing import close_and_assign
 from app.assignments.withdrawals import current_result
 from app.context import ApplicationContext
-from app.discord.announcements import (
-    deliver_event,
-)
+from app.discord.announcements import deliver_event
 from app.discord.message_cleanup import (
     remove_signup_message as remove_signup_message_service,
 )

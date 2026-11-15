@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
-from app.discord.announcements import enqueue
+from app.discord.event_messages import enqueue_assignment_messages
 from app.models import Announcement, Event, LotteryRun, PlayerProfile
 from app.players.player_profiles import for_event as player_scope_for_event
 
@@ -55,7 +55,7 @@ def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -
 
     adjust_weights(db, event, run)
     event.status = "assigned"
-    enqueue(
+    enqueue_assignment_messages(
         db, event, event.channel_id or channel_id, current_result(db, run), run.snapshot
     )
 
@@ -114,7 +114,7 @@ def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
                 .limit(1)
             )
             if existing is None:
-                enqueue(
+                enqueue_assignment_messages(
                     db,
                     event,
                     event.channel_id or channel_id,

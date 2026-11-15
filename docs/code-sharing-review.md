@@ -75,7 +75,7 @@ Several frontend action components repeat busy/error state, access-error handlin
 - `EventForm` already serves creation, recurring edits, and single-event edits.
 - `event_scheduling.event_values` shares backend create/edit field conversion.
 - `withdrawals.current_result` is the canonical projection of saved assignments plus organizer edits and withdrawals.
-- `signup_messages.signup_body` and `discord_format` share Discord presentation and size limits.
+- `event_messages.build_signup_message` and `discord_format` share Discord presentation and size limits.
 - `ConfirmationDialog`, `FormField`, `useDialog`, `mutationOptions`, and `finishDiscordCleanup` already cover common UI/request behavior.
 
 The remaining lower-priority mutation-hook idea is optional; it should be considered only if future UI work demonstrates a clear benefit.

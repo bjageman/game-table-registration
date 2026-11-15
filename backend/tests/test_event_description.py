@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
+from app.discord.event_messages import REACTION_DESCRIPTION
 from app.discord.reactions import publication as reaction_publication
-from app.events.event_description import REACTION_DESCRIPTION
 from app.events.signups import publication as custom_publication
 
 

@@ -302,7 +302,7 @@ class DiscordAPI:
     def reaction_players(
         self, message_id: str, tables: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        from app.discord.signup_messages import EMOJIS
+        from app.discord.event_messages import EMOJIS
 
         players: dict[str, dict[str, Any]] = {}
         for index, table in enumerate(tables):
