@@ -55,8 +55,6 @@ def application_lifespan(
             migration_config.set_main_option("sqlalchemy.url", config.database_url)
             command.upgrade(migration_config, "head")
 
-        hub = application.state.live_updates
-        hub.start()
         stop = StopEvent()
         gateway = (
             SignupGateway(engine, config)
@@ -68,7 +66,6 @@ def application_lifespan(
 
         def work() -> None:
             while not stop.is_set():
-                hub.worker_wake.clear()
                 try:
                     with DBSession(engine) as db:
                         for series in db.scalars(
@@ -196,7 +193,7 @@ def application_lifespan(
                     logging.getLogger(__name__).exception(
                         "Assignment delivery worker failed"
                     )
-                hub.worker_wake.wait(5)
+                stop.wait(5)
 
         worker = Thread(target=work, daemon=True)
         if config.announcement_worker_enabled:
@@ -205,7 +202,6 @@ def application_lifespan(
             yield
         finally:
             stop.set()
-            hub.worker_wake.set()
             if gateway:
                 await gateway.close()
             if gateway_task:
@@ -213,6 +209,5 @@ def application_lifespan(
                 await asyncio.gather(gateway_task, return_exceptions=True)
             if worker.is_alive():
                 await asyncio.to_thread(worker.join, 20)
-            await asyncio.to_thread(hub.close)
 
     return lifespan

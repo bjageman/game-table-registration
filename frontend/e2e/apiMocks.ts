@@ -4,7 +4,6 @@ import type { Page } from "@playwright/test";
 export async function mockApiDefaults(page: Page) {
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/live" || path.startsWith("/api/public/live/")) return route.fulfill({ status: 204 });
     const defaults: Record<string, unknown> = {
       "/api/branding": { name: "TableSignup", tagline: "", logo_url: null },
       "/api/setup": { configured: true },

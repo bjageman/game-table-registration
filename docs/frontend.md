@@ -89,18 +89,3 @@ General → Timezone persists an IANA timezone for the selected organization or 
 The timezone preference adds a nullable column to assignment_preferences; run the normal Alembic upgrade to head before starting a backend without local automatic migrations.
 
 General → Send private messages for waitlist promotions lets an organizer opt into private bot notices when a waiting player receives a seat. It defaults off, follows the selected organization or personal scope, and is independent of Announce Table Changes on Discord. Each DM includes a Give up my seat button for the recipient to withdraw directly in Discord.
-
-## Live refresh
-
-Event lists, recurring schedules, table rosters, shared assignments, and Discord
-delivery status subscribe through `src/lib/liveUpdates.ts`. Consumers share one
-EventSource per stream URL. Updates are coalesced for 150 milliseconds, and
-requests run without overlap, retaining another refresh if a change arrives
-while a roster request is pending.
-
-The browser reconnects automatically after a stream interruption. Visible pages
-poll every two seconds while disconnected and every 15 seconds as a safety check
-while connected. Pending Discord delivery also checks once per second. Hidden
-tabs pause live refresh and close the stream; returning refreshes immediately
-and opens a new connection. Discord updates still depend on the bot receiving
-Gateway events and successfully delivering queued work.
