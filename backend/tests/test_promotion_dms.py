@@ -9,7 +9,7 @@ from promotion_helpers import discord_client, queued
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.assignments import withdrawals
+from app.assignments import player_changes, roster
 from app.discord import promotion_dms
 from app.discord.discord_api import DiscordRequestError
 from app.models import (
@@ -47,18 +47,24 @@ def test_all_waitlist_promotions_queue_one_notice_independent_of_public_settings
     with Session(promotion_db) as db:
         saved = db.get(LotteryRun, "event").result
     if source == "manager_remove":
-        assert withdrawals.manager_remove(promotion_db, "guild", "event", "1")
-        assert not withdrawals.manager_remove(promotion_db, "guild", "event", "1")
+        assert player_changes.remove_player_from_roster(
+            promotion_db, "guild", "event", "1"
+        )
+        assert not player_changes.remove_player_from_roster(
+            promotion_db, "guild", "event", "1"
+        )
     elif source == "reaction":
-        assert withdrawals.withdraw(
+        assert player_changes.withdraw_from_announcement(
             promotion_db, "guild", "channel", "assignment-message", "1"
         )
-        assert not withdrawals.withdraw(
+        assert not player_changes.withdraw_from_announcement(
             promotion_db, "guild", "channel", "assignment-message", "1"
         )
     else:
-        assert withdrawals.manager_add(promotion_db, "guild", "event", "2", "Table A")
-        assert not withdrawals.manager_add(
+        assert player_changes.assign_player_to_table(
+            promotion_db, "guild", "event", "2", "Table A"
+        )
+        assert not player_changes.assign_player_to_table(
             promotion_db, "guild", "event", "2", "Table A"
         )
     with Session(promotion_db) as db:
@@ -88,7 +94,7 @@ def test_adding_a_known_player_who_was_not_waitlisted_does_not_queue_a_dm(promot
             )
         )
         db.commit()
-    assert withdrawals.manager_add(
+    assert player_changes.assign_player_to_table(
         promotion_db, "guild", "event", "4", "Table A", allow_known_player=True
     )
     with Session(promotion_db) as db:
@@ -112,7 +118,7 @@ def test_delivery_is_durable_and_only_sends_once(promotion_db):
             "private-message",
             "private-channel",
         )
-        assert withdrawals.current_result(db, db.get(LotteryRun, "event"))[
+        assert roster.build_current_roster(db, db.get(LotteryRun, "event"))[
             "assignments"
         ] == {"2": "Table A"}
 
@@ -129,7 +135,7 @@ def test_closed_inbox_is_terminal_and_keeps_the_promoted_seat(promotion_db, stag
     with Session(promotion_db) as db:
         assert db.get(PromotionDM, notice_id).state == "blocked"
         assert (
-            withdrawals.current_result(db, db.get(LotteryRun, "event"))["assignments"][
+            roster.build_current_roster(db, db.get(LotteryRun, "event"))["assignments"][
                 "2"
             ]
             == "Table A"
@@ -235,15 +241,15 @@ def test_recipient_can_withdraw_and_next_waitlisted_player_gets_notified_once(
     promotion_dms.dispatch_due(promotion_db, discord)
     with Session(promotion_db) as db:
         snapshot = db.get(LotteryRun, "event").snapshot
-    result = promotion_dms.withdraw(
+    result = player_changes.withdraw_from_promotion_dm(
         promotion_db, notice_id, "2", "private-channel", "private-message"
     )
     assert "You have withdrawn" in result
-    assert "no longer have a seat" in promotion_dms.withdraw(
+    assert "no longer have a seat" in player_changes.withdraw_from_promotion_dm(
         promotion_db, notice_id, "2", "private-channel", "private-message"
     )
     with Session(promotion_db) as db:
-        assert withdrawals.current_result(db, db.get(LotteryRun, "event"))[
+        assert roster.build_current_roster(db, db.get(LotteryRun, "event"))[
             "assignments"
         ] == {"3": "Table A"}
         assert len(list(db.scalars(select(PromotionDM)))) == 2
@@ -263,8 +269,11 @@ def test_forged_private_controls_cannot_change_a_seat(
 ):
     notice_id = queued(promotion_db)
     promotion_dms.dispatch_due(promotion_db, discord_client())
-    assert "Please contact the host for assistance" in promotion_dms.withdraw(
-        promotion_db, notice_id, user, channel, message
+    assert (
+        "Please contact the host for assistance"
+        in player_changes.withdraw_from_promotion_dm(
+            promotion_db, notice_id, user, channel, message
+        )
     )
     with Session(promotion_db) as db:
         assert db.get(EventWithdrawal, ("event", "2")) is None
@@ -281,7 +290,7 @@ def test_archived_or_started_event_rejects_dm_withdrawal(promotion_db, expired):
         else:
             event.archived_at = time.time()
         db.commit()
-    assert "no longer accepting" in promotion_dms.withdraw(
+    assert "no longer accepting" in player_changes.withdraw_from_promotion_dm(
         promotion_db, notice_id, "2", "private-channel", "private-message"
     )
     with Session(promotion_db) as db:
@@ -294,7 +303,7 @@ def test_concurrent_dm_withdrawals_release_only_one_seat(promotion_db):
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [
             pool.submit(
-                promotion_dms.withdraw,
+                player_changes.withdraw_from_promotion_dm,
                 promotion_db,
                 notice_id,
                 "2",
@@ -306,7 +315,7 @@ def test_concurrent_dm_withdrawals_release_only_one_seat(promotion_db):
         results = [future.result(timeout=10) for future in futures]
     assert sum("You have withdrawn" in result for result in results) == 1
     with Session(promotion_db) as db:
-        assert withdrawals.current_result(db, db.get(LotteryRun, "event"))[
+        assert roster.build_current_roster(db, db.get(LotteryRun, "event"))[
             "assignments"
         ] == {"3": "Table A"}
         assert len(list(db.scalars(select(PromotionDM)))) == 2
@@ -336,7 +345,7 @@ def test_manual_add_to_another_table_still_notifies_a_globally_waitlisted_player
             )
         )
         db.commit()
-    assert withdrawals.manager_add(
+    assert player_changes.assign_player_to_table(
         promotion_db, "guild", "event", "2", "Table B", allow_known_player=True
     )
     with Session(promotion_db) as db:
@@ -346,8 +355,12 @@ def test_manual_add_to_another_table_still_notifies_a_globally_waitlisted_player
 
 
 def test_one_closed_inbox_does_not_block_another_private_notice(promotion_db):
-    assert withdrawals.manager_add(promotion_db, "guild", "event", "2", "Table A")
-    assert withdrawals.manager_add(promotion_db, "guild", "event", "3", "Table A")
+    assert player_changes.assign_player_to_table(
+        promotion_db, "guild", "event", "2", "Table A"
+    )
+    assert player_changes.assign_player_to_table(
+        promotion_db, "guild", "event", "3", "Table A"
+    )
     discord = discord_client()
     discord.open_dm.side_effect = [DiscordRequestError(403), "another-private-channel"]
     promotion_dms.dispatch_due(promotion_db, discord)
@@ -381,15 +394,17 @@ def test_expired_worker_lease_recovers_delivery_after_restart(promotion_db):
 def test_dm_withdrawal_from_an_overfilled_table_does_not_promote_another_player(
     promotion_db,
 ):
-    assert withdrawals.manager_add(promotion_db, "guild", "event", "2", "Table A")
+    assert player_changes.assign_player_to_table(
+        promotion_db, "guild", "event", "2", "Table A"
+    )
     with Session(promotion_db) as db:
         notice_id = db.scalar(select(PromotionDM.id))
     promotion_dms.dispatch_due(promotion_db, discord_client())
-    assert "You have withdrawn" in promotion_dms.withdraw(
+    assert "You have withdrawn" in player_changes.withdraw_from_promotion_dm(
         promotion_db, notice_id, "2", "private-channel", "private-message"
     )
     with Session(promotion_db) as db:
-        current = withdrawals.current_result(db, db.get(LotteryRun, "event"))
+        current = roster.build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"1": "Table A"}
         assert current["waitlist"] == ["3"]
         assert db.get(EventWithdrawal, ("event", "2")).promoted_id is None

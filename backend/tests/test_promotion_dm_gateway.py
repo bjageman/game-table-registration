@@ -9,7 +9,7 @@ import pytest
 from promotion_helpers import discord_client, queued
 from sqlalchemy.orm import Session
 
-from app.assignments import withdrawals
+from app.assignments import roster
 from app.config import Settings
 from app.discord import promotion_dms
 from app.discord.gateway import SignupGateway
@@ -64,7 +64,7 @@ def test_dm_button_withdraws_and_repeated_click_does_not_promote_twice(promotion
 
     asyncio.run(check())
     with Session(promotion_db) as db:
-        assert withdrawals.current_result(db, db.get(LotteryRun, "event"))[
+        assert roster.build_current_roster(db, db.get(LotteryRun, "event"))[
             "assignments"
         ] == {"3": "Table A"}
 

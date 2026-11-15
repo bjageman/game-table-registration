@@ -4,8 +4,11 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, update
 from sqlalchemy.orm import Session
 
-from app.assignments.waitlists import add_player as add_waitlisted
-from app.assignments.withdrawals import manager_add, manager_remove
+from app.assignments.player_changes import (
+    add_player_to_waitlist,
+    assign_player_to_table,
+    remove_player_from_roster,
+)
 from app.discord.event_threads import queue_member
 from app.events.table_membership import set_removed
 from app.models import Event, EventManagerSignup, TableSignup
@@ -114,13 +117,13 @@ def edit_player(
             db.commit()
             return
     if not adding:
-        changed = manager_remove(
+        changed = remove_player_from_roster(
             engine, guild_id, event_id, player_id, table, waitlist_only=waitlist
         )
     elif waitlist:
-        changed = add_waitlisted(engine, guild_id, event_id, player_id, table)
+        changed = add_player_to_waitlist(engine, guild_id, event_id, player_id, table)
     else:
-        changed = manager_add(
+        changed = assign_player_to_table(
             engine, guild_id, event_id, player_id, table, allow_known_player=allow_known
         )
     if not changed:

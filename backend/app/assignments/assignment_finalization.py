@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
+from app.assignments.roster import build_current_roster
 from app.discord.event_messages import enqueue_assignment_messages
 from app.models import Announcement, Event, LotteryRun, PlayerProfile
 from app.players.player_profiles import for_event as player_scope_for_event
@@ -14,10 +15,9 @@ from app.players.player_profiles import for_event as player_scope_for_event
 
 def adjust_weights(db: Session, event: Event, run: LotteryRun) -> None:
     """Apply the completed draw once, under the event transition lock."""
-    from app.assignments.withdrawals import current_result
 
     snapshot: dict[str, Any] = run.snapshot
-    result: dict[str, Any] = current_result(db, run)
+    result: dict[str, Any] = build_current_roster(db, run)
     if snapshot.get("automatic_weight_adjustment", True):
         profiles = {
             p.discord_id: p
@@ -51,12 +51,15 @@ def adjust_weights(db: Session, event: Event, run: LotteryRun) -> None:
 
 def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -> None:
     """Immediate publication when organizer review is disabled."""
-    from app.assignments.withdrawals import current_result
 
     adjust_weights(db, event, run)
     event.status = "assigned"
     enqueue_assignment_messages(
-        db, event, event.channel_id or channel_id, current_result(db, run), run.snapshot
+        db,
+        event,
+        event.channel_id or channel_id,
+        build_current_roster(db, run),
+        run.snapshot,
     )
 
 
@@ -104,8 +107,6 @@ def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
         if event is None or run is None:
             raise HTTPException(503, "Saved placements are unavailable")
         if event.status == "review":
-            from app.assignments.withdrawals import current_result
-
             existing = db.scalar(
                 select(Announcement.id)
                 .where(
@@ -118,7 +119,7 @@ def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
                     db,
                     event,
                     event.channel_id or channel_id,
-                    current_result(db, run),
+                    build_current_roster(db, run),
                     run.snapshot,
                 )
             else:

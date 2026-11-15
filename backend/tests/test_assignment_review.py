@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.assignments.closing import close_and_assign
-from app.assignments.withdrawals import current_result
+from app.assignments.roster import build_current_roster
 from app.discord.announcements import dispatch_due
 from app.discord.event_messages import build_assignment_messages
 from app.models import (
@@ -143,7 +143,7 @@ def test_approval_posts_edited_assignments_and_waitlists(client):
     )
     with Session(engine) as db:
         run = db.get(LotteryRun, event["id"])
-        edited = deepcopy(current_result(db, run))
+        edited = deepcopy(build_current_roster(db, run))
         expected = build_assignment_messages(
             db.get(Event, event["id"]), "channel", edited, run.snapshot
         )
@@ -165,7 +165,7 @@ def test_approval_posts_edited_assignments_and_waitlists(client):
         assert [post.payload for post in posts] == expected
         run = db.get(LotteryRun, event["id"])
         assert run.result == original
-        assert current_result(db, run) == edited
+        assert build_current_roster(db, run) == edited
         # Legacy events without announcement records must also use edited rosters.
         db.execute(delete(Announcement).where(Announcement.event_id == event["id"]))
         db.commit()

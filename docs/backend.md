@@ -103,3 +103,15 @@ Discord REST calls share an application-owned HTTP pool, and request permission
 checks release their database connection before contacting Discord.
 
 Discord message code is grouped by responsibility: `discord/event_messages.py` builds signup and assignment payloads and queues roster messages; `discord/event_threads.py` owns neutral thread starters, thread creation, membership, and cleanup. `discord/delivery.py` shares atomic delivery leases, token-protected completion, uncertain-send reconciliation, and retry delays. Announcement dispatch and promotion DMs retain their own eligibility, privacy, and terminal-failure policies. Thread starters use these shared mechanics directly, avoiding a dependency on assignment dispatch.
+
+## Assignment service map
+
+- `assignments/roster.py`: `build_current_roster` and `build_roster_players` combine the immutable lottery result with withdrawals, manual seats, waitlist additions, and table exclusions. These functions read saved data without changing it.
+- `assignments/player_changes.py`: event edit locking, organizer seating/removal/waitlist additions, pair-aware replacement selection, and withdrawals from channel announcements or private promotion messages. Callers retain the existing transaction and authorization boundaries.
+- `assignments/notifications.py`: public table-change queueing, promotion text, and private promotion notice queueing.
+
+The read-only roster module depends only on saved models and table-membership
+filters. Notifications can read that projection and queue delivery work; player
+changes call both services. Discord delivery no longer imports player-change
+logic. Existing HTTP paths, `current_result` response fields, database tables,
+and saved draw formats are unchanged. No migration is required.

@@ -9,6 +9,7 @@ from sqlalchemy import Engine, case, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.assignments.assignment_finalization import complete_review_delivery
+from app.assignments.roster import build_current_roster
 from app.discord.delivery import (
     UNCONFIRMED_DELIVERY,
     announcement_failure_values,
@@ -35,7 +36,6 @@ def refresh_assignment_posts(
     engine: Engine, discord: DiscordAPI, event_id: str
 ) -> str | None:
     """Replace tracked assignment rosters with current saved placements."""
-    from app.assignments.withdrawals import current_result
 
     with Session(engine) as db:
         event = db.get(Event, event_id)
@@ -60,7 +60,7 @@ def refresh_assignment_posts(
         refreshed = build_assignment_messages(
             event,
             rows[0].channel_id,
-            current_result(db, run),
+            build_current_roster(db, run),
             run.snapshot,
             notify=False,
         )

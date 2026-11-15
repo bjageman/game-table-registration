@@ -8,6 +8,7 @@ import uuid
 from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.assignments.roster import build_current_roster
 from app.discord.delivery import (
     claim_delivery,
     complete_delivery,
@@ -88,7 +89,6 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
 
 
 def _eligible(db: Session, notice: PromotionDM) -> bool:
-    from app.assignments.withdrawals import current_result
 
     event = db.get(Event, notice.event_id)
     if (
@@ -104,7 +104,7 @@ def _eligible(db: Session, notice: PromotionDM) -> bool:
         preference
         and preference.dm_waitlist_promotions
         and run
-        and current_result(db, run)["assignments"].get(notice.discord_id)
+        and build_current_roster(db, run)["assignments"].get(notice.discord_id)
         == notice.table_name
     )
 
@@ -240,45 +240,3 @@ def dispatch_due(engine: Engine, discord: DiscordAPI) -> None:
             deliver(engine, discord, notice_id)
         except Exception:
             logger.exception("Could not process private promotion notice %s", notice_id)
-
-
-def withdraw(
-    engine: Engine, notice_id: str, user_id: str, channel_id: str, message_id: str
-) -> str:
-    """Only the intended recipient may relinquish a current, future seat."""
-    from app.assignments.withdrawals import withdraw_seat
-
-    with Session(engine) as db:
-        notice = db.get(PromotionDM, notice_id)
-        if (
-            notice is None
-            or notice.discord_id != user_id
-            or notice.state != "sent"
-            or notice.channel_id != channel_id
-            or notice.message_id != message_id
-        ):
-            return "Something went wrong. Please contact the host for assistance."
-        claimed = db.execute(
-            update(Event)
-            .where(
-                Event.id == notice.event_id,
-                Event.status == "assigned",
-                Event.archived_at.is_(None),
-                Event.starts_at > time.time(),
-            )
-            .values(status=Event.status)
-            .returning(Event.id)
-        ).scalar_one_or_none()
-        if claimed is None:
-            return "This event has started or is no longer accepting withdrawals."
-        event = db.get(Event, notice.event_id)
-        run = db.get(LotteryRun, notice.event_id)
-        if event is None or run is None:
-            return "This event is no longer available."
-        if not withdraw_seat(db, event, run, user_id, event.channel_id or ""):
-            return "You no longer have a seat at this event."
-        db.commit()
-        return (
-            f"You have withdrawn from {clean(event.title)}. "
-            "Your seat is now available to the next waitlisted player."
-        )

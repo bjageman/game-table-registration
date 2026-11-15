@@ -4,7 +4,7 @@ from flow_helpers import login
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.assignments.withdrawals import manager_remove
+from app.assignments.player_changes import remove_player_from_roster
 from app.discord.event_threads import enabled as threads_enabled
 from app.models import AssignmentPreference, Event, PromotionDM
 from app.settings.assignment_preferences import DEFAULTS, for_event
@@ -63,7 +63,7 @@ def test_background_behavior_uses_defaults_without_a_saved_row(promotion_db):
         assert all(getattr(preferences, key) is True for key in DEFAULTS)
         assert threads_enabled(db, event)
         assert db.get(AssignmentPreference, "user:owner") is None
-    assert manager_remove(engine, "guild", "event", "1")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     with Session(engine) as db:
         assert db.scalar(select(PromotionDM.discord_id)) == "2"
         preference = AssignmentPreference(scope_key="user:new")

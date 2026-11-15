@@ -9,7 +9,7 @@ import discord
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app.assignments import withdrawals
+from app.assignments import player_changes
 from app.config import Settings
 from app.discord import promotion_dms, reactions
 from app.discord.announcements import deliver_event
@@ -207,7 +207,7 @@ class SignupGateway(discord.Client):
                 return
             async with self.reaction_lock:
                 event_id = await asyncio.to_thread(
-                    withdrawals.announcement_event,
+                    player_changes.event_for_withdrawal_message,
                     self.engine,
                     str(event.guild_id),
                     str(event.channel_id),
@@ -217,7 +217,7 @@ class SignupGateway(discord.Client):
                     return
                 try:
                     changed = await asyncio.to_thread(
-                        withdrawals.withdraw,
+                        player_changes.withdraw_from_announcement,
                         self.engine,
                         str(event.guild_id),
                         str(event.channel_id),
@@ -440,7 +440,7 @@ class SignupGateway(discord.Client):
             return
         try:
             content = await asyncio.to_thread(
-                promotion_dms.withdraw,
+                player_changes.withdraw_from_promotion_dm,
                 self.engine,
                 custom_id.removeprefix(promotion_dms.BUTTON_PREFIX),
                 str(interaction.user.id),
