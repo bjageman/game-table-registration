@@ -18,8 +18,7 @@ from app.discord.discord_format import (
     table_field,
 )
 from app.discord.signup_messages import signup_body
-from app.events.signups import apply_manager_signups, table_rows
-from app.events.test_signups import add_to_rows
+from app.events.signups import signup_rows
 from app.models import AssignmentPreference, Event
 from app.settings.assignment_preferences import for_event
 
@@ -101,9 +100,7 @@ def with_initial_roster(
         return payload
     event.signup_roster_hash = "pending"
     event.signup_roster_checked_at = None
-    rows = apply_manager_signups(
-        db, event, add_to_rows(table_rows(db, event), event.test_signups)
-    )
+    rows = signup_rows(db, event)
     return {**payload, "embeds": [roster_pages(event, payload["embeds"][0], rows)[0]]}
 
 
@@ -169,14 +166,7 @@ def _refresh(engine: Engine, discord: DiscordAPI, event_id: str) -> None:
                 return
             base = base_embed(event)
             if enabled:
-                rows = apply_manager_signups(
-                    db,
-                    event,
-                    add_to_rows(
-                        raw if raw is not None else table_rows(db, event),
-                        event.test_signups,
-                    ),
-                )
+                rows = signup_rows(db, event, raw)
                 parts: list[dict[str, Any]] = [
                     {"embeds": [page]} for page in roster_pages(event, base, rows)
                 ]
