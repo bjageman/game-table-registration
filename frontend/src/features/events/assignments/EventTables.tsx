@@ -1,3 +1,4 @@
+import { pollWhileVisible } from "../../../lib/visiblePolling";
 import { parseWeightInput } from "../../../lib/weightInput";
 import { matchesPlayer, type PlayerSummary } from "../../../lib/players";
 import useDialog from "../../../hooks/useDialog";
@@ -138,7 +139,6 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
   }
   useEffect(() => {
     const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
       onRefreshingChange?.(true);
       try {
@@ -149,12 +149,11 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
       } finally {
         if (!controller.signal.aborted) {
           onRefreshingChange?.(false);
-          timer = setTimeout(() => void refresh(), 15000);
         }
       }
     }
-    void refresh();
-    return () => { controller.abort(); clearTimeout(timer); };
+    const stop = pollWhileVisible(refresh);
+    return () => { stop(); controller.abort(); };
   }, [event.id, event.discord_url, event.status, event.is_test, event.test_generation, attempt, refreshToken, onAccessError, onRefreshingChange]);
   return <>
     {selectedPlayer && <PlayerProfile key={selectedPlayer.id} player={selectedPlayer} csrf={csrf} readOnly={readOnly}

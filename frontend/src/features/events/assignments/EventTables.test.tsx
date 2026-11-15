@@ -71,16 +71,16 @@ it("refreshes names and counts when votes are added and removed, and stops on cl
   const view = render(<EventTables csrf="csrf" event={event} onAccessError={() => false} />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(screen.getByText("0/8")).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(screen.getByText("Mary")).toBeVisible();
   expect(screen.getByRole("button", { name: "Mary" })).toHaveAttribute("aria-haspopup", "dialog");
   expect(screen.getByText("1/8")).toBeVisible();
   expect(screen.getByText("Dan")).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(screen.queryByText("Mary")).not.toBeInTheDocument();
   expect(screen.getByText("0/8")).toBeVisible();
   expect(screen.getByText("Dan")).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(screen.getByRole("alert")).toHaveTextContent("Showing the last loaded list");
   expect(screen.getByText("Dan")).toBeVisible();
   expect(screen.getByText("0/8")).toBeVisible();
@@ -104,11 +104,11 @@ it("refreshes assigned placements while the modal is open", async () => {
   const view = render(<EventTables csrf="csrf" event={{ ...event, status: "assigned" }} onAccessError={() => false} />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(screen.getByText("1/8")).toBeVisible();
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(screen.getByText("2/8")).toBeVisible();
   expect(screen.getByRole("button", { name: "Dan" })).toBeVisible();
   view.unmount();
-  await vi.advanceTimersByTimeAsync(15000);
+  await vi.advanceTimersByTimeAsync(2000);
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
