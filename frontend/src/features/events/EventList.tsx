@@ -138,9 +138,9 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
         </button>
       </ModalHeader>
             <EventDateDetails>
+              {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               <EventDateLine label="Event starts" timestamp={event.starts_at} />
               {event.ends_at != null && <EventDateLine label="Event ends" timestamp={event.ends_at} />}
-              {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               {signupOpensAt != null && <EventDateLine label="Signup Open" timestamp={signupOpensAt} />}
               <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
               {event.post_warning_message && signupClosesAt != null && <EventDateLine label="Warning Message"
