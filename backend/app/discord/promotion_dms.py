@@ -29,8 +29,7 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
     """Queue in the same locked transaction that assigns the promoted player."""
     preference = for_event(db, event)
     if (
-        not preference
-        or not preference.dm_waitlist_promotions
+        not preference.dm_waitlist_promotions
         or not player_id.isascii()
         or not player_id.isdecimal()
         or event.archived_at
@@ -101,8 +100,7 @@ def _eligible(db: Session, notice: PromotionDM) -> bool:
     preference = for_event(db, event)
     run = db.get(LotteryRun, event.id)
     return bool(
-        preference
-        and preference.dm_waitlist_promotions
+        preference.dm_waitlist_promotions
         and run
         and build_current_roster(db, run)["assignments"].get(notice.discord_id)
         == notice.table_name

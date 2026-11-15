@@ -100,7 +100,7 @@ def with_initial_roster(
     db: Session, event: Event, payload: dict[str, Any]
 ) -> dict[str, Any]:
     saved = for_event(db, event)
-    if not saved or not saved.show_open_signup_players:
+    if not saved.show_open_signup_players:
         return payload
     event.signup_roster_hash = "pending"
     event.signup_roster_checked_at = None
@@ -123,7 +123,7 @@ def _refresh(engine: Engine, discord: DiscordAPI, event_id: str) -> None:
         if event is None:
             return
         saved = for_event(db, event)
-        enabled = bool(saved and saved.show_open_signup_players)
+        enabled = saved.show_open_signup_players
         active = event.status == "open" and (
             event.closes_at is None or event.closes_at > time.time()
         )
@@ -156,7 +156,7 @@ def _refresh(engine: Engine, discord: DiscordAPI, event_id: str) -> None:
             and event.signup_deleted_at is None
             and (event.closes_at is None or event.closes_at > time.time())
         )
-        enabled = bool(saved and saved.show_open_signup_players and active)
+        enabled = saved.show_open_signup_players and active
         cache = list(event.signup_roster_messages or [])
         try:
             if not active:

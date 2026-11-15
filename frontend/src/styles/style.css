@@ -282,9 +282,6 @@ h3 {
   display: grid;
   gap: 20px;
 }
-.event-card {
-  min-width: 0;
-}
 .event-details {
   display: flex;
   flex-wrap: wrap;
@@ -481,24 +478,6 @@ dd {
   }
   .table-fields > div {
     min-width: 0;
-  }
-}
-
-.draft-actions > .help {
-  flex-basis: 100%;
-  order: 1;
-  margin: 0;
-}
-
-@media (max-width: 600px) {
-  .draft-actions {
-    display: grid;
-    grid-template-columns: repeat(2, max-content);
-  }
-  .draft-actions > .primary,
-  .draft-actions > .help {
-    grid-column: 1 / -1;
-    justify-self: start;
   }
 }
 

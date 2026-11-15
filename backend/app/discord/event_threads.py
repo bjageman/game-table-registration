@@ -142,7 +142,7 @@ def _deliver_thread_starter(engine: Engine, discord: DiscordAPI, row_id: str) ->
 
 def enabled(db: Session, event: Event) -> bool:
     preference = for_event(db, event)
-    return bool(preference and preference.post_discord_updates_to_thread)
+    return preference.post_discord_updates_to_thread
 
 
 def queue_member(db: Session, event: Event, user_id: str) -> None:
