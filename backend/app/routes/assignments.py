@@ -193,7 +193,7 @@ def register(context: ApplicationContext) -> None:
             preferences = preferences_for_event(db, event)
             return {
                 "title": event.title,
-                "timezone": preferences.timezone if preferences else None,
+                "timezone": preferences.timezone,
                 "description": event.description,
                 "location": event.location,
                 "starts_at": event.starts_at,

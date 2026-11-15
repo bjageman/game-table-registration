@@ -205,7 +205,7 @@ def _close_and_assign(
         adjust_weights = event.close_adjust_weights
         if adjust_weights is None:
             settings = assignment_preferences_for_event(db, event)
-            adjust_weights = settings.automatic_weight_adjustment if settings else True
+            adjust_weights = settings.automatic_weight_adjustment
         review_required = event.close_review_assignments
         if review_required is None:
             review_required = assignment_preferences_for_event(

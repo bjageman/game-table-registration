@@ -88,10 +88,7 @@ def publish_event(
                 else None
             )
             assignment_preferences = preferences_for_event(db, event)
-            include_roster = bool(
-                assignment_preferences
-                and assignment_preferences.show_open_signup_players
-            )
+            include_roster = assignment_preferences.show_open_signup_players
             payload = (
                 reaction_publication(event, closes_at, include_roster)
                 if event.signup_mode == "reactions"

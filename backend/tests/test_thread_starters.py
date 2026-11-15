@@ -4,15 +4,15 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from test_event_threads import setup as setup
+from thread_helpers import thread_setup as thread_setup
 
 from app.discord.discord_api import DiscordRequestError
 from app.discord.event_threads import resolve_update_channel, synchronize_event
 from app.models import Announcement, Event
 
 
-def test_neutral_starter_is_reused_and_precedes_warning(setup):
-    engine, discord = setup
+def test_neutral_starter_is_reused_and_precedes_warning(thread_setup):
+    engine, discord = thread_setup
     with Session(engine) as db:
         db.add(
             Announcement(
@@ -44,8 +44,8 @@ def test_neutral_starter_is_reused_and_precedes_warning(setup):
         assert starter.part == -2
 
 
-def test_uncertain_starter_delivery_is_reconciled_without_duplicate_post(setup):
-    engine, discord = setup
+def test_uncertain_starter_delivery_is_reconciled_without_duplicate_post(thread_setup):
+    engine, discord = thread_setup
     discord.send_announcement.side_effect = DiscordRequestError(None)
     with pytest.raises(HTTPException):
         resolve_update_channel(engine, discord, "event")
@@ -64,8 +64,8 @@ def test_uncertain_starter_delivery_is_reconciled_without_duplicate_post(setup):
     )
 
 
-def test_existing_threads_are_kept_without_creating_a_starter(setup):
-    engine, discord = setup
+def test_existing_threads_are_kept_without_creating_a_starter(thread_setup):
+    engine, discord = thread_setup
     with Session(engine) as db:
         db.get(Event, "event").update_thread_id = "existing-thread"
         db.commit()

@@ -329,6 +329,8 @@ class Announcement(Base):
 
 
 class GuildSettings(Base):
+    """Legacy compatibility table retained for historical backfills and downgrades."""
+
     __tablename__ = "guild_settings"
     guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
