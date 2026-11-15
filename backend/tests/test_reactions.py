@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import discord
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from test_signups import custom_client as custom_client
 from test_signups import publish
@@ -249,3 +250,123 @@ def test_seeding_failure_holds_original_message_for_review(custom_client):
         assert record.status == "needs_review"
         assert record.message_id == "message"
     assert client.app.state.discord.publish.call_count == 1
+
+
+@pytest.mark.parametrize("failure", [None, "write", "closing", "disconnect"])
+def test_closing_waits_for_queued_reactions_before_snapshot(
+    custom_client, monkeypatch, failure
+):
+    from app.assignments.closing import close_and_assign
+
+    client, _, config = custom_client
+    _, event, _ = publish(custom_client, reaction=True)
+    engine = client.app.state.engine
+    with Session(engine) as db:
+        db.get(Event, event["id"]).reaction_checkpoint = time.time()
+        db.commit()
+    if failure == "closing":
+        monkeypatch.setattr(
+            "app.assignments.closing._close_and_assign",
+            Mock(side_effect=HTTPException(422, "Guarantee conflict")),
+        )
+    if failure == "write":
+        monkeypatch.setattr(
+            reactions, "change", Mock(side_effect=RuntimeError("Write failed"))
+        )
+
+    async def check():
+        gateway = SignupGateway(engine, config)
+        raw = SimpleNamespace(
+            guild_id="guild",
+            channel_id="channel",
+            message_id="message",
+            user_id=1,
+            emoji=SimpleNamespace(id=None, name="1️⃣"),
+            type=discord.ReactionType.normal,
+            member=SimpleNamespace(bot=False, display_name="Player"),
+        )
+        key = ("guild", "channel", "message")
+        queue = reactions.reaction_queue(engine)
+        await gateway.reaction_lock.acquire()
+        incoming = asyncio.create_task(gateway.on_raw_reaction_add(raw))
+        closing = None
+        try:
+            await asyncio.sleep(0)
+            assert queue.pending[key] == 1
+            closing = asyncio.create_task(
+                asyncio.to_thread(
+                    close_and_assign,
+                    engine,
+                    client.app.state.discord,
+                    event["id"],
+                    "owner",
+                    "channel",
+                )
+            )
+            async with asyncio.timeout(3):
+                while key not in queue.closing:
+                    await asyncio.sleep(0)
+            assert not closing.done()
+            assert engine.pool.checkedout() == 0
+            with Session(engine) as db:
+                assert db.get(LotteryRun, event["id"]) is None
+            late = SimpleNamespace(**{**raw.__dict__, "user_id": 2})
+            late_task = asyncio.create_task(gateway.on_raw_reaction_add(late))
+            await asyncio.sleep(0)
+            assert not late_task.done()
+            disconnecting = None
+            if failure == "disconnect":
+                disconnecting = asyncio.create_task(gateway.on_disconnect())
+                await asyncio.sleep(0)
+                assert queue.connection_changes == 1
+            gateway.reaction_lock.release()
+            await incoming
+            if disconnecting:
+                await disconnecting
+            if failure:
+                with pytest.raises(HTTPException) as error:
+                    await asyncio.wait_for(closing, 3)
+                assert error.value.status_code == (422 if failure == "closing" else 409)
+                with Session(engine) as db:
+                    assert db.get(LotteryRun, event["id"]) is None
+            else:
+                assert await asyncio.wait_for(closing, 3)
+                with Session(engine) as db:
+                    run = db.get(LotteryRun, event["id"])
+                    assert [player["id"] for player in run.snapshot["players"]] == ["1"]
+            await asyncio.wait_for(late_task, 3)
+            if failure == "closing":
+                assert saved(client, event, "2") == ["A"]
+            assert key not in queue.closing
+        finally:
+            if gateway.reaction_lock.locked():
+                gateway.reaction_lock.release()
+            await incoming
+            if closing:
+                await asyncio.gather(closing, return_exceptions=True)
+            await gateway.close()
+
+    asyncio.run(check())
+
+
+def test_reaction_freeze_timeout_and_failure_release_the_gate():
+    queue = reactions.ReactionQueue()
+    key = ("guild", "channel", "message")
+    with queue.track(key) as accepted:
+        assert accepted
+        with pytest.raises(HTTPException) as error:
+            with queue.freeze(key, timeout=0):
+                pytest.fail("A draw must not start while work is pending")
+        assert error.value.status_code == 409
+        assert key not in queue.closing
+    assert not queue.pending
+    with queue.freeze(key):
+        with queue.track(key) as accepted:
+            assert not accepted
+        with queue.track(("guild", "channel", "another")) as accepted:
+            assert accepted
+        with pytest.raises(HTTPException):
+            with queue.freeze(key):
+                pass
+    with queue.track(key) as accepted:
+        assert accepted

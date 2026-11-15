@@ -396,3 +396,52 @@ def test_private_channel_creation_uses_the_recipient_and_validates_the_result():
     api.bot.return_value = {}
     with pytest.raises(DiscordRequestError):
         api.open_dm("123")
+
+
+def test_scoped_discord_clients_share_http_pool_without_sharing_auth_headers():
+    requests = []
+    transport = httpx.MockTransport(
+        lambda request: (
+            requests.append(request) or httpx.Response(200, json={"id": "ok"})
+        )
+    )
+    with httpx.Client(transport=transport) as http:
+        api = DiscordAPI(Settings(_env_file=None, discord_bot_token="test-token"), http)
+        scoped = api.at("guild", "channel")
+        assert scoped.http_client is http
+        scoped.bot("GET", "/users/@me")
+        api.request("GET", "/users/@me", headers={"Authorization": "Bearer oauth"})
+        scoped.bot("GET", "/users/@me")
+    assert [request.headers["authorization"] for request in requests] == [
+        "Bot test-token",
+        "Bearer oauth",
+        "Bot test-token",
+    ]
+
+
+def test_application_closes_its_shared_http_pool(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    app = create_app(
+        Settings(
+            _env_file=None,
+            database_url=f"sqlite:///{tmp_path}/pool.db",
+            discord_gateway_enabled=False,
+            announcement_worker_enabled=False,
+        )
+    )
+    with TestClient(app) as client:
+        http = app.state.discord.http_client
+        assert http is not None and not http.is_closed
+        assert app.state.discord.at("guild", "channel").http_client is http
+        assert client.get("/api/health/live").status_code == 200
+        with TestClient(app) as other:
+            assert app.state.discord.http_client is http
+            assert other.get("/api/health/live").status_code == 200
+        assert not http.is_closed
+        assert app.state.discord.http_client is http
+    assert http.is_closed
+    assert app.state.discord.http_client is None
+    app.state.engine.dispose()

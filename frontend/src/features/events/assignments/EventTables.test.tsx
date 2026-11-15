@@ -374,3 +374,15 @@ it("keeps the weight limit notice when blur fires during a pending save", async 
   expect(screen.getByRole("button", { name: "Edit weight for Mary: 10.0" })).toBeVisible();
   expect(screen.getByText("The maximum weight is 10. Weight set to 10.")).toBeVisible();
 });
+
+it("shows archived placements without player-editing controls", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
+    { name: "Table A", players: [{ id: "1", name: "Mary" }], waitlist: [{ id: "2", name: "Dan" }] },
+    { name: "Table B", players: [], waitlist: [] },
+  ]))));
+  render(<EventTables csrf="csrf" event={{ ...event, status: "assigned", archived_at: 1 }} onAccessError={() => false} />);
+  expect(await screen.findByText("Mary")).toBeVisible();
+  expect(screen.getByText("Dan")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Mary" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Remove|Add Player|Add Dan/ })).not.toBeInTheDocument();
+});

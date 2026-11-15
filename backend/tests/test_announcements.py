@@ -340,3 +340,66 @@ def test_retry_repairs_invalid_test_mentions_in_saved_messages(promotion_db):
         row = db.get(Announcement, "assignment")
         assert row.state == "sent"
         assert row.payload == sent
+
+
+def test_backed_off_thread_starter_does_not_block_assignments(promotion_db):
+    import time
+
+    from app.discord.announcements import dispatch_due, status
+
+    with Session(promotion_db) as db:
+        original = db.get(Announcement, "assignment")
+        original.state = "pending"
+        original.message_id = None
+        db.add(
+            Announcement(
+                id="starter",
+                event_id="event",
+                part=-2,
+                kind="thread_starter",
+                channel_id="channel",
+                payload={"content": "Event updates"},
+                state="pending",
+                created_at=0,
+                next_attempt=time.time() + 3600,
+                error="Thread starter failed",
+            )
+        )
+        db.commit()
+    discord = Mock()
+    discord.send_announcement.return_value = {"id": "results"}
+    dispatch_due(promotion_db, lambda *_: discord)
+    discord.send_announcement.assert_called_once()
+    with Session(promotion_db) as db:
+        assert db.get(Announcement, "assignment").state == "sent"
+        assert db.get(Announcement, "starter").state == "pending"
+    assert status(promotion_db, "event", "guild")["status"] == "sent"
+
+
+def test_targeted_thread_starter_delivery_preserves_pending_assignment(promotion_db):
+    with Session(promotion_db) as db:
+        original = db.get(Announcement, "assignment")
+        original.state = "pending"
+        db.add(
+            Announcement(
+                id="starter",
+                event_id="event",
+                part=-2,
+                kind="thread_starter",
+                channel_id="channel",
+                payload={"content": "Event updates"},
+                state="pending",
+                created_at=0,
+                next_attempt=0,
+            )
+        )
+        db.commit()
+    discord = Mock()
+    discord.send_announcement.return_value = {"id": "starter-message"}
+    deliver_event(promotion_db, discord, "event", kind="thread_starter")
+    discord.send_announcement.assert_called_once_with(
+        "channel", {"content": "Event updates"}
+    )
+    with Session(promotion_db) as db:
+        assert db.get(Announcement, "assignment").state == "pending"
+        assert db.get(Announcement, "starter").state == "sent"

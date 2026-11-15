@@ -53,7 +53,7 @@ def starter_message(
     from app.discord.announcements import deliver_event
 
     if not ready:
-        deliver_event(engine, discord, event_id, limit=1)
+        deliver_event(engine, discord, event_id, limit=1, kind="thread_starter")
     with Session(engine) as db:
         row = db.scalar(
             select(Announcement).where(
