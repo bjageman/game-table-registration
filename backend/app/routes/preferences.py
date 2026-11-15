@@ -11,11 +11,9 @@ from app.models import (
     AssignmentPreference,
     Event,
 )
-from app.schemas import (
-    AssignmentSettingsInput,
-)
 from app.settings.assignment_preferences import for_scope
 from app.settings.assignment_preferences import scope_key as assignment_scope_key
+from app.settings.general_settings import GeneralSettingsInput, settings_values
 
 
 def register(context: ApplicationContext) -> None:
@@ -24,27 +22,16 @@ def register(context: ApplicationContext) -> None:
     engine = context.engine
 
     @router.get("/api/settings/assignment")
-    def assignment_settings(request: Request) -> dict[str, Any]:
+    def general_settings(request: Request) -> dict[str, Any]:
         session = authenticated(request, require_destination=False)
         key = assignment_scope_key(request.state.organization_id, session.user_id)
         with DBSession(engine) as db:
             saved = for_scope(db, key)
-            return {
-                "automatic_weight_adjustment": saved.automatic_weight_adjustment,
-                "create_discord_event": saved.create_discord_event,
-                "announce_table_changes": saved.announce_table_changes,
-                "post_discord_updates_to_thread": saved.post_discord_updates_to_thread,
-                "timezone": saved.timezone,
-                "review_assignments_before_discord": (
-                    saved.review_assignments_before_discord
-                ),
-                "dm_waitlist_promotions": saved.dm_waitlist_promotions,
-                "show_open_signup_players": saved.show_open_signup_players,
-            }
+            return settings_values(saved)
 
     @router.put("/api/settings/assignment")
-    def save_assignment_settings(
-        body: AssignmentSettingsInput, request: Request
+    def save_general_settings(
+        body: GeneralSettingsInput, request: Request
     ) -> dict[str, Any]:
         session = authenticated(request, True, require_destination=False)
         if request.state.organization_id and request.state.organization_role != "admin":
@@ -54,14 +41,7 @@ def register(context: ApplicationContext) -> None:
         with DBSession(engine) as db:
             key = assignment_scope_key(request.state.organization_id, session.user_id)
             previous = db.get(AssignmentPreference, key)
-            for field in (
-                "create_discord_event",
-                "review_assignments_before_discord",
-                "timezone",
-                "post_discord_updates_to_thread",
-                "show_open_signup_players",
-                "dm_waitlist_promotions",
-            ):
+            for field in type(body).model_fields:
                 if field not in body.model_fields_set and previous:
                     setattr(body, field, getattr(previous, field))
             roster_changed = (
@@ -73,14 +53,7 @@ def register(context: ApplicationContext) -> None:
                     scope_key=assignment_scope_key(
                         request.state.organization_id, session.user_id
                     ),
-                    automatic_weight_adjustment=body.automatic_weight_adjustment,
-                    create_discord_event=body.create_discord_event,
-                    announce_table_changes=body.announce_table_changes,
-                    post_discord_updates_to_thread=body.post_discord_updates_to_thread,
-                    timezone=body.timezone,
-                    review_assignments_before_discord=body.review_assignments_before_discord,
-                    show_open_signup_players=body.show_open_signup_players,
-                    dm_waitlist_promotions=body.dm_waitlist_promotions,
+                    **body.model_dump(),
                 )
             )
             if roster_changed:

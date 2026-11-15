@@ -115,3 +115,7 @@ filters. Notifications can read that projection and queue delivery work; player
 changes call both services. Discord delivery no longer imports player-change
 logic. Existing HTTP paths, `current_result` response fields, database tables,
 and saved draw formats are unchanged. No migration is required.
+
+Event API presentation lives in `events/event_views.py`. Event-list requests load scheduled Discord events, assignment delivery rows, and pairing-warning inputs in batches for the already scoped event list. `assignments/roster.py` accepts a typed `RosterRecords` bundle for these batch reads and computes waitlist membership once; single-event callers use the same projection. Name decoration reads only profiles and event settings for players present in the roster and retains the organization/personal scope filters.
+
+`settings/general_settings.py` declares General Settings fields and enabled defaults. ORM defaults, unsaved preferences, and response mappings use that contract. Existing `/api/settings/assignment` paths and the `assignment_preferences` table remain compatible; older clients still preserve omitted saved options. No migration is needed.

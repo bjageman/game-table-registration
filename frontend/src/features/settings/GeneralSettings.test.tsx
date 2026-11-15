@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import AssignmentSettings from "./AssignmentSettings";
+import GeneralSettings from "./GeneralSettings";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -9,7 +9,7 @@ it("shows assignment options on separate rows and restricts organization editors
     automatic_weight_adjustment: true, announce_table_changes: false,
   })));
   vi.stubGlobal("fetch", fetchMock);
-  render(<AssignmentSettings csrf="csrf" restricted onAccessError={() => false} />);
+  render(<GeneralSettings csrf="csrf" restricted onAccessError={() => false} />);
   const weights = await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
   const announcements = screen.getByRole("checkbox", { name: "Announce Table Changes on Discord" });
   expect(screen.getByRole("checkbox", { name: "Review assignments before sending to Discord" })).toBeDisabled();
@@ -32,7 +32,7 @@ it("saves assignment options for an admin", async () => {
       : { automatic_weight_adjustment: true, announce_table_changes: false, post_discord_updates_to_thread: false, show_open_signup_players: false, dm_waitlist_promotions: false },
   )));
   vi.stubGlobal("fetch", fetchMock);
-  render(<AssignmentSettings csrf="csrf" onAccessError={() => false} />);
+  render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
   const announcements = await screen.findByRole("checkbox", { name: "Announce Table Changes on Discord" });
   const privateMessages = screen.getByRole("checkbox", { name: "Send private messages for waitlist promotions" });
   expect(privateMessages).not.toBeChecked();
@@ -69,7 +69,7 @@ it("enables every General toggle by default before the first settings save", asy
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
     automatic_weight_adjustment: true, announce_table_changes: true,
   }))));
-  render(<AssignmentSettings csrf="csrf" onAccessError={() => false} />);
+  render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
   await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
   const toggles = screen.getAllByRole("checkbox");
   expect(toggles).toHaveLength(7);

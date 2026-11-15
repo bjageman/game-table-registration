@@ -96,3 +96,5 @@ other announcement checks run every 15 seconds. These use the shared
 `src/lib/visiblePolling.ts` helper, pause in hidden tabs, refresh immediately
 when the tab becomes visible, and never overlap requests. Event lists retain
 manual refresh. No SSE connection is opened.
+
+`features/settings/GeneralSettings.tsx` renders General Settings, using the shared `lib/generalSettings.ts` values/defaults contract. Existing API paths and control IDs remain stable. The event form uses `useEventTimes` for a single start wall-clock state and end override shared by desktop and mobile pickers. The end continues to follow the start by four elapsed hours until explicitly edited; raw wall times remain available to DST validation.

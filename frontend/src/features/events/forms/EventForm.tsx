@@ -1,3 +1,4 @@
+import { GENERAL_SETTINGS_DEFAULTS, type GeneralSettingsValues } from "../../../lib/generalSettings";
 import FormFields from "../../../components/FormFields";
 import { resolveLocalTime, useTimezone } from "../../../lib/timezone";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
@@ -10,8 +11,6 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
 import { renderTimeViewClock } from "@mui/x-date-pickers/timeViewRenderers";
-import type { Dayjs } from "dayjs";
-import dayjs from "dayjs";
 import {
   api,
   ApiError,
@@ -22,6 +21,7 @@ import {
   type EventTemplateRecord,
 } from "../../../lib/api";
 import { validateEvent, validateTemplate } from "./eventValidation";
+import { useEventTimes } from "./useEventTimes";
 import TemplatePicker from "./TemplatePicker";
 import SignupWarningFields, { warningErrors } from "./SignupWarningFields";
 
@@ -33,10 +33,6 @@ interface Props {
   onScheduled?: (title: string) => void;
   onCancel: () => void;
   onAccessError: (error: unknown) => boolean;
-}
-
-function initialTime(timezone: string): Dayjs {
-  return dayjs().tz(timezone).add(1, "hour").startOf("hour");
 }
 
 export default function EventForm({
@@ -68,28 +64,12 @@ export default function EventForm({
     warning_hours_before_close: postWarning ? Number(warningHours) : 1,
     warning_message: warningMessage.trim(),
   };
-  const [startsAt, setStartsAt] = useState<Dayjs | null>(
-    draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
-  );
-  const [startsAtLocal, setStartsAtLocal] = useState(
-    draft ? dayjs.unix(draft.starts_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : "",
-  );
-  const [createDiscordEvent, setCreateDiscordEvent] = useState(true);
-  const [endOverride, setEndOverride] = useState<string | null>(
-    draft?.ends_at && draft.ends_at - draft.starts_at !== 4 * 3600
-      ? dayjs.unix(draft.ends_at).tz(timezone).format("YYYY-MM-DDTHH:mm") : null,
-  );
-  const startDate = resolveLocalTime(startsAtLocal, timezone).date;
-  const endsAtLocal = endOverride ?? (startDate
-    ? dayjs(new Date(startDate.getTime() + 4 * 3600000)).tz(timezone).format("YYYY-MM-DDTHH:mm") : "");
-  const endValue = endsAtLocal ? dayjs.tz(endsAtLocal, timezone) : null;
-  const [mobileEndTime, setMobileEndTime] = useState(() => initialTime(timezone));
-  const [mobileDate, setMobileDate] = useState<Dayjs | null>(
-    draft ? dayjs.unix(draft.starts_at).tz(timezone) : null,
-  );
-  const [mobileTime, setMobileTime] = useState(() =>
-    draft ? dayjs.unix(draft.starts_at).tz(timezone) : initialTime(timezone),
-  );
+  const [createDiscordEvent, setCreateDiscordEvent] = useState(GENERAL_SETTINGS_DEFAULTS.create_discord_event);
+  const {
+    startsAt, startsAtLocal, endsAtLocal, endValue, mobileTime, mobileEndTime,
+    updateDesktopStart, updateMobileDate, updateMobileTime,
+    updateDesktopEnd, updateEndDate, updateEndTime,
+  } = useEventTimes(timezone, draft);
   const [duration, setDuration] = useState(String(draft?.duration_hours ?? 24));
   const [manualClosesBefore, setManualClosesBefore] = useState(draft?.closes_at != null ? String(Math.round((draft.starts_at - draft.closes_at) / 3600)) : draft ? "" : "24");
   const [scheduled, setScheduled] = useState(Boolean(draft?.scheduled_publish_at));
@@ -118,8 +98,8 @@ export default function EventForm({
   const isMobile = useMediaQuery("(max-width: 600px)");
   useEffect(() => {
     const controller = new AbortController();
-    api<{ create_discord_event?: boolean }>("/settings/assignment", { signal: controller.signal })
-      .then((value) => { if (!controller.signal.aborted) setCreateDiscordEvent(value.create_discord_event ?? true); })
+    api<Partial<GeneralSettingsValues>>("/settings/assignment", { signal: controller.signal })
+      .then((value) => { if (!controller.signal.aborted) setCreateDiscordEvent(value.create_discord_event ?? GENERAL_SETTINGS_DEFAULTS.create_discord_event); })
       .catch((failure) => { if (!controller.signal.aborted && !onAccessError(failure)) setError(errorMessage(failure)); });
     return () => controller.abort();
   }, [onAccessError]);
@@ -151,47 +131,6 @@ export default function EventForm({
     if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
     event.preventDefault();
     if (!event.repeat) addTable();
-  }
-
-  function updateDesktopStart(value: Dayjs | null) {
-    setStartsAt(value);
-    setStartsAtLocal(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "");
-    if (value) setMobileTime(value);
-  }
-
-  function updateMobileDate(value: Dayjs | null) {
-    if (!value) {
-      setMobileDate(null);
-      setStartsAt(null);
-      setStartsAtLocal("");
-      return;
-    }
-    setMobileDate(value);
-    setStartsAtLocal(
-      `${value.format("YYYY-MM-DD")}T${mobileTime.format("HH:mm")}`,
-    );
-    const time = mobileTime;
-    setStartsAt(
-      value.hour(time.hour()).minute(time.minute()).second(0).millisecond(0),
-    );
-  }
-
-  function updateMobileTime(value: Dayjs | null) {
-    if (!value) return;
-    setMobileTime(value);
-    if (mobileDate) {
-      setStartsAtLocal(
-        `${mobileDate.format("YYYY-MM-DD")}T${value.format("HH:mm")}`,
-      );
-    }
-    setStartsAt(
-      (current) =>
-        current
-          ?.hour(value.hour())
-          .minute(value.minute())
-          .second(0)
-          .millisecond(0) ?? null,
-    );
   }
 
   function updateTable(
@@ -492,23 +431,16 @@ export default function EventForm({
             </div>
           {createDiscordEvent && (isMobile ? <div className="mobile-date-time-fields">
             <DatePicker timezone={timezone} label="Event ends" value={endValue}
-              onChange={(value) => {
-                const time = endValue ?? mobileEndTime;
-                setEndOverride(value?.isValid() ? value.hour(time.hour()).minute(time.minute()).format("YYYY-MM-DDTHH:mm") : "");
-              }}
+              onChange={updateEndDate}
               format="MMMM D, YYYY"
               slotProps={{ textField: { margin: "none", id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }} />
             <TimePicker timezone={timezone} label="Event end time" value={endValue ?? mobileEndTime}
-              onChange={(value) => {
-                if (!value?.isValid()) return;
-                setMobileEndTime(value);
-                if (endValue) setEndOverride(endValue.hour(value.hour()).minute(value.minute()).format("YYYY-MM-DDTHH:mm"));
-              }}
+              onChange={updateEndTime}
               ampm minutesStep={15} viewRenderers={{ hours: renderTimeViewClock, minutes: renderTimeViewClock }}
               slotProps={{ textField: { margin: "none", id: `${prefix}-end-time`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }} />
           </div> : <DateTimePicker
             timezone={timezone} label="Event ends" value={endValue}
-            onChange={(value) => setEndOverride(value?.isValid() ? value.format("YYYY-MM-DDTHH:mm") : "")}
+            onChange={updateDesktopEnd}
             format="MMMM D, YYYY h:mm A" ampm minutesStep={15}
             slotProps={{ textField: { margin: "none", id: `${prefix}-end`, fullWidth: true, required: true, slotProps: { inputLabel: { shrink: true } } } }}
           />)}

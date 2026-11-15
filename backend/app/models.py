@@ -11,7 +11,9 @@ from sqlalchemy import (
     false,
     true,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, mapped_column
+
+from app.settings.general_settings import BOOLEAN_DEFAULTS
 
 
 class Base(DeclarativeBase):
@@ -332,31 +334,30 @@ class GuildSettings(Base):
     automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
 
 
+def _general_setting(name: str) -> MappedColumn[bool]:
+    default = BOOLEAN_DEFAULTS[name]
+    return mapped_column(default=default, server_default=true() if default else false())
+
+
 class AssignmentPreference(Base):
-    create_discord_event: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
-    )
+    create_discord_event: Mapped[bool] = _general_setting("create_discord_event")
     __tablename__ = "assignment_preferences"
     scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    automatic_weight_adjustment: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    automatic_weight_adjustment: Mapped[bool] = _general_setting(
+        "automatic_weight_adjustment"
     )
-    announce_table_changes: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    announce_table_changes: Mapped[bool] = _general_setting("announce_table_changes")
+    post_discord_updates_to_thread: Mapped[bool] = _general_setting(
+        "post_discord_updates_to_thread"
     )
-    post_discord_updates_to_thread: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
-    )
-    review_assignments_before_discord: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    review_assignments_before_discord: Mapped[bool] = _general_setting(
+        "review_assignments_before_discord"
     )
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    show_open_signup_players: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    show_open_signup_players: Mapped[bool] = _general_setting(
+        "show_open_signup_players"
     )
-    dm_waitlist_promotions: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
-    )
+    dm_waitlist_promotions: Mapped[bool] = _general_setting("dm_waitlist_promotions")
 
 
 class EventThreadMember(Base):
