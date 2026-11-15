@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.assignment_finalization import approve
-from app.assignments.withdrawals import current_result
+from app.assignments.roster import build_current_roster
 from app.context import ApplicationContext
 from app.discord.announcements import deliver_event
 from app.discord.announcements import status as announcement_status
@@ -98,7 +98,7 @@ def register(context: ApplicationContext) -> None:
                     db,
                     event,
                     announcement_channel,
-                    current_result(db, run),
+                    build_current_roster(db, run),
                     run.snapshot,
                 )
             else:
@@ -186,7 +186,9 @@ def register(context: ApplicationContext) -> None:
             if run is None:
                 raise HTTPException(404, "Shared event not found")
             rows = list_names(
-                current_result(db, run)["tables"], event.id, include_settings=False
+                build_current_roster(db, run)["tables"],
+                event.id,
+                include_settings=False,
             )
             preferences = preferences_for_event(db, event)
             return {
@@ -229,7 +231,7 @@ def register(context: ApplicationContext) -> None:
                 "seed": run.seed,
                 "snapshot": run.snapshot,
                 "result": run.result,
-                "current_result": current_result(db, run),
+                "current_result": build_current_roster(db, run),
                 "created_at": run.created_at,
             }
 

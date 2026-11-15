@@ -1,4 +1,4 @@
-"""Process post-assignment withdrawals and promote the table waitlist."""
+"""Apply player seating, waitlist, and withdrawal changes under an event lock."""
 
 import time
 from typing import Any
@@ -6,13 +6,17 @@ from typing import Any
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
-from app.assignments.mutations import locked_assignment
-from app.assignments.notifications import enqueue_table_change
+from app.assignments.notifications import (
+    enqueue_promotion_dms,
+    enqueue_table_change,
+    format_pair_promotion,
+    format_promoted_players,
+)
+from app.assignments.roster import build_current_roster, build_roster_players
 from app.discord.discord_format import clean
 from app.discord.event_messages import enqueue_roster_refresh
 from app.discord.event_threads import queue_member
-from app.discord.promotion_dms import enqueue as enqueue_promotion_dm
-from app.events.table_membership import removals, set_removed
+from app.events.table_membership import set_removed
 from app.models import (
     Announcement,
     Event,
@@ -21,11 +25,44 @@ from app.models import (
     EventWaitlistAddition,
     EventWithdrawal,
     LotteryRun,
+    PromotionDM,
 )
 from app.players.player_profiles import for_event as player_scope_for_event
 
 
-def announcement_event(
+def lock_assignment_for_edit(
+    db: Session, guild_id: str, event_id: str
+) -> tuple[Event, LotteryRun] | None:
+    """Keep this transaction open through the edits and notification outbox writes."""
+    claimed = db.execute(
+        update(Event)
+        .where(
+            Event.id == event_id,
+            Event.guild_id == guild_id,
+            Event.status.in_(["assigned", "review"]),
+            Event.archived_at.is_(None),
+        )
+        .values(status=Event.status)
+        .returning(Event.id)
+    ).scalar_one_or_none()
+    if claimed is None:
+        return None
+    event = db.get(Event, event_id)
+    run = db.get(LotteryRun, event_id)
+    if (
+        event
+        and event.status == "review"
+        and db.scalar(
+            select(Announcement.id)
+            .where(Announcement.event_id == event_id, Announcement.kind == "assignment")
+            .limit(1)
+        )
+    ):
+        return None
+    return (event, run) if event is not None and run is not None else None
+
+
+def event_for_withdrawal_message(
     engine: Engine, guild_id: str, channel_id: str, message_id: str
 ) -> str | None:
     with Session(engine) as db:
@@ -46,136 +83,7 @@ def announcement_event(
         )
 
 
-def result_players(db: Session, run: LotteryRun) -> dict[str, Any]:
-    players = {player["id"]: player for player in run.snapshot["players"]}
-    for signup in db.scalars(
-        select(EventManagerSignup).where(EventManagerSignup.event_id == run.event_id)
-    ):
-        players.setdefault(
-            signup.discord_id,
-            {"id": signup.discord_id, "name": signup.discord_name},
-        )
-    for addition in db.scalars(
-        select(EventWaitlistAddition).where(
-            EventWaitlistAddition.event_id == run.event_id
-        )
-    ):
-        players.setdefault(
-            addition.discord_id,
-            {"id": addition.discord_id, "name": addition.discord_name},
-        )
-    return players
-
-
-def current_result(db: Session, run: LotteryRun) -> dict[str, Any]:
-    result = run.result
-    rows = list(
-        db.scalars(
-            select(EventWithdrawal)
-            .where(EventWithdrawal.event_id == run.event_id)
-            .order_by(EventWithdrawal.withdrawn_at, EventWithdrawal.discord_id)
-        )
-    )
-    withdrawn = {row.discord_id: row.withdrawn_at for row in rows}
-    assignments = {
-        player_id: table
-        for player_id, table in result["assignments"].items()
-        if player_id not in withdrawn
-    }
-    manual = list(
-        db.scalars(
-            select(EventManualAssignment)
-            .where(EventManualAssignment.event_id == run.event_id)
-            .order_by(
-                EventManualAssignment.assigned_at, EventManualAssignment.discord_id
-            )
-        )
-    )
-    placements = [
-        (row.withdrawn_at, row.promoted_id, row.table_name)
-        for row in rows
-        if row.promoted_id
-    ] + [(row.assigned_at, row.discord_id, row.table_name) for row in manual]
-    for placed_at, player_id, table_name in sorted(placements):
-        if placed_at > withdrawn.get(player_id, float("-inf")):
-            assignments[player_id] = table_name
-
-    additions = list(
-        db.scalars(
-            select(EventWaitlistAddition)
-            .where(EventWaitlistAddition.event_id == run.event_id)
-            .order_by(
-                EventWaitlistAddition.added_at,
-                EventWaitlistAddition.discord_id,
-                EventWaitlistAddition.table_name,
-            )
-        )
-    )
-    added_tables = {(row.discord_id, row.table_name) for row in additions}
-    by_id = result_players(db, run)
-    excluded = removals(db, run.event_id)
-    tables = []
-    for table in result["tables"]:
-        name = table["name"]
-        players = [
-            dict(player)
-            for player in table["players"]
-            if assignments.get(player["id"]) == name
-        ]
-        included = {player["id"] for player in players}
-        for player_id, table_name in assignments.items():
-            if table_name == name and player_id not in included:
-                player = by_id[player_id]
-                players.append({"id": player_id, "name": player["name"]})
-        # A rejoining player belongs at the end, never at their original rank.
-        waitlist = [
-            player
-            for player in table.get("waitlist", [])
-            if player["id"] not in withdrawn
-            and (player["id"], name) not in added_tables
-        ]
-        waitlist.extend(
-            {"id": addition.discord_id, "name": addition.discord_name}
-            for addition in additions
-            if addition.table_name == name
-            and addition.added_at > withdrawn.get(addition.discord_id, float("-inf"))
-        )
-        tables.append(
-            {
-                **table,
-                "players": players,
-                "waitlist": [
-                    dict(player)
-                    for player in waitlist
-                    if player["id"] not in assignments
-                    and (player["id"], name) not in excluded
-                ],
-            }
-        )
-    return {
-        **result,
-        "pairing_warnings": [
-            conflict["message"]
-            for conflict in result.get("pairing_conflicts", [])
-            if not all(pid in assignments for pid in conflict["players"])
-        ],
-        "assignments": assignments,
-        "waitlist": list(
-            dict.fromkeys(
-                pid
-                for pid in [*result["waitlist"], *[row.discord_id for row in additions]]
-                if any(
-                    player["id"] == pid
-                    for table in tables
-                    for player in table["waitlist"]
-                )
-            )
-        ),
-        "tables": tables,
-    }
-
-
-def record_withdrawal(
+def _record_withdrawal(
     db: Session,
     event_id: str,
     player_id: str,
@@ -215,7 +123,48 @@ def record_withdrawal(
     previous.promoted_id = promoted_id
 
 
-def withdraw(
+def select_waitlist_replacements(
+    event: Event, current: dict[str, Any], table_name: str
+) -> list[tuple[str, str]]:
+    """Choose replacements in waitlist order, preserving pair and guarantee rules."""
+    tables = {row["name"]: row for row in current["tables"]}
+    free = {
+        row["name"]: row["capacity"]
+        - len(tables[row["name"]]["players"])
+        + int(row["name"] == table_name)
+        for row in event.tables
+    }
+    waiting = set(current["waitlist"])
+    pairs = current.get("pairs", {})
+    blocked = {
+        pid
+        for conflict in current.get("pairing_conflicts", [])
+        for pid in conflict["players"]
+    }
+    for candidate in tables[table_name]["waitlist"]:
+        pid = candidate["id"]
+        partner = pairs.get(pid)
+        if pid in blocked or (partner and partner in blocked):
+            continue
+        if not partner or partner not in waiting:
+            if free[table_name] >= 1:
+                return [(pid, table_name)]
+            continue
+        eligible = [
+            name
+            for name, row in tables.items()
+            if any(player["id"] == partner for player in row["waitlist"])
+        ]
+        if table_name in eligible and free[table_name] >= 2:
+            return [(pid, table_name), (partner, table_name)]
+        if pid not in current.get("pair_guarantees", []):
+            for other in sorted(eligible):
+                if other != table_name and free[table_name] >= 1 and free[other] >= 1:
+                    return [(pid, table_name), (partner, other)]
+    return []
+
+
+def withdraw_from_announcement(
     engine: Engine,
     guild_id: str,
     channel_id: str,
@@ -259,12 +208,12 @@ def withdraw(
         run = db.get(LotteryRun, event_id)
         if event is None or run is None:
             return False
-        changed = withdraw_seat(db, event, run, player_id, channel_id)
+        changed = withdraw_player_seat(db, event, run, player_id, channel_id)
         db.commit()
         return changed
 
 
-def replace_with_waitlist(
+def _replace_with_waitlist(
     db: Session,
     event: Event,
     run: LotteryRun,
@@ -273,10 +222,9 @@ def replace_with_waitlist(
     table_name: str,
     changed_at: float,
 ) -> list[str]:
-    from app.assignments.pair_promotions import replacements
 
-    chosen = replacements(event, current, table_name)
-    record_withdrawal(
+    chosen = select_waitlist_replacements(event, current, table_name)
+    _record_withdrawal(
         db,
         event.id,
         player_id,
@@ -301,51 +249,24 @@ def replace_with_waitlist(
     return [pid for pid, _ in chosen]
 
 
-def promoted_names(db: Session, run: LotteryRun, ids: list[str]) -> str:
-    players = result_players(db, run)
-    return " and ".join(
-        clean(players[pid]["name"]) if pid.startswith("test-") else f"<@{pid}>"
-        for pid in ids
-    )
-
-
-def pair_promotion_text(db: Session, run: LotteryRun, ids: list[str]) -> str:
-    """A split promotion must name each player's actual destination table."""
-    current = current_result(db, run)
-    return " ".join(
-        f"{promoted_names(db, run, [pid])} has been promoted from the waitlist "
-        f"to **{clean(current['assignments'][pid])}**."
-        for pid in ids
-    )
-
-
-def notify_promoted(db: Session, event: Event, run: LotteryRun, ids: list[str]) -> None:
-    if not ids or event.status != "assigned":
-        return
-    db.flush()
-    assignments = current_result(db, run)["assignments"]
-    for pid in ids:
-        enqueue_promotion_dm(db, event, pid, assignments[pid])
-
-
-def withdraw_seat(
+def withdraw_player_seat(
     db: Session, event: Event, run: LotteryRun, player_id: str, channel_id: str
 ) -> bool:
     """Mutate a seat while the caller holds the event lock; commit with its work."""
     event_id = event.id
-    current = current_result(db, run)
+    current = build_current_roster(db, run)
     table_name = current["assignments"].get(player_id)
     if table_name is None:
         return False
 
     withdrawn_at = time.time()
-    promoted_ids = replace_with_waitlist(
+    promoted_ids = _replace_with_waitlist(
         db, event, run, current, player_id, table_name, withdrawn_at
     )
     promoted_id = promoted_ids[0] if promoted_ids else None
     if promoted_id:
-        left = result_players(db, run)[player_id]
-        promoted_name = promoted_names(db, run, promoted_ids)
+        left = build_roster_players(db, run)[player_id]
+        promoted_name = format_promoted_players(db, run, promoted_ids)
         left_name = (
             clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
         )
@@ -354,7 +275,7 @@ def withdraw_seat(
             f"after {left_name} left their seat.\n"
         )
         if len(promoted_ids) > 1:
-            content = pair_promotion_text(db, run, promoted_ids)
+            content = format_pair_promotion(db, run, promoted_ids)
         enqueue_table_change(
             db,
             event,
@@ -364,12 +285,12 @@ def withdraw_seat(
             created_at=withdrawn_at,
             channel_id=channel_id,
         )
-    notify_promoted(db, event, run, promoted_ids)
+    enqueue_promotion_dms(db, event, run, promoted_ids)
     enqueue_roster_refresh(db, event)
     return True
 
 
-def manager_remove(
+def remove_player_from_roster(
     engine: Engine,
     guild_id: str,
     event_id: str,
@@ -380,11 +301,11 @@ def manager_remove(
 ) -> bool:
     """Remove a player, promoting from the waitlist unless the table is overfull."""
     with Session(engine) as db:
-        locked = locked_assignment(db, guild_id, event_id)
+        locked = lock_assignment_for_edit(db, guild_id, event_id)
         if locked is None:
             return False
         event, run = locked
-        current = current_result(db, run)
+        current = build_current_roster(db, run)
         requested_table = table_name
         seated_table = current["assignments"].get(player_id)
         table_name = (
@@ -411,22 +332,22 @@ def manager_remove(
             db.commit()
             return True
         removed_at = time.time()
-        promoted_ids = replace_with_waitlist(
+        promoted_ids = _replace_with_waitlist(
             db, event, run, current, player_id, table_name, removed_at
         )
         promoted_id = promoted_ids[0] if promoted_ids else None
-        left = result_players(db, run)[player_id]
+        left = build_roster_players(db, run)[player_id]
         left_name = (
             clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
         )
         if promoted_id:
-            promoted_name = promoted_names(db, run, promoted_ids)
+            promoted_name = format_promoted_players(db, run, promoted_ids)
             content = (
                 f"{promoted_name} has been promoted from the waitlist "
                 f"to **{clean(table_name)}**."
             )
             if len(promoted_ids) > 1:
-                content = pair_promotion_text(db, run, promoted_ids)
+                content = format_pair_promotion(db, run, promoted_ids)
             mentions = [pid for pid in promoted_ids if not pid.startswith("test-")]
         else:
             content = f"{left_name} has left their seat at **{clean(table_name)}**."
@@ -439,14 +360,14 @@ def manager_remove(
             nonce_key=f"{event_id}:manager-removal:{player_id}:{removed_at}",
             created_at=removed_at,
         )
-        notify_promoted(db, event, run, promoted_ids)
+        enqueue_promotion_dms(db, event, run, promoted_ids)
         if event.status == "assigned":
             enqueue_roster_refresh(db, event)
         db.commit()
         return True
 
 
-def manager_add(
+def assign_player_to_table(
     engine: Engine,
     guild_id: str,
     event_id: str,
@@ -457,11 +378,11 @@ def manager_add(
 ) -> bool:
     """Assign a waitlisted or explicitly selected known player, even to a full table."""
     with Session(engine) as db:
-        locked = locked_assignment(db, guild_id, event_id)
+        locked = lock_assignment_for_edit(db, guild_id, event_id)
         if locked is None:
             return False
         event, run = locked
-        current = current_result(db, run)
+        current = build_current_roster(db, run)
         table = next(
             (row for row in current["tables"] if row["name"] == table_name), None
         )
@@ -474,7 +395,7 @@ def manager_add(
         if player_id in current["assignments"]:
             return False
         profile = player_scope_for_event(event).get(db, player_id)
-        known = result_players(db, run)
+        known = build_roster_players(db, run)
         if not waitlisted and profile is None and player_id not in known:
             return False
         if player_id not in known:
@@ -532,8 +453,103 @@ def manager_add(
                 created_at=time.time(),
             )
         if was_waitlisted:
-            notify_promoted(db, event, run, [player_id])
+            enqueue_promotion_dms(db, event, run, [player_id])
         if event.status == "assigned":
             enqueue_roster_refresh(db, event)
         db.commit()
         return True
+
+
+def add_player_to_waitlist(
+    engine: Engine, guild_id: str, event_id: str, player_id: str, table_name: str
+) -> bool:
+    with Session(engine) as db:
+        locked = lock_assignment_for_edit(db, guild_id, event_id)
+        if locked is None:
+            return False
+        event, run = locked
+        profile = player_scope_for_event(event).get(db, player_id)
+        known = build_roster_players(db, run).get(player_id)
+        if profile is None and known is None:
+            return False
+        current = build_current_roster(db, run)
+        table = next(
+            (row for row in current["tables"] if row["name"] == table_name), None
+        )
+        if (
+            table is None
+            or player_id in current["assignments"]
+            or any(player["id"] == player_id for player in table["waitlist"])
+            or (
+                player_id.startswith("test-")
+                and profile is not None
+                and not profile.is_test
+            )
+        ):
+            return False
+        if profile is not None:
+            name = profile.discord_name
+        else:
+            assert known is not None
+            name = known["name"]
+        addition = db.get(EventWaitlistAddition, (event_id, player_id, table_name))
+        if addition is None:
+            db.add(
+                EventWaitlistAddition(
+                    event_id=event_id,
+                    discord_id=player_id,
+                    table_name=table_name,
+                    discord_name=name,
+                    added_at=time.time(),
+                )
+            )
+        else:
+            addition.discord_name = name
+            addition.added_at = time.time()
+        set_removed(db, event_id, player_id, table_name, False)
+        queue_member(db, event, player_id)
+        if event.status == "assigned":
+            enqueue_roster_refresh(db, event)
+        db.commit()
+        return True
+
+
+def withdraw_from_promotion_dm(
+    engine: Engine, notice_id: str, user_id: str, channel_id: str, message_id: str
+) -> str:
+    """Only the intended recipient may relinquish a current, future seat."""
+
+    with Session(engine) as db:
+        notice = db.get(PromotionDM, notice_id)
+        if (
+            notice is None
+            or notice.discord_id != user_id
+            or notice.state != "sent"
+            or notice.channel_id != channel_id
+            or notice.message_id != message_id
+        ):
+            return "Something went wrong. Please contact the host for assistance."
+        claimed = db.execute(
+            update(Event)
+            .where(
+                Event.id == notice.event_id,
+                Event.status == "assigned",
+                Event.archived_at.is_(None),
+                Event.starts_at > time.time(),
+            )
+            .values(status=Event.status)
+            .returning(Event.id)
+        ).scalar_one_or_none()
+        if claimed is None:
+            return "This event has started or is no longer accepting withdrawals."
+        event = db.get(Event, notice.event_id)
+        run = db.get(LotteryRun, notice.event_id)
+        if event is None or run is None:
+            return "This event is no longer available."
+        if not withdraw_player_seat(db, event, run, user_id, event.channel_id or ""):
+            return "You no longer have a seat at this event."
+        db.commit()
+        return (
+            f"You have withdrawn from {clean(event.title)}. "
+            "Your seat is now available to the next waitlisted player."
+        )

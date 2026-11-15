@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.closing import close_and_assign
-from app.assignments.withdrawals import current_result
+from app.assignments.roster import build_current_roster
 from app.context import ApplicationContext
 from app.discord.announcements import deliver_event
 from app.discord.message_cleanup import (
@@ -67,7 +67,7 @@ def register(context: ApplicationContext) -> None:
                 run = db.get(LotteryRun, event_id)
                 if run is None:
                     raise HTTPException(503, "Saved placements are unavailable")
-                rows: list[dict[str, Any]] = current_result(db, run)["tables"]
+                rows: list[dict[str, Any]] = build_current_roster(db, run)["tables"]
                 return list_names(rows, event_id, include_settings=False)
             message_id = event.message_id
             tables = event.tables

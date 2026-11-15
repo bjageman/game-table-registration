@@ -1,4 +1,4 @@
-"""Persist public table-change messages alongside assignment mutations."""
+"""Format and queue public table changes and private promotion notices."""
 
 import hashlib
 import uuid
@@ -7,8 +7,10 @@ from collections.abc import Iterable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.discord.discord_format import is_discord_user_id
-from app.models import Announcement, Event
+from app.assignments.roster import build_current_roster, build_roster_players
+from app.discord.discord_format import clean, is_discord_user_id
+from app.discord.promotion_dms import enqueue as enqueue_promotion_dm
+from app.models import Announcement, Event, LotteryRun
 from app.settings.assignment_preferences import announce_changes
 
 
@@ -60,3 +62,33 @@ def enqueue_table_change(
             next_attempt=created_at,
         )
     )
+
+
+def format_promoted_players(db: Session, run: LotteryRun, ids: list[str]) -> str:
+    players = build_roster_players(db, run)
+    return " and ".join(
+        clean(players[pid]["name"]) if pid.startswith("test-") else f"<@{pid}>"
+        for pid in ids
+    )
+
+
+def format_pair_promotion(db: Session, run: LotteryRun, ids: list[str]) -> str:
+    """A split promotion must name each player's actual destination table."""
+    current = build_current_roster(db, run)
+    return " ".join(
+        f"{format_promoted_players(db, run, [pid])} "
+        "has been promoted from the waitlist "
+        f"to **{clean(current['assignments'][pid])}**."
+        for pid in ids
+    )
+
+
+def enqueue_promotion_dms(
+    db: Session, event: Event, run: LotteryRun, ids: list[str]
+) -> None:
+    if not ids or event.status != "assigned":
+        return
+    db.flush()
+    assignments = build_current_roster(db, run)["assignments"]
+    for pid in ids:
+        enqueue_promotion_dm(db, event, pid, assignments[pid])

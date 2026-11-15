@@ -1,6 +1,6 @@
 # Code sharing review
 
-This review covers application code in `backend/app` and `frontend/src`. These are refactoring opportunities, not claims of confirmed user-facing defects. The backend folder reorganization changes module locations and imports. The seven extractions below have now been implemented:
+This review covers application code in `backend/app` and `frontend/src`. These are refactoring opportunities, not claims of confirmed user-facing defects. The backend folder reorganization changes module locations and imports. The shared extractions below have been implemented:
 
 | Responsibility | Shared implementation |
 | --- | --- |
@@ -8,9 +8,9 @@ This review covers application code in `backend/app` and `frontend/src`. These a
 | Player summary types and name/ID search | `frontend/src/lib/players.ts` |
 | Event/template details validation | `EventDetailsInput` in `backend/app/schemas.py` |
 | Organization selection and membership | `backend/app/settings/organization_selection.py` |
-| Assignment mutation claims | `backend/app/assignments/mutations.py` |
+| Assignment mutation claims | `lock_assignment_for_edit` in `backend/app/assignments/player_changes.py` |
 | Public table-change queueing | `backend/app/assignments/notifications.py` |
-| Private promotion queueing | `notify_promoted` in `backend/app/assignments/withdrawals.py` |
+| Private promotion queueing | `enqueue_promotion_dms` in `backend/app/assignments/notifications.py` |
 | Deterministic lottery sampling | `backend/app/assignments/randomness.py` |
 
 The original findings are retained below to explain the responsibility boundaries. Lottery replay fixtures capture results from before extraction; regression tests also cover removed memberships, weight input handling, and shared event/template constraints.
@@ -34,14 +34,14 @@ Each loads `OrganizationSelection`, then the organization and membership. Extrac
 
 ### 3. Assignment mutation locking
 
-- [withdrawals.py](../backend/app/assignments/withdrawals.py) — `manager_add` and `manager_remove`.
-- [waitlists.py](../backend/app/assignments/waitlists.py) — `add_player`.
+- [player_changes.py](../backend/app/assignments/player_changes.py) — `assign_player_to_table` and `remove_player_from_roster`.
+- [player_changes.py](../backend/app/assignments/player_changes.py) — `add_player_to_waitlist`.
 
 All claim the same unarchived event in `assigned` or `review` with an atomic no-op UPDATE before reading and changing its result. Extract a helper for that specific claim and loading the event/draw. Keep the caller's transaction open through persistence and notification queueing. Do not replace the atomic claim with a plain SELECT or automatically broaden the permitted statuses.
 
 ### 4. Promotion notification construction and queueing
 
-- [withdrawals.py](../backend/app/assignments/withdrawals.py) — `withdraw_seat`, `manager_remove`, and `manager_add`.
+- [player_changes.py](../backend/app/assignments/player_changes.py) — `withdraw_player_seat`, `remove_player_from_roster`, and `assign_player_to_table`.
 
 These repeat announcement part allocation, recipient filtering, durable announcement creation, and enqueueing promotion DMs/roster refreshes. Extract narrowly scoped helpers for enqueueing a public table-change message and notifying promoted players. The public text, nonce labels, and decision to notify should remain explicit inputs: organizer edits during verification intentionally behave differently from changes to published assignments.
 
@@ -74,8 +74,30 @@ Several frontend action components repeat busy/error state, access-error handlin
 
 - `EventForm` already serves creation, recurring edits, and single-event edits.
 - `event_scheduling.event_values` shares backend create/edit field conversion.
-- `withdrawals.current_result` is the canonical projection of saved assignments plus organizer edits and withdrawals.
+- `roster.build_current_roster` is the canonical projection of saved assignments plus organizer edits and withdrawals.
 - `event_messages.build_signup_message` and `discord_format` share Discord presentation and size limits.
 - `ConfirmationDialog`, `FormField`, `useDialog`, `mutationOptions`, and `finishDiscordCleanup` already cover common UI/request behavior.
 
 The remaining lower-priority mutation-hook idea is optional; it should be considered only if future UI work demonstrates a clear benefit.
+
+
+## Assignment service consolidation
+
+The assignment changes formerly spread across `withdrawals.py`, `mutations.py`,
+`waitlists.py`, and `pair_promotions.py` now live in three focused modules:
+
+| Module | Responsibility |
+| --- | --- |
+| `assignments/roster.py` | Read-only `build_current_roster` and `build_roster_players` projections of the saved draw and subsequent edits. |
+| `assignments/player_changes.py` | `lock_assignment_for_edit`, organizer seating/waitlist changes, replacement selection, and channel/DM withdrawals. |
+| `assignments/notifications.py` | Public table-change queueing, promotion formatting, and private promotion queueing. |
+
+The Discord DM module owns delivery and eligibility, while the assignment
+service validates DM seat-change requests and performs the withdrawal. Roster
+readers no longer import the mutation service, and notification/delivery code
+has no dependency back into `player_changes.py`.
+
+This consolidation preserves API field names (including `current_result`),
+stored draw/snapshot data, lottery versions and hashes, notification text and
+nonce inputs, transaction guards, and waitlist ordering. The broader delivery
+and finalization callback cleanup is tracked separately in issue #192.

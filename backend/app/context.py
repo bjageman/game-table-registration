@@ -11,6 +11,7 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy.orm import object_session
 
+from app.assignments.roster import build_current_roster
 from app.config import Settings
 from app.discord.discord_api import DiscordAPI
 from app.events.signup_warnings import settings as warning_settings
@@ -203,13 +204,12 @@ class ApplicationContext:
         )
         warnings: list[str] = []
         if event.status in ("review", "assigned") and event.close_pairs:
-            from app.assignments.withdrawals import current_result
             from app.models import LotteryRun
 
             db = object_session(event)
             run = db.get(LotteryRun, event.id) if db else None
             if db and run and run.result.get("pairing_conflicts"):
-                warnings = current_result(db, run).get("pairing_warnings", [])
+                warnings = build_current_roster(db, run).get("pairing_warnings", [])
         return {
             **warning_settings(event),
             "id": event.id,
