@@ -218,3 +218,45 @@ def test_swap_and_toggle_api_scope_and_csrf(client):
         ).status_code
         == 404
     )
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_same_table_seat_waitlist_swap_and_later_promotion(promotion_db, reverse):
+    body = SwapPlayersInput(
+        player_id="3" if reverse else "1",
+        table="Table A",
+        waitlist=reverse,
+        other_player_id="1" if reverse else "3",
+        other_table="Table A",
+        other_waitlist=not reverse,
+    )
+    assert swap_players(promotion_db, "guild", "event", body)
+    current = roster(promotion_db)
+    assert current["assignments"] == {"3": "Table A"}
+    assert [p["id"] for p in current["tables"][0]["waitlist"]] == ["2", "1"]
+    assert remove_player_from_roster(promotion_db, "guild", "event", "3")
+    assert roster(promotion_db)["assignments"] == {"2": "Table A"}
+    assert remove_player_from_roster(promotion_db, "guild", "event", "2")
+    assert roster(promotion_db)["assignments"] == {"1": "Table A"}
+
+
+def test_same_table_waitlisted_players_exchange_rank(promotion_db):
+    assert swap_players(
+        promotion_db,
+        "guild",
+        "event",
+        SwapPlayersInput(
+            player_id="2",
+            table="Table A",
+            waitlist=True,
+            other_player_id="3",
+            other_table="Table A",
+            other_waitlist=True,
+        ),
+    )
+    assert [p["id"] for p in roster(promotion_db)["tables"][0]["waitlist"]] == [
+        "3",
+        "2",
+    ]
+    assert remove_player_from_roster(promotion_db, "guild", "event", "1")
+    assert roster(promotion_db)["assignments"] == {"3": "Table A"}

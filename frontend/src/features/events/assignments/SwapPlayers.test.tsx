@@ -18,7 +18,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-it("searches other tables including waitlisted players and refreshes after swapping", async () => {
+it("searches all waitlists and other tables and refreshes after swapping", async () => {
   let swapped = false;
   const fetchMock = vi.fn(async (url: string) => {
     if (url.endsWith("/swap-players")) { swapped = true; return new Response("{}"); }
@@ -31,7 +31,7 @@ it("searches other tables including waitlisted players and refreshes after swapp
   render(<EventTables event={event} csrf="csrf" onAccessError={() => false} />);
   fireEvent.click(await screen.findByRole("button", { name: "Swap Alice at A" }));
   const dialog = within(screen.getByRole("dialog", { name: "Swap Alice" }));
-  expect(dialog.queryByRole("button", { name: /Bob/ })).not.toBeInTheDocument();
+  expect(dialog.getByRole("button", { name: /Bob/ })).toBeVisible();
   expect(dialog.getByRole("button", { name: /Carol/ })).toBeVisible();
   fireEvent.change(dialog.getByRole("searchbox"), { target: { value: "dan" } });
   expect(dialog.queryByRole("button", { name: /Carol/ })).not.toBeInTheDocument();
@@ -82,4 +82,16 @@ it.each([true, false])("hides mutation controls when read-only or archived: %s",
   await screen.findByText("Alice");
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /^Swap/ })).not.toBeInTheDocument();
+});
+
+it.each([false, true])("offers same-table seat and waitlist swaps in both directions: %s", async (fromWaitlist) => {
+  const fetchMock = vi.fn(async (url: string) => new Response(url.endsWith("/swap-players") ? "{}" : JSON.stringify(rows)));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<EventTables event={event} csrf="csrf" onAccessError={() => false} />);
+  fireEvent.click(await screen.findByRole("button", { name: fromWaitlist ? "Swap Bob on A waitlist" : "Swap Alice at A" }));
+  const dialog = within(screen.getByRole("dialog", { name: fromWaitlist ? "Swap Bob" : "Swap Alice" }));
+  fireEvent.click(dialog.getByRole("button", { name: fromWaitlist ? /Alice.*Seated/ : /Bob.*Waitlist/ }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/events/event/swap-players", expect.objectContaining({
+    body: JSON.stringify({ player_id: fromWaitlist ? "2" : "1", table: "A", waitlist: fromWaitlist, other_player_id: fromWaitlist ? "1" : "2", other_table: "A", other_waitlist: !fromWaitlist }),
+  })));
 });

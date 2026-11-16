@@ -29,7 +29,10 @@ def swap_players(
             (body.player_id, body.table, body.waitlist),
             (body.other_player_id, body.other_table, body.other_waitlist),
         ]
-        if body.player_id == body.other_player_id or body.table == body.other_table:
+        same_table = body.table == body.other_table
+        if body.player_id == body.other_player_id or (
+            same_table and not (body.waitlist or body.other_waitlist)
+        ):
             return False
         # A player waiting for several tables is identified by the selected row.
         tables = {row["name"]: row for row in current["tables"]}
@@ -39,21 +42,37 @@ def swap_players(
                 for p in tables[table]["waitlist" if waiting else "players"]
             ):
                 return False
-        # Do not offer someone who already belongs to the source table.
+        # A seated player cannot receive a second seated placement.
         for pid, table, _ in placements:
             other = body.other_table if table == body.table else body.table
-            if any(
-                p["id"] == pid
-                for key in ("players", "waitlist")
-                for p in tables[other][key]
-            ):
+            if not same_table and any(p["id"] == pid for p in tables[other]["players"]):
                 return False
         changed_at = time.time()
         order = {
             row["name"]: [p["id"] for p in row["waitlist"]] for row in current["tables"]
         }
         for index, (pid, table, waiting) in enumerate(placements):
-            other_id, destination, destination_waiting = placements[1 - index]
+            if waiting:
+                replacement = placements[1 - index][0]
+                order[table] = list(
+                    dict.fromkeys(
+                        replacement if p["id"] == pid else p["id"]
+                        for p in tables[table]["waitlist"]
+                    )
+                )
+        if same_table and body.waitlist and body.other_waitlist:
+            replacements = {
+                body.player_id: body.other_player_id,
+                body.other_player_id: body.player_id,
+            }
+            order[body.table] = [
+                replacements.get(p["id"], p["id"])
+                for p in tables[body.table]["waitlist"]
+            ]
+        for index, (pid, table, waiting) in enumerate(placements):
+            if same_table and body.waitlist and body.other_waitlist:
+                break
+            _, destination, destination_waiting = placements[1 - index]
             if not waiting:
                 _record_withdrawal(db, event_id, pid, table, changed_at, None)
             else:
@@ -67,9 +86,6 @@ def swap_players(
                     db.add(addition)
                 addition.discord_name = known[pid]["name"]
                 addition.added_at = changed_at + 0.000001
-                order[destination] = [
-                    pid if entry == other_id else entry for entry in order[destination]
-                ]
             else:
                 assignment = db.get(EventManualAssignment, (event_id, pid))
                 if assignment is None:

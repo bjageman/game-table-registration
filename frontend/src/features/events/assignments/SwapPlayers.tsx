@@ -15,15 +15,14 @@ export default function SwapPlayers({ eventId, csrf, source, rows, onClose, onSa
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const sourceRow = rows.find((row) => row.name === source.table);
-  const sourceIds = new Set([...(sourceRow?.players ?? []), ...(sourceRow?.waitlist ?? [])].map((p) => p.id));
-  const candidates = rows.filter((row) => row.name !== source.table)
+  const candidates = rows
     .flatMap((row) => [
       ...row.players.map((player) => ({ player, table: row.name, waitlist: false })),
       ...(row.waitlist ?? []).map((player) => ({ player, table: row.name, waitlist: true })),
     ])
-    .filter(({ player, table }) => !sourceIds.has(player.id)
-      && ![...(rows.find((row) => row.name === table)?.players ?? []), ...(rows.find((row) => row.name === table)?.waitlist ?? [])].some((p) => p.id === source.player.id)
+    .filter(({ player, table, waitlist }) => player.id !== source.player.id
+      && (source.waitlist || waitlist || table !== source.table)
+      && (table === source.table || !rows.find((row) => row.name === source.table)?.players.some((p) => p.id === player.id))
       && `${player.name} ${player.display_name ?? ""} ${player.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   async function swap(target: Placement) {
     if (saving) return;
