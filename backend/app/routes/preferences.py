@@ -1,11 +1,15 @@
 """Preferences API routes."""
 
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
+from app.assignments.player_changes import lock_assignment_for_edit
+from app.assignments.roster import build_current_roster
+from app.assignments.waitlist_guarantees import update_guarantees
 from app.context import ApplicationContext
 from app.models import (
     AssignmentPreference,
@@ -48,6 +52,9 @@ def register(context: ApplicationContext) -> None:
                 for_scope(db, key).show_open_signup_players
                 != body.show_open_signup_players
             )
+            enable_guarantees = body.guarantee_waitlisted_players and not (
+                previous and previous.guarantee_waitlisted_players
+            )
             db.merge(
                 AssignmentPreference(
                     scope_key=assignment_scope_key(
@@ -56,18 +63,42 @@ def register(context: ApplicationContext) -> None:
                     **body.model_dump(),
                 )
             )
+            scope = (
+                Event.organization_id == request.state.organization_id
+                if request.state.organization_id
+                else (Event.organization_id.is_(None))
+                & (Event.created_by == session.user_id)
+            )
             if roster_changed:
-                scope = (
-                    Event.organization_id == request.state.organization_id
-                    if request.state.organization_id
-                    else (Event.organization_id.is_(None))
-                    & (Event.created_by == session.user_id)
-                )
                 db.execute(
                     update(Event)
                     .where(scope, Event.status == "open")
                     .values(signup_roster_checked_at=None)
                 )
+            if enable_guarantees:
+                candidates = list(
+                    db.execute(
+                        select(Event.id, Event.guild_id)
+                        .where(
+                            scope,
+                            Event.status == "assigned",
+                            Event.archived_at.is_(None),
+                            Event.starts_at > time.time(),
+                        )
+                        .order_by(Event.id)
+                    )
+                )
+                for event_id, guild in candidates:
+                    locked = lock_assignment_for_edit(db, guild, event_id)
+                    if locked is None:
+                        continue
+                    event, run = locked
+                    waiting = {
+                        p["id"]: p
+                        for row in build_current_roster(db, run)["tables"]
+                        for p in row["waitlist"]
+                    }
+                    update_guarantees(db, event, waiting, waitlisted=waiting)
             db.commit()
         return body.model_dump()
 

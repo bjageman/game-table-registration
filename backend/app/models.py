@@ -373,6 +373,15 @@ class AssignmentPreference(Base):
     )
     dm_waitlist_promotions: Mapped[bool] = _general_setting("dm_waitlist_promotions")
     dm_assignments: Mapped[bool] = _general_setting("dm_assignments")
+    keep_waitlist_guarantee_on_short_notice: Mapped[bool] = _general_setting(
+        "keep_waitlist_guarantee_on_short_notice"
+    )
+    guarantee_waitlisted_players: Mapped[bool] = _general_setting(
+        "guarantee_waitlisted_players"
+    )
+    waitlist_guarantee_retention_hours: Mapped[int] = mapped_column(
+        default=5, server_default="5"
+    )
 
 
 class EventThreadMember(Base):

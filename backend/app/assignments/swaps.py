@@ -17,6 +17,7 @@ from app.assignments.roster import (
     build_roster_players,
     roster_order,
 )
+from app.assignments.waitlist_guarantees import update_guarantees
 from app.discord.discord_format import clean
 from app.discord.event_messages import enqueue_roster_refresh
 from app.events.table_membership import set_removed
@@ -51,6 +52,25 @@ def swap_players(
             ):
                 return False
         changed_at = time.time()
+        if event.status == "assigned":
+            waiting_ids = [
+                pid
+                for index, (pid, _, _) in enumerate(placements)
+                if placements[1 - index][2]
+            ]
+            promoted = [
+                pid
+                for index, (pid, _, was_waiting) in enumerate(placements)
+                if was_waiting and not placements[1 - index][2]
+            ]
+            update_guarantees(
+                db,
+                event,
+                known,
+                waitlisted=waiting_ids,
+                seated=promoted,
+                promotion_times={pid: changed_at for pid in promoted},
+            )
         seat_replacements: dict[str, dict[str, str]] = {}
         waitlist_replacements: dict[str, dict[str, str]] = {}
         for index, (pid, table, waiting) in enumerate(placements):

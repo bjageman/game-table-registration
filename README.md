@@ -52,3 +52,13 @@ and controls to give up the seat or stop private seat notifications. Each player
 notification preference remains available in Player Information even when the
 organizer disables messages. Player opt-outs apply to both assignment and waitlist
 promotion messages for that organizer.
+
+General Settings can also guarantee a seat in the next event a waitlisted player
+joins within the same organization. This is off by default. When enabled, finalized
+waitlists set the player's Guaranteed Seat profile option, and a later seating clears
+it, including guarantees set manually. A waitlisted player promoted within the
+configured window before the event keeps their guarantee; the default window is
+5 hours. An indented checkbox controls the short-notice exception and preserves
+the saved hours when disabled. Enabling the option also grants guarantees
+to waitlisted players in upcoming events whose assignments are already finalized.
+Disabling the automation leaves existing profile guarantees unchanged.

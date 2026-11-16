@@ -674,3 +674,7 @@ dd {
 .swap-player { border: 0; border-radius: 4px; background: transparent; color: #365779; padding: 2px; cursor: pointer; }
 .swap-player:hover, .swap-player:focus-visible { background: #e8eef6; }
 .waitlist-promotion-setting { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+
+.short-notice-setting { display: flex; align-items: center; gap: 12px; margin: 12px 0 0 32px; }
+.short-notice-setting > label { flex: 1; min-width: 0; margin-right: 0; }
+.short-notice-hours { width: 8rem; flex-shrink: 0; }

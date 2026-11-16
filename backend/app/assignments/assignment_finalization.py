@@ -8,6 +8,7 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app.assignments.roster import build_current_roster
+from app.assignments.waitlist_guarantees import finalize_guarantees
 from app.discord.event_messages import enqueue_assignment_messages
 from app.discord.promotion_dms import enqueue_assignments
 from app.models import Announcement, Event, LotteryRun, PlayerProfile
@@ -53,6 +54,7 @@ def adjust_weights(db: Session, event: Event, run: LotteryRun) -> None:
 def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -> None:
     """Immediate publication when organizer review is disabled."""
 
+    finalize_guarantees(db, event, run)
     adjust_weights(db, event, run)
     event.status = "assigned"
     enqueue_assignments(db, event, run)
@@ -87,6 +89,7 @@ def complete_review_delivery(db: Session, event_id: str) -> None:
         event = db.get(Event, event_id)
         run = db.get(LotteryRun, event_id)
         if event and run:
+            finalize_guarantees(db, event, run)
             adjust_weights(db, event, run)
             enqueue_assignments(db, event, run)
 

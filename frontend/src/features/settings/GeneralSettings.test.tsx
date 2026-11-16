@@ -42,7 +42,7 @@ it("saves assignment options for an admin", async () => {
     method: "PUT",
     body: JSON.stringify({
       create_discord_event: true, review_assignments_before_discord: false, automatic_weight_adjustment: true, announce_table_changes: false,
-      post_discord_updates_to_thread: false, timezone: null, show_open_signup_players: false, dm_waitlist_promotions: false, dm_assignments: true,
+      post_discord_updates_to_thread: false, timezone: null, show_open_signup_players: false, dm_waitlist_promotions: false, dm_assignments: true, guarantee_waitlisted_players: false, waitlist_guarantee_retention_hours: 5, keep_waitlist_guarantee_on_short_notice: true,
     }),
   }));
   await waitFor(() => expect(screen.getByRole("checkbox", { name: "Review assignments before sending to Discord" })).not.toBeChecked());
@@ -65,15 +65,18 @@ it("saves assignment options for an admin", async () => {
   expect(screen.getByRole("checkbox", { name: "Post Discord updates to a new thread" })).toBeChecked();
 });
 
-it("enables every General toggle by default before the first settings save", async () => {
+it("defaults waitlist guarantees off and other General toggles on", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
     automatic_weight_adjustment: true, announce_table_changes: true,
   }))));
   render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
   await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
   const toggles = screen.getAllByRole("checkbox");
-  expect(toggles).toHaveLength(8);
-  toggles.forEach((toggle) => expect(toggle).toBeChecked());
+  expect(toggles).toHaveLength(9);
+  toggles.forEach((toggle) => {
+    if (toggle.closest("label")?.textContent?.includes("Waitlisted players")) expect(toggle).not.toBeChecked();
+    else expect(toggle).toBeChecked();
+  });
 });
 
 it("saves private assignment notifications independently of promotion notifications", async () => {
@@ -86,4 +89,24 @@ it("saves private assignment notifications independently of promotion notificati
   fireEvent.click(assignments);
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual(expect.objectContaining({ dm_assignments: false, dm_waitlist_promotions: false }));
+});
+
+it("enables next-event guarantees with five hours and saves a changed cutoff", async () => {
+  const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => new Response(
+    options?.method === "PUT" ? String(options.body) : "{}",
+  ));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
+  const option = await screen.findByRole("checkbox", { name: "Waitlisted players will be guaranteed a seat for the next event" });
+  expect(option).not.toBeChecked();
+  fireEvent.click(option);
+  const hours = await screen.findByRole("spinbutton", { name: "Hours before event" });
+  await waitFor(() => expect(hours).toBeEnabled());
+  expect(hours).toHaveValue(5);
+  fireEvent.change(hours, { target: { value: "3" } });
+  fireEvent.blur(hours);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  expect(JSON.parse(fetchMock.mock.calls[2][1]!.body as string)).toEqual(expect.objectContaining({
+    guarantee_waitlisted_players: true, waitlist_guarantee_retention_hours: 3,
+  }));
 });

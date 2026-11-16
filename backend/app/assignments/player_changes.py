@@ -23,6 +23,7 @@ from app.assignments.roster import (
     build_roster_players,
     roster_order,
 )
+from app.assignments.waitlist_guarantees import update_guarantees
 from app.discord.discord_format import clean
 from app.discord.event_messages import enqueue_roster_refresh
 from app.discord.event_threads import queue_member
@@ -197,6 +198,14 @@ def _replace_with_waitlist(
 ) -> list[str]:
 
     chosen = select_waitlist_replacements(event, current, table_name)
+    if event.status == "assigned" and chosen:
+        update_guarantees(
+            db,
+            event,
+            build_roster_players(db, run),
+            seated=[pid for pid, _ in chosen],
+            promotion_times={pid: changed_at for pid, _ in chosen},
+        )
     order = roster_order(current["tables"], "players")
     for name, ids in order.items():
         order[name] = [pid for pid in ids if pid != player_id] + [
@@ -384,6 +393,14 @@ def assign_player_to_table(
             time.time(),
             previous_withdrawal.withdrawn_at + 0.000001 if previous_withdrawal else 0,
         )
+        if event.status == "assigned":
+            update_guarantees(
+                db,
+                event,
+                known,
+                seated=[player_id],
+                promotion_times={player_id: assigned_at} if was_waitlisted else {},
+            )
         order = roster_order(current["tables"], "players")
         order[table_name].append(player_id)
         run.seat_order = order
@@ -443,6 +460,10 @@ def add_player_to_waitlist(
         else:
             assert known is not None
             name = known["name"]
+        if event.status == "assigned":
+            update_guarantees(
+                db, event, {player_id: {"name": name}}, waitlisted=[player_id]
+            )
         record_waitlist_addition(db, event_id, player_id, table_name, name, time.time())
         run.waitlist_order = {
             name: [pid for pid in ids if pid != player_id]
