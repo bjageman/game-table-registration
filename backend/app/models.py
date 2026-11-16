@@ -268,6 +268,9 @@ class LotteryRun(Base):
     seed: Mapped[str] = mapped_column(String(64))
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    seat_order: Mapped[dict[str, list[str]]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
     waitlist_order: Mapped[dict[str, list[str]]] = mapped_column(
         JSON, default=dict, server_default="{}"
     )

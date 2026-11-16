@@ -12,7 +12,11 @@ from app.assignments.placement_records import (
     record_withdrawal,
 )
 from app.assignments.player_changes import lock_assignment_for_edit
-from app.assignments.roster import build_current_roster, build_roster_players
+from app.assignments.roster import (
+    build_current_roster,
+    build_roster_players,
+    roster_order,
+)
 from app.discord.discord_format import clean
 from app.discord.event_messages import enqueue_roster_refresh
 from app.events.table_membership import set_removed
@@ -47,19 +51,15 @@ def swap_players(
             ):
                 return False
         changed_at = time.time()
-        replacements: dict[str, dict[str, str]] = {}
+        seat_replacements: dict[str, dict[str, str]] = {}
+        waitlist_replacements: dict[str, dict[str, str]] = {}
         for index, (pid, table, waiting) in enumerate(placements):
-            if waiting:
-                replacements.setdefault(table, {})[pid] = placements[1 - index][0]
-        run.waitlist_order = {
-            name: list(
-                dict.fromkeys(
-                    replacements.get(name, {}).get(p["id"], p["id"])
-                    for p in row["waitlist"]
-                )
-            )
-            for name, row in tables.items()
-        }
+            replacements = waitlist_replacements if waiting else seat_replacements
+            replacements.setdefault(table, {})[pid] = placements[1 - index][0]
+        run.seat_order = roster_order(current["tables"], "players", seat_replacements)
+        run.waitlist_order = roster_order(
+            current["tables"], "waitlist", waitlist_replacements
+        )
         for index, (pid, table, waiting) in enumerate(placements):
             if same_table and body.waitlist and body.other_waitlist:
                 break

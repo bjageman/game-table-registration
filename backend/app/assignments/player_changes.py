@@ -18,7 +18,11 @@ from app.assignments.placement_records import (
     record_waitlist_addition,
     record_withdrawal,
 )
-from app.assignments.roster import build_current_roster, build_roster_players
+from app.assignments.roster import (
+    build_current_roster,
+    build_roster_players,
+    roster_order,
+)
 from app.discord.discord_format import clean
 from app.discord.event_messages import enqueue_roster_refresh
 from app.discord.event_threads import queue_member
@@ -192,6 +196,12 @@ def _replace_with_waitlist(
 ) -> list[str]:
 
     chosen = select_waitlist_replacements(event, current, table_name)
+    order = roster_order(current["tables"], "players")
+    for name, ids in order.items():
+        order[name] = [pid for pid in ids if pid != player_id] + [
+            pid for pid, destination in chosen if destination == name
+        ]
+    run.seat_order = order
     record_withdrawal(
         db,
         event.id,
@@ -373,6 +383,9 @@ def assign_player_to_table(
             time.time(),
             previous_withdrawal.withdrawn_at + 0.000001 if previous_withdrawal else 0,
         )
+        order = roster_order(current["tables"], "players")
+        order[table_name].append(player_id)
+        run.seat_order = order
         record_manual_assignment(db, event_id, player_id, table_name, assigned_at)
         set_removed(db, event_id, player_id, table_name, False)
         queue_member(db, event, player_id)
