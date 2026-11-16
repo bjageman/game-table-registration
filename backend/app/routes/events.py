@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.schemas import (
     EventInput,
+    EventSettingsInput,
     EventTemplateInput,
     RecurringInput,
 )
@@ -287,6 +288,29 @@ def register(context: ApplicationContext) -> None:
             event = db.get(Event, event_id)
             assert event is not None
             return serialize(event)
+
+    @router.patch("/api/events/{event_id}/settings")
+    def save_event_settings(
+        event_id: str, body: EventSettingsInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            context.scoped_event(db, event_id, request)
+            changed = db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id,
+                    *event_scope(request),
+                    Event.archived_at.is_(None),
+                    Event.status.in_(["review", "assigned"]),
+                )
+                .values(**body.model_dump(exclude_unset=True))
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            if changed is None:
+                raise HTTPException(409, "Event settings cannot be changed")
+            db.commit()
+        return body.model_dump(exclude_unset=True)
 
     @router.post("/api/events/{event_id}/publish")
     def publish(event_id: str, request: Request) -> dict[str, Any]:

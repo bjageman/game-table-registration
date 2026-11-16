@@ -65,13 +65,13 @@ it.each(["draft", "scheduled", "open", "review", "assigned"])("only offers the n
 });
 
 it("disables auto-promotion and updates the removal confirmation", async () => {
-  const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith("/waitlist-settings") ? { auto_promote_waitlist: false } : rows)));
+  const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith("/settings") ? { auto_promote_waitlist: false } : rows)));
   vi.stubGlobal("fetch", fetchMock);
   render(<EventTables event={event} csrf="csrf" onAccessError={() => false} />);
   await screen.findByRole("button", { name: "Alice" });
   fireEvent.click(screen.getByRole("checkbox", { name: "Auto-promote waitlisted players" }));
   await waitFor(() => expect(screen.getByRole("checkbox")).not.toBeChecked());
-  expect(fetchMock).toHaveBeenCalledWith("/api/events/event/waitlist-settings", expect.objectContaining({ method: "PUT", body: JSON.stringify({ auto_promote_waitlist: false }) }));
+  expect(fetchMock).toHaveBeenCalledWith("/api/events/event/settings", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ auto_promote_waitlist: false }) }));
   fireEvent.click(screen.getByRole("button", { name: "Remove Alice from table" }));
   expect(screen.getByRole("dialog", { name: "Remove player from table?" })).toHaveTextContent("No waitlisted player will be added automatically.");
 });

@@ -176,8 +176,8 @@ def test_swap_and_toggle_api_scope_and_csrf(client):
         == 409
     )
     assert (
-        client.put(
-            path + "/waitlist-settings",
+        client.patch(
+            path + "/settings",
             headers=headers,
             json={"auto_promote_waitlist": False},
         ).status_code
@@ -194,9 +194,9 @@ def test_swap_and_toggle_api_scope_and_csrf(client):
         == 200
     )
     setting = {"auto_promote_waitlist": False}
-    assert client.put(path + "/waitlist-settings", json=setting).status_code == 403
+    assert client.patch(path + "/settings", json=setting).status_code == 403
     assert (
-        client.put(path + "/waitlist-settings", headers=headers, json=setting).json()
+        client.patch(path + "/settings", headers=headers, json=setting).json()
         == setting
     )
     assert (
@@ -213,9 +213,7 @@ def test_swap_and_toggle_api_scope_and_csrf(client):
         == 404
     )
     assert (
-        client.put(
-            path + "/waitlist-settings", headers=headers, json=setting
-        ).status_code
+        client.patch(path + "/settings", headers=headers, json=setting).status_code
         == 404
     )
 
@@ -260,3 +258,20 @@ def test_same_table_waitlisted_players_exchange_rank(promotion_db):
     ]
     assert remove_player_from_roster(promotion_db, "guild", "event", "1")
     assert roster(promotion_db)["assignments"] == {"3": "Table A"}
+
+
+@pytest.mark.parametrize(
+    "body", [{}, {"auto_promote_waitlist": None}, {"unknown": True}]
+)
+def test_event_settings_reject_empty_null_and_unknown_fields(client, body):
+    headers, _, path, _ = closing_event(client, review=True)
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    assert (
+        client.patch(path + "/settings", headers=headers, json=body).status_code == 422
+    )
+    events = client.get("/api/events").json()
+    assert (
+        next(e for e in events if path.endswith(e["id"]))["auto_promote_waitlist"]
+        is True
+    )

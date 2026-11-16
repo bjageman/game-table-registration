@@ -14,7 +14,8 @@ test("swaps a seat with a waitlist placement and saves the promotion setting", a
       swapped = true;
       return route.fulfill({ json: { ok: true } });
     }
-    if (path.endsWith("/waitlist-settings")) {
+    if (path.endsWith("/settings")) {
+      expect(route.request().method()).toBe("PATCH");
       autoPromote = route.request().postDataJSON().auto_promote_waitlist;
       return route.fulfill({ json: { auto_promote_waitlist: autoPromote } });
     }

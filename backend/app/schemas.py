@@ -194,6 +194,12 @@ class SwapPlayersInput(BaseModel):
     other_waitlist: bool = False
 
 
-class WaitlistSettingsInput(BaseModel):
+class EventSettingsInput(BaseModel):
     model_config = {"extra": "forbid"}
-    auto_promote_waitlist: bool
+    auto_promote_waitlist: bool = True
+
+    @model_validator(mode="after")
+    def require_settings(self) -> "EventSettingsInput":
+        if not self.model_fields_set:
+            raise ValueError("Specify at least one event setting")
+        return self

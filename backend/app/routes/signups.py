@@ -42,7 +42,6 @@ from app.schemas import (
     ManagerSignupInput,
     SwapPlayersInput,
     TestPopulationInput,
-    WaitlistSettingsInput,
 )
 
 
@@ -200,29 +199,6 @@ def register(context: ApplicationContext) -> None:
                 409, "Placements changed or cannot be swapped; refresh and try again"
             )
         return {"ok": True}
-
-    @router.put("/api/events/{event_id}/waitlist-settings")
-    def save_waitlist_settings(
-        event_id: str, body: WaitlistSettingsInput, request: Request
-    ) -> dict[str, Any]:
-        authenticated(request, True)
-        with DBSession(engine) as db:
-            context.scoped_event(db, event_id, request)
-            changed = db.execute(
-                update(Event)
-                .where(
-                    Event.id == event_id,
-                    *event_scope(request),
-                    Event.archived_at.is_(None),
-                    Event.status.in_(["review", "assigned"]),
-                )
-                .values(auto_promote_waitlist=body.auto_promote_waitlist)
-                .returning(Event.id)
-            ).scalar_one_or_none()
-            if changed is None:
-                raise HTTPException(409, "Event settings cannot be changed")
-            db.commit()
-        return body.model_dump()
 
     @router.put("/api/events/{event_id}/manager-players/{player_id}")
     def add_manager_player(

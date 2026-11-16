@@ -164,7 +164,7 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
     if (saving) return;
     setSaving(true); setActionError("");
     try {
-      await api(`/events/${encodeURIComponent(event.id)}/waitlist-settings`, { ...mutationOptions(csrf, { auto_promote_waitlist: value }), method: "PUT" });
+      await api(`/events/${encodeURIComponent(event.id)}/settings`, { ...mutationOptions(csrf, { auto_promote_waitlist: value }), method: "PATCH" });
       setAutoPromote(value);
       onUpdated?.({ ...event, auto_promote_waitlist: value });
     } catch (failure) { if (!onAccessError(failure)) setActionError(errorMessage(failure)); }
