@@ -184,6 +184,12 @@ def build_current_roster(
                 ],
             }
         )
+    for table in tables:
+        order = {
+            pid: index
+            for index, pid in enumerate(run.waitlist_order.get(table["name"], []))
+        }
+        table["waitlist"].sort(key=lambda player: order.get(player["id"], len(order)))
     waitlisted = {player["id"] for table in tables for player in table["waitlist"]}
     return {
         **result,

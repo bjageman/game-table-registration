@@ -182,3 +182,18 @@ class TestPopulationInput(BaseModel):
 
 class RetryAnnouncementInput(BaseModel):
     confirm_repost: bool = False
+
+
+class SwapPlayersInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    player_id: str
+    table: str = Field(min_length=1, max_length=35)
+    waitlist: bool = False
+    other_player_id: str
+    other_table: str = Field(min_length=1, max_length=35)
+    other_waitlist: bool = False
+
+
+class WaitlistSettingsInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    auto_promote_waitlist: bool

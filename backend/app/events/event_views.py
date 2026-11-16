@@ -71,6 +71,7 @@ def serialize_event(
     warnings = related.warnings.get(event.id, [])
     return {
         **warning_settings(event),
+        "auto_promote_waitlist": event.auto_promote_waitlist,
         "id": event.id,
         "title": event.title,
         "description": event.description,

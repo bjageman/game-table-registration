@@ -668,3 +668,9 @@ dd {
 }
 
 .event-sort-direction { display: inline-flex; margin-left: auto; padding-left: 16px; }
+
+.table-assigned-player.with-swap { grid-template-columns: minmax(0, 1fr) 26px 26px; }
+.table-waitlist li.with-swap { grid-template-columns: 26px minmax(0, 1fr) 26px 26px; }
+.swap-player { border: 0; border-radius: 4px; background: transparent; color: #365779; padding: 2px; cursor: pointer; }
+.swap-player:hover, .swap-player:focus-visible { background: #e8eef6; }
+.waitlist-promotion-setting { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }

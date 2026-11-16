@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.closing import close_and_assign
 from app.assignments.roster import build_current_roster
+from app.assignments.swaps import swap_players
 from app.context import ApplicationContext
 from app.discord.announcements import deliver_event
 from app.discord.message_cleanup import (
@@ -39,7 +40,9 @@ from app.schemas import (
     AssignedAddInput,
     EventPlayerSettingInput,
     ManagerSignupInput,
+    SwapPlayersInput,
     TestPopulationInput,
+    WaitlistSettingsInput,
 )
 
 
@@ -181,6 +184,45 @@ def register(context: ApplicationContext) -> None:
             allow_known=allow_known,
         )
         return {"ok": True}
+
+    @router.post("/api/events/{event_id}/swap-players")
+    def swap_event_players(
+        event_id: str, body: SwapPlayersInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(body.player_id)
+        valid_player_id(body.other_player_id)
+        with DBSession(engine) as db:
+            event = context.scoped_event(db, event_id, request)
+            guild_id = event.guild_id
+        if not swap_players(engine, guild_id, event_id, body):
+            raise HTTPException(
+                409, "Placements changed or cannot be swapped; refresh and try again"
+            )
+        return {"ok": True}
+
+    @router.put("/api/events/{event_id}/waitlist-settings")
+    def save_waitlist_settings(
+        event_id: str, body: WaitlistSettingsInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        with DBSession(engine) as db:
+            context.scoped_event(db, event_id, request)
+            changed = db.execute(
+                update(Event)
+                .where(
+                    Event.id == event_id,
+                    *event_scope(request),
+                    Event.archived_at.is_(None),
+                    Event.status.in_(["review", "assigned"]),
+                )
+                .values(auto_promote_waitlist=body.auto_promote_waitlist)
+                .returning(Event.id)
+            ).scalar_one_or_none()
+            if changed is None:
+                raise HTTPException(409, "Event settings cannot be changed")
+            db.commit()
+        return body.model_dump()
 
     @router.put("/api/events/{event_id}/manager-players/{player_id}")
     def add_manager_player(

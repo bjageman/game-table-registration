@@ -130,6 +130,8 @@ def select_waitlist_replacements(
     event: Event, current: dict[str, Any], table_name: str
 ) -> list[tuple[str, str]]:
     """Choose replacements in waitlist order, preserving pair and guarantee rules."""
+    if not event.auto_promote_waitlist:
+        return []
     tables = {row["name"]: row for row in current["tables"]}
     free = {
         row["name"]: row["capacity"]
@@ -509,6 +511,12 @@ def add_player_to_waitlist(
         else:
             addition.discord_name = name
             addition.added_at = time.time()
+        run.waitlist_order = {
+            name: [pid for pid in ids if pid != player_id]
+            if name == table_name
+            else ids
+            for name, ids in run.waitlist_order.items()
+        }
         set_removed(db, event_id, player_id, table_name, False)
         queue_member(db, event, player_id)
         if event.status == "assigned":
