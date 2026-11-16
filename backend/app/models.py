@@ -51,6 +51,9 @@ class SignupWarningSettings:
 
 
 class Event(SignupWarningSettings, Base):
+    auto_promote_waitlist: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
     __tablename__ = "events"
     __table_args__ = (
         UniqueConstraint("series_id", "starts_at"),
@@ -265,6 +268,12 @@ class LotteryRun(Base):
     seed: Mapped[str] = mapped_column(String(64))
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    seat_order: Mapped[dict[str, list[str]]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
+    waitlist_order: Mapped[dict[str, list[str]]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[float] = mapped_column(Float)
 

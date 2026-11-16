@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.closing import close_and_assign
 from app.assignments.roster import build_current_roster
+from app.assignments.swaps import swap_players
 from app.context import ApplicationContext
 from app.discord.announcements import deliver_event
 from app.discord.message_cleanup import (
@@ -39,6 +40,7 @@ from app.schemas import (
     AssignedAddInput,
     EventPlayerSettingInput,
     ManagerSignupInput,
+    SwapPlayersInput,
     TestPopulationInput,
 )
 
@@ -180,6 +182,22 @@ def register(context: ApplicationContext) -> None:
             name=name,
             allow_known=allow_known,
         )
+        return {"ok": True}
+
+    @router.post("/api/events/{event_id}/swap-players")
+    def swap_event_players(
+        event_id: str, body: SwapPlayersInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(body.player_id)
+        valid_player_id(body.other_player_id)
+        with DBSession(engine) as db:
+            event = context.scoped_event(db, event_id, request)
+            guild_id = event.guild_id
+        if not swap_players(engine, guild_id, event_id, body):
+            raise HTTPException(
+                409, "Placements changed or cannot be swapped; refresh and try again"
+            )
         return {"ok": True}
 
     @router.put("/api/events/{event_id}/manager-players/{player_id}")

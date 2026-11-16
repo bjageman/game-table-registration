@@ -1,7 +1,7 @@
 """Project the saved draw and subsequent edits into the current roster."""
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -184,6 +184,15 @@ def build_current_roster(
                 ],
             }
         )
+    for table in tables:
+        for group, saved in (
+            ("players", run.seat_order),
+            ("waitlist", run.waitlist_order),
+        ):
+            order = {
+                pid: index for index, pid in enumerate(saved.get(table["name"], []))
+            }
+            table[group].sort(key=lambda player: order.get(player["id"], len(order)))
     waitlisted = {player["id"] for table in tables for player in table["waitlist"]}
     return {
         **result,
@@ -201,4 +210,22 @@ def build_current_roster(
             )
         ),
         "tables": tables,
+    }
+
+
+def roster_order(
+    tables: list[dict[str, Any]],
+    group: Literal["players", "waitlist"],
+    replacements: dict[str, dict[str, str]] | None = None,
+) -> dict[str, list[str]]:
+    """Capture visible order, optionally replacing players in their current slots."""
+    replacements = replacements or {}
+    return {
+        row["name"]: list(
+            dict.fromkeys(
+                replacements.get(row["name"], {}).get(p["id"], p["id"])
+                for p in row.get(group, [])
+            )
+        )
+        for row in tables
     }
