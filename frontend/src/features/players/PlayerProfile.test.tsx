@@ -165,7 +165,7 @@ it("shows linked-player lookup errors above Discord Name", async () => {
 it("always shows private seat preferences and saves an opt-out without loading organization settings", async () => {
   const { fetchMock } = mockProfile();
   render(<PlayerProfile player={player} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} />);
-  const notifications = await screen.findByRole("checkbox", { name: "Private seat notifications" });
+  const notifications = await screen.findByRole("checkbox", { name: "Private Notifications" });
   expect(notifications).toBeChecked();
   fireEvent.click(notifications);
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/players/123", expect.objectContaining({

@@ -195,7 +195,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
           setProfile((current) => current ? { ...current, partner } : current);
           onSaved?.();
         }} />
-      <FormControlLabel label="Private seat notifications" control={<Checkbox id={`player-seat-notifications-${player.id}`} checked={seatNotifications} disabled={readOnly}
+      <FormControlLabel label="Private Notifications" control={<Checkbox id={`player-seat-notifications-${player.id}`} checked={seatNotifications} disabled={readOnly}
         onChange={(event) => { setSeatNotifications(event.target.checked); void saveChange({ seat_notifications: event.target.checked }); }} />} />
       <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat} disabled={readOnly}
         onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }); }} />} />

@@ -37,7 +37,7 @@ test("assignment PM setting persists and player preference stays visible when it
   await page.goto("/");
   await page.locator("#event-open-event").click();
   await page.getByRole("button", { name: "Mary", exact: true }).click();
-  const player = page.getByRole("checkbox", { name: "Private seat notifications" });
+  const player = page.getByRole("checkbox", { name: "Private Notifications" });
   await expect(player).toBeVisible();
   await expect(player).toBeEnabled();
   await player.click();
