@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.assignments import player_changes
 from app.config import Settings
-from app.discord import promotion_dms, reactions
+from app.discord import promotion_dms, reactions, seat_notifications
 from app.discord.announcements import deliver_event
 from app.discord.discord_api import DiscordAPI
 from app.discord.event_messages import EMOJIS
@@ -374,9 +374,11 @@ class SignupGateway(discord.Client):
         if (
             interaction.type == discord.InteractionType.component
             and isinstance(custom_id, str)
-            and custom_id.startswith(promotion_dms.BUTTON_PREFIX)
+            and custom_id.startswith(
+                (promotion_dms.BUTTON_PREFIX, promotion_dms.STOP_PREFIX)
+            )
         ):
-            await self.promotion_withdrawal(interaction, custom_id)
+            await self.private_notice_action(interaction, custom_id)
             return
 
         if (
@@ -421,11 +423,13 @@ class SignupGateway(discord.Client):
                 "Could not display signup confirmation; saved choices remain available"
             )
 
-    async def promotion_withdrawal(
+    async def private_notice_action(
         self, interaction: discord.Interaction[discord.Client], custom_id: str
     ) -> None:
         message = interaction.message
-        notice_id = custom_id.removeprefix(promotion_dms.BUTTON_PREFIX)
+        stopping = custom_id.startswith(promotion_dms.STOP_PREFIX)
+        prefix = promotion_dms.STOP_PREFIX if stopping else promotion_dms.BUTTON_PREFIX
+        notice_id = custom_id.removeprefix(prefix)
         context = (
             notice_id,
             interaction.id,
@@ -453,7 +457,7 @@ class SignupGateway(discord.Client):
         ]
         if reasons:
             logger.warning(
-                "Promotion DM interaction ignored reason=%s "
+                "Private seat notice interaction ignored reason=%s "
                 "notice_id=%s interaction_id=%s user_id=%s channel_id=%s message_id=%s "
                 "application_id=%s configured_application_id=%s "
                 "author_id=%s guild_id=%s",
@@ -467,7 +471,7 @@ class SignupGateway(discord.Client):
             return
         assert message is not None
         logger.info(
-            "Promotion DM withdrawal received notice_id=%s interaction_id=%s "
+            "Private seat notice action received notice_id=%s interaction_id=%s "
             "user_id=%s channel_id=%s message_id=%s",
             *context,
         )
@@ -475,7 +479,7 @@ class SignupGateway(discord.Client):
             await interaction.response.defer(ephemeral=True, thinking=True)
         except discord.HTTPException as failure:
             logger.warning(
-                "Promotion DM withdrawal acknowledgement failed notice_id=%s "
+                "Private seat notice action acknowledgement failed notice_id=%s "
                 "interaction_id=%s user_id=%s channel_id=%s message_id=%s "
                 "http_status=%s discord_code=%s",
                 *context,
@@ -485,7 +489,9 @@ class SignupGateway(discord.Client):
             return
         try:
             content = await asyncio.to_thread(
-                player_changes.withdraw_from_promotion_dm,
+                seat_notifications.stop_notifications
+                if stopping
+                else player_changes.withdraw_from_promotion_dm,
                 self.engine,
                 notice_id,
                 str(interaction.user.id),
@@ -494,13 +500,15 @@ class SignupGateway(discord.Client):
             )
         except Exception:
             logger.exception(
-                "Promotion DM withdrawal processing failed "
+                "Private seat notice action processing failed "
                 "notice_id=%s interaction_id=%s "
                 "user_id=%s channel_id=%s message_id=%s",
                 *context,
             )
             content = (
-                "Could not process your withdrawal. "
+                "Could not save your notification preference. Please try again."
+                if stopping
+                else "Could not process your withdrawal. "
                 "Please try again to check your seat."
             )
         try:
@@ -510,7 +518,7 @@ class SignupGateway(discord.Client):
             )
         except discord.HTTPException as failure:
             logger.warning(
-                "Promotion DM withdrawal response failed "
+                "Private seat notice action response failed "
                 "notice_id=%s interaction_id=%s "
                 "user_id=%s channel_id=%s message_id=%s http_status=%s discord_code=%s",
                 *context,

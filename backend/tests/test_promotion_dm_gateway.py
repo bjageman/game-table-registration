@@ -163,7 +163,7 @@ def test_withdrawal_failures_include_correlated_ids_and_error_details(
         await gateway.close()
 
     asyncio.run(check())
-    assert f"withdrawal {stage} failed" in caplog.text
+    assert f"notice action {stage} failed" in caplog.text
     assert f"notice_id={notice_id}" in caplog.text
     assert "interaction_id=9001" in caplog.text
     assert "user_id=2" in caplog.text

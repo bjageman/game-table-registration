@@ -86,7 +86,12 @@ def test_defaults_migration_preserves_saved_false_and_sets_sql_defaults(tmp_path
     columns = ", ".join(
         key
         for key in DEFAULTS
-        if key not in {"review_assignments_before_discord", "create_discord_event"}
+        if key
+        not in {
+            "review_assignments_before_discord",
+            "create_discord_event",
+            "dm_assignments",
+        }
     )
     with engine.begin() as connection:
         connection.execute(

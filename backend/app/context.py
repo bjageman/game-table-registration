@@ -219,6 +219,7 @@ class ApplicationContext:
             "weighting": profile.weighting if profile else 5.0,
             "is_test": profile.is_test if profile else False,
             "guaranteed_seat": profile.guaranteed_seat if profile else False,
+            "seat_notifications": profile.seat_notifications if profile else True,
         }
 
     def valid_player_id(self, player_id: str) -> None:

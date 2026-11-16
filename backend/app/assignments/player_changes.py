@@ -26,6 +26,7 @@ from app.assignments.roster import (
 from app.discord.discord_format import clean
 from app.discord.event_messages import enqueue_roster_refresh
 from app.discord.event_threads import queue_member
+from app.discord.promotion_dms import enqueue as enqueue_seat_dm
 from app.events.table_membership import set_removed
 from app.models import (
     Announcement,
@@ -402,6 +403,8 @@ def assign_player_to_table(
             )
         if was_waitlisted:
             enqueue_promotion_dms(db, event, run, [player_id])
+        elif event.status == "assigned":
+            enqueue_seat_dm(db, event, player_id, table_name, kind="assignment")
         if event.status == "assigned":
             enqueue_roster_refresh(db, event)
         db.commit()

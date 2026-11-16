@@ -12,8 +12,8 @@ import LoadingIndicator from "../../components/LoadingIndicator";
 import type { PlayerSummary } from "../../lib/players";
 import PlayerPairEditor, { type Partner } from "./PlayerPairEditor";
 
-interface Profile extends PlayerSummary { weighting: number; is_test?: boolean; guaranteed_seat?: boolean; partner?: Partner | null; }
-type ProfileChange = { real_name?: string; weighting?: number; guaranteed_seat?: boolean };
+interface Profile extends PlayerSummary { seat_notifications?: boolean; weighting: number; is_test?: boolean; guaranteed_seat?: boolean; partner?: Partner | null; }
+type ProfileChange = { seat_notifications?: boolean; real_name?: string; weighting?: number; guaranteed_seat?: boolean };
 
 export default function PlayerProfile({ player, csrf, readOnly = false, onClose, onAccessError, onSaved }: {
   player: { id: string; name: string };
@@ -38,6 +38,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
   const [profile, setProfile] = useState<Profile>();
   const [realName, setRealName] = useState("");
   const [weighting, setWeighting] = useState("5");
+  const [seatNotifications, setSeatNotifications] = useState(true);
   const [guaranteedSeat, setGuaranteedSeat] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingWeight, setSavingWeight] = useState(false);
@@ -54,6 +55,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
         if (!controller.signal.aborted) {
           profileRef.current = value;
           submitted.current = { real_name: value.real_name, weighting: value.weighting, guaranteed_seat: Boolean(value.guaranteed_seat) };
+          setSeatNotifications(value.seat_notifications ?? true);
           setProfile(value); setRealName(value.real_name); setWeighting(String(value.weighting)); setGuaranteedSeat(Boolean(value.guaranteed_seat)); setError("");
         }
       })
@@ -88,6 +90,9 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
           setGuaranteedSeat((current) => current === change.guaranteed_seat ? Boolean(updated.guaranteed_seat) : current);
           if (submitted.current.guaranteed_seat === change.guaranteed_seat) submitted.current.guaranteed_seat = Boolean(updated.guaranteed_seat);
         }
+        if (change.seat_notifications !== undefined) {
+          setSeatNotifications((current) => current === change.seat_notifications ? updated.seat_notifications ?? true : current);
+        }
         setNotice(message);
         onSaved?.();
       } catch (failure) {
@@ -95,6 +100,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
         failed.current = true;
         const current = profileRef.current;
         if (current) {
+          if (change.seat_notifications !== undefined) setSeatNotifications((value) => value === change.seat_notifications ? current.seat_notifications ?? true : value);
           if (change.real_name !== undefined && submitted.current.real_name === change.real_name) submitted.current.real_name = current.real_name;
           if (change.weighting !== undefined && submitted.current.weighting === change.weighting) submitted.current.weighting = current.weighting;
           if (change.guaranteed_seat !== undefined && submitted.current.guaranteed_seat === change.guaranteed_seat) submitted.current.guaranteed_seat = Boolean(current.guaranteed_seat);
@@ -189,6 +195,8 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
           setProfile((current) => current ? { ...current, partner } : current);
           onSaved?.();
         }} />
+      <FormControlLabel label="Private seat notifications" control={<Checkbox id={`player-seat-notifications-${player.id}`} checked={seatNotifications} disabled={readOnly}
+        onChange={(event) => { setSeatNotifications(event.target.checked); void saveChange({ seat_notifications: event.target.checked }); }} />} />
       <FormControlLabel label="Guaranteed Seat" control={<Checkbox id={`player-guaranteed-seat-${player.id}`} checked={guaranteedSeat} disabled={readOnly}
         onChange={(event) => { setGuaranteedSeat(event.target.checked); void saveChange({ guaranteed_seat: event.target.checked }); }} />} />
       </FormFields>

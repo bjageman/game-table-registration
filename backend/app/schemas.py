@@ -135,6 +135,7 @@ class PlayerPairInput(BaseModel):
 
 
 class PlayerProfileInput(BaseModel):
+    seat_notifications: bool | None = None
     model_config = {"extra": "forbid"}
     real_name: str | None = Field(default=None, max_length=100)
     guaranteed_seat: bool | None = None

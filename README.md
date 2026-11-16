@@ -45,3 +45,10 @@ configuration details and alternative startup methods.
 
 See [deployment and promotion](docs/deployment.md) for hosted dev/prod setup,
 GitHub secrets, and the feature → dev → main review process.
+
+Private table-assignment messages are enabled in General Settings and are sent
+after assignments are finalized. They include the table, event, time, location,
+and controls to give up the seat or stop private seat notifications. Each player’s
+notification preference remains available in Player Information even when the
+organizer disables messages. Player opt-outs apply to both assignment and waitlist
+promotion messages for that organizer.

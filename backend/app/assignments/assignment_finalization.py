@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.assignments.roster import build_current_roster
 from app.discord.event_messages import enqueue_assignment_messages
+from app.discord.promotion_dms import enqueue_assignments
 from app.models import Announcement, Event, LotteryRun, PlayerProfile
 from app.players.player_profiles import for_event as player_scope_for_event
 
@@ -54,6 +55,7 @@ def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -
 
     adjust_weights(db, event, run)
     event.status = "assigned"
+    enqueue_assignments(db, event, run)
     enqueue_assignment_messages(
         db,
         event,
@@ -86,6 +88,7 @@ def complete_review_delivery(db: Session, event_id: str) -> None:
         run = db.get(LotteryRun, event_id)
         if event and run:
             adjust_weights(db, event, run)
+            enqueue_assignments(db, event, run)
 
 
 def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
