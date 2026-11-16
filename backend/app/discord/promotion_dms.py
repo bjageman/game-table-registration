@@ -81,9 +81,11 @@ def _enqueue_notice(
         else f"Congratulations! You have been added to **{clean(table_name)}** "
         f"from the waitlist for **{clean(event.title)}**."
     )
+    location = clean(event.location)
+    location_line = f"Location: {location}\n" if location else ""
     content = (
         f"{introduction}\n\nTime: <t:{int(event.starts_at)}:F>\n"
-        f"Location: {clean(event.location) if event.location else 'Not specified'}\n\n"
+        f"{location_line}\n"
         "If you cannot make it, use **Give up my seat** below to withdraw "
         "and free the seat for the next waitlisted player."
     )

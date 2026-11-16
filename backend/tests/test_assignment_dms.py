@@ -260,3 +260,19 @@ def test_initial_notice_queries_are_batched(promotion_db, count):
         assert len(statements) <= 8
         db.commit()
         assert len(list(db.scalars(select(PromotionDM)))) == count
+
+
+@pytest.mark.parametrize("location", ["", "   "])
+@pytest.mark.parametrize("kind", ["assignment", "promotion"])
+def test_unspecified_location_is_omitted(promotion_db, location, kind):
+    with Session(promotion_db) as db:
+        event = db.get(Event, "event")
+        event.location = location
+        promotion_dms.enqueue(db, event, "1", "Table A", kind=kind)
+        db.commit()
+        notice = db.scalar(select(PromotionDM))
+        content = notice.payload["content"]
+        assert "Location:" not in content
+        assert "Not specified" not in content
+        assert "Time: <t:" in content
+        assert ":F>\n\nIf you cannot make it" in content
