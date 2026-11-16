@@ -79,6 +79,8 @@ export default function GeneralSettings({ csrf, restricted = false, onAccessErro
         onChange={(event) => toggle("show_open_signup_players", event.target.checked)} />} /></div>
       <div className="general-setting-option"><FormControlLabel label="Send private messages for waitlist promotions" control={<Checkbox id="general-dm-waitlist-promotions" checked={settings.dm_waitlist_promotions} disabled={busy || restricted}
         onChange={(event) => toggle("dm_waitlist_promotions", event.target.checked)} />} /></div>
+      <div className="general-setting-option"><FormControlLabel label="Send private messages for table assignments" control={<Checkbox id="general-dm-assignments" checked={settings.dm_assignments} disabled={busy || restricted}
+        onChange={(event) => toggle("dm_assignments", event.target.checked)} />} /></div>
       <div className="general-setting-option general-timezone-setting">
         <FormField id="general-timezone" select label="Timezone" value={settings.timezone ?? ""} disabled={busy || restricted}
           slotProps={{ select: { native: true } }}

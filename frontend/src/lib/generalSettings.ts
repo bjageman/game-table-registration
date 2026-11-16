@@ -8,6 +8,7 @@ export interface GeneralSettingsValues {
   timezone: string | null;
   show_open_signup_players: boolean;
   dm_waitlist_promotions: boolean;
+  dm_assignments: boolean;
 }
 
 export const GENERAL_SETTINGS_DEFAULTS: GeneralSettingsValues = {
@@ -19,4 +20,5 @@ export const GENERAL_SETTINGS_DEFAULTS: GeneralSettingsValues = {
   timezone: null,
   show_open_signup_players: true,
   dm_waitlist_promotions: true,
+  dm_assignments: true,
 };

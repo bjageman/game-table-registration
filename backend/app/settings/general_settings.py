@@ -15,6 +15,7 @@ class GeneralSettingsValues(BaseModel):
     timezone: str | None = Field(default=None, max_length=64)
     show_open_signup_players: bool = True
     dm_waitlist_promotions: bool = True
+    dm_assignments: bool = True
 
     @field_validator("timezone")
     @classmethod

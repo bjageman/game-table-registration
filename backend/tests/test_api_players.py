@@ -296,6 +296,7 @@ def test_automatic_weight_adjustment_once_per_draw_and_setting_scope(client, ena
         "show_open_signup_players": True,
         "review_assignments_before_discord": False,
         "dm_waitlist_promotions": True,
+        "dm_assignments": True,
         "timezone": None,
         "automatic_weight_adjustment": True,
         "announce_table_changes": True,

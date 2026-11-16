@@ -206,6 +206,9 @@ class SignupInteraction(Base):
 
 
 class PlayerProfile(Base):
+    seat_notifications: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
     __tablename__ = "player_profiles"
     scope_key: Mapped[str] = mapped_column(String(100), primary_key=True)
     guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
@@ -369,6 +372,7 @@ class AssignmentPreference(Base):
         "show_open_signup_players"
     )
     dm_waitlist_promotions: Mapped[bool] = _general_setting("dm_waitlist_promotions")
+    dm_assignments: Mapped[bool] = _general_setting("dm_assignments")
 
 
 class EventThreadMember(Base):
@@ -381,6 +385,9 @@ class EventThreadMember(Base):
 
 
 class PromotionDM(Base):
+    kind: Mapped[str] = mapped_column(
+        String(16), default="promotion", server_default="promotion"
+    )
     __tablename__ = "promotion_dms"
     __table_args__ = (
         UniqueConstraint("event_id", "discord_id"),

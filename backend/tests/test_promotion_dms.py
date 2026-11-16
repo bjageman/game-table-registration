@@ -82,7 +82,7 @@ def test_all_waitlist_promotions_queue_one_notice_independent_of_public_settings
         )
 
 
-def test_adding_a_known_player_who_was_not_waitlisted_does_not_queue_a_dm(promotion_db):
+def test_adding_a_known_player_queues_an_assignment_dm(promotion_db):
     with Session(promotion_db) as db:
         db.add(
             PlayerProfile(
@@ -98,7 +98,10 @@ def test_adding_a_known_player_who_was_not_waitlisted_does_not_queue_a_dm(promot
         promotion_db, "guild", "event", "4", "Table A", allow_known_player=True
     )
     with Session(promotion_db) as db:
-        assert list(db.scalars(select(PromotionDM))) == []
+        notice = db.scalar(select(PromotionDM))
+        assert notice is not None
+        assert notice.kind == "assignment"
+        assert notice.discord_id == "4"
 
 
 def test_delivery_is_durable_and_only_sends_once(promotion_db):

@@ -1,9 +1,10 @@
-"""Durable private promotion notices, independent of public announcements."""
+"""Durable private seat notices, independent of public announcements."""
 
 import hashlib
 import logging
 import time
 import uuid
+from typing import Literal
 
 from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
@@ -17,21 +18,41 @@ from app.discord.delivery import (
     retry_delay,
 )
 from app.discord.discord_api import DiscordAPI, DiscordRequestError
-from app.discord.discord_format import clean
-from app.models import Event, LotteryRun, PromotionDM
+from app.discord.discord_format import clean, is_discord_user_id
+from app.models import Event, LotteryRun, PlayerProfile, PromotionDM
+from app.players.player_profiles import for_event as player_scope_for_event
 from app.settings.assignment_preferences import for_event
 
 logger = logging.getLogger(__name__)
 BUTTON_PREFIX = "promotion:withdraw:"
+STOP_PREFIX = "seat-notifications:stop:"
 
 
-def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
-    """Queue in the same locked transaction that assigns the promoted player."""
+def _can_notify(player_id: str, profile: PlayerProfile | None) -> bool:
+    return is_discord_user_id(player_id) and (
+        profile is None or (profile.seat_notifications and not profile.is_test)
+    )
+
+
+def enqueue(
+    db: Session,
+    event: Event,
+    player_id: str,
+    table_name: str,
+    *,
+    kind: Literal["promotion", "assignment"] = "promotion",
+) -> None:
+    """Queue in the same locked transaction that assigns the seat."""
     preference = for_event(db, event)
+    profile = player_scope_for_event(event).get(db, player_id)
+    enabled = (
+        preference.dm_assignments
+        if kind == "assignment"
+        else preference.dm_waitlist_promotions
+    )
     if (
-        not preference.dm_waitlist_promotions
-        or not player_id.isascii()
-        or not player_id.isdecimal()
+        not enabled
+        or not _can_notify(player_id, profile)
         or event.archived_at
         or event.starts_at <= time.time()
     ):
@@ -42,11 +63,29 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
         )
     ):
         return
+    _enqueue_notice(db, event, player_id, table_name, kind)
+
+
+def _enqueue_notice(
+    db: Session,
+    event: Event,
+    player_id: str,
+    table_name: str,
+    kind: Literal["promotion", "assignment"],
+) -> None:
     notice_id = str(uuid.uuid4())
+    introduction = (
+        f"Congratulations! You got assigned to **{clean(table_name)}** "
+        f"for **{clean(event.title)}**."
+        if kind == "assignment"
+        else f"Congratulations! You have been added to **{clean(table_name)}** "
+        f"from the waitlist for **{clean(event.title)}**."
+    )
+    location = clean(event.location)
+    location_line = f"Location: {location}\n" if location else ""
     content = (
-        f"Congratulations! You have been added to **{clean(table_name)}** "
-        f"from the waitlist for **{clean(event.title)}**.\n"
-        f"Event: <t:{int(event.starts_at)}:F>\n\n"
+        f"{introduction}\n\nTime: <t:{int(event.starts_at)}:F>\n"
+        f"{location_line}\n"
         "If you cannot make it, use **Give up my seat** below to withdraw "
         "and free the seat for the next waitlisted player."
     )
@@ -59,6 +98,7 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
     db.add(
         PromotionDM(
             id=notice_id,
+            kind=kind,
             event_id=event.id,
             discord_id=player_id,
             table_name=table_name,
@@ -78,7 +118,13 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
                                 "style": 4,
                                 "label": "Give up my seat",
                                 "custom_id": f"{BUTTON_PREFIX}{notice_id}",
-                            }
+                            },
+                            {
+                                "type": 2,
+                                "style": 2,
+                                "label": "Stop notifications",
+                                "custom_id": f"{STOP_PREFIX}{notice_id}",
+                            },
                         ],
                     }
                 ],
@@ -99,8 +145,15 @@ def _eligible(db: Session, notice: PromotionDM) -> bool:
         return False
     preference = for_event(db, event)
     run = db.get(LotteryRun, event.id)
+    profile = player_scope_for_event(event).get(db, notice.discord_id)
+    enabled = (
+        preference.dm_assignments
+        if notice.kind == "assignment"
+        else preference.dm_waitlist_promotions
+    )
     return bool(
-        preference.dm_waitlist_promotions
+        enabled
+        and _can_notify(notice.discord_id, profile)
         and run
         and build_current_roster(db, run)["assignments"].get(notice.discord_id)
         == notice.table_name
@@ -238,3 +291,37 @@ def dispatch_due(engine: Engine, discord: DiscordAPI) -> None:
             deliver(engine, discord, notice_id)
         except Exception:
             logger.exception("Could not process private promotion notice %s", notice_id)
+
+
+def enqueue_assignments(db: Session, event: Event, run: LotteryRun) -> None:
+    """Queue the finalized roster once, loading preferences and profiles in batches."""
+    if (
+        not for_event(db, event).dm_assignments
+        or event.archived_at
+        or event.starts_at <= time.time()
+    ):
+        return
+    assignments = build_current_roster(db, run)["assignments"]
+    if not assignments:
+        return
+    profiles = {
+        p.discord_id: p
+        for p in db.scalars(
+            select(PlayerProfile).where(
+                *player_scope_for_event(event).filters(),
+                PlayerProfile.discord_id.in_(assignments),
+            )
+        )
+    }
+    queued = set(
+        db.scalars(
+            select(PromotionDM.discord_id).where(
+                PromotionDM.event_id == event.id,
+            )
+        )
+    )
+    for pid, table in assignments.items():
+        profile = profiles.get(pid)
+        if pid in queued or not _can_notify(pid, profile):
+            continue
+        _enqueue_notice(db, event, pid, table, "assignment")

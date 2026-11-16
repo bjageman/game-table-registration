@@ -42,7 +42,7 @@ it("saves assignment options for an admin", async () => {
     method: "PUT",
     body: JSON.stringify({
       create_discord_event: true, review_assignments_before_discord: false, automatic_weight_adjustment: true, announce_table_changes: false,
-      post_discord_updates_to_thread: false, timezone: null, show_open_signup_players: false, dm_waitlist_promotions: false,
+      post_discord_updates_to_thread: false, timezone: null, show_open_signup_players: false, dm_waitlist_promotions: false, dm_assignments: true,
     }),
   }));
   await waitFor(() => expect(screen.getByRole("checkbox", { name: "Review assignments before sending to Discord" })).not.toBeChecked());
@@ -72,6 +72,18 @@ it("enables every General toggle by default before the first settings save", asy
   render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
   await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
   const toggles = screen.getAllByRole("checkbox");
-  expect(toggles).toHaveLength(7);
+  expect(toggles).toHaveLength(8);
   toggles.forEach((toggle) => expect(toggle).toBeChecked());
+});
+
+it("saves private assignment notifications independently of promotion notifications", async () => {
+  const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => new Response(
+    options?.method === "PUT" ? String(options.body) : JSON.stringify({ dm_assignments: true, dm_waitlist_promotions: false }),
+  ));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
+  const assignments = await screen.findByRole("checkbox", { name: "Send private messages for table assignments" });
+  fireEvent.click(assignments);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual(expect.objectContaining({ dm_assignments: false, dm_waitlist_promotions: false }));
 });
