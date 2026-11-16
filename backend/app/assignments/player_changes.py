@@ -11,7 +11,12 @@ from app.assignments.notifications import (
     enqueue_promotion_dms,
     enqueue_table_change,
     format_pair_promotion,
-    format_promoted_players,
+    format_roster_players,
+)
+from app.assignments.placement_records import (
+    record_manual_assignment,
+    record_waitlist_addition,
+    record_withdrawal,
 )
 from app.assignments.roster import build_current_roster, build_roster_players
 from app.discord.discord_format import clean
@@ -22,8 +27,6 @@ from app.models import (
     Announcement,
     Event,
     EventManagerSignup,
-    EventManualAssignment,
-    EventWaitlistAddition,
     EventWithdrawal,
     LotteryRun,
     PromotionDM,
@@ -84,46 +87,6 @@ def event_for_withdrawal_message(
                 Announcement.deleted_at.is_(None),
             )
         )
-
-
-def _record_withdrawal(
-    db: Session,
-    event_id: str,
-    player_id: str,
-    table_name: str,
-    withdrawn_at: float,
-    promoted_id: str | None,
-) -> None:
-    """Keep prior replacement seats when a rejoined player withdraws again."""
-    previous = db.get(EventWithdrawal, (event_id, player_id))
-    if previous is None:
-        db.add(
-            EventWithdrawal(
-                event_id=event_id,
-                discord_id=player_id,
-                table_name=table_name,
-                withdrawn_at=withdrawn_at,
-                promoted_id=promoted_id,
-            )
-        )
-        return
-    if previous.promoted_id:
-        replacement = db.get(EventManualAssignment, (event_id, previous.promoted_id))
-        if replacement is None:
-            db.add(
-                EventManualAssignment(
-                    event_id=event_id,
-                    discord_id=previous.promoted_id,
-                    table_name=previous.table_name,
-                    assigned_at=previous.withdrawn_at,
-                )
-            )
-        elif replacement.assigned_at < previous.withdrawn_at:
-            replacement.table_name = previous.table_name
-            replacement.assigned_at = previous.withdrawn_at
-    previous.table_name = table_name
-    previous.withdrawn_at = withdrawn_at
-    previous.promoted_id = promoted_id
 
 
 def select_waitlist_replacements(
@@ -229,7 +192,7 @@ def _replace_with_waitlist(
 ) -> list[str]:
 
     chosen = select_waitlist_replacements(event, current, table_name)
-    _record_withdrawal(
+    record_withdrawal(
         db,
         event.id,
         player_id,
@@ -238,19 +201,7 @@ def _replace_with_waitlist(
         chosen[0][0] if chosen else None,
     )
     for pid, table in chosen[1:]:
-        placement = db.get(EventManualAssignment, (event.id, pid))
-        if placement is None:
-            db.add(
-                EventManualAssignment(
-                    event_id=event.id,
-                    discord_id=pid,
-                    table_name=table,
-                    assigned_at=changed_at,
-                )
-            )
-        else:
-            placement.table_name = table
-            placement.assigned_at = changed_at
+        record_manual_assignment(db, event.id, pid, table, changed_at)
     return [pid for pid, _ in chosen]
 
 
@@ -270,11 +221,9 @@ def withdraw_player_seat(
     )
     promoted_id = promoted_ids[0] if promoted_ids else None
     if promoted_id:
-        left = build_roster_players(db, run)[player_id]
-        promoted_name = format_promoted_players(db, run, promoted_ids)
-        left_name = (
-            clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
-        )
+        known = build_roster_players(db, run)
+        promoted_name = format_roster_players(known, promoted_ids)
+        left_name = format_roster_players(known, [player_id])
         content = (
             f"{promoted_name} has been promoted to **{clean(table_name)}** "
             f"after {left_name} left their seat.\n"
@@ -341,12 +290,10 @@ def remove_player_from_roster(
             db, event, run, current, player_id, table_name, removed_at
         )
         promoted_id = promoted_ids[0] if promoted_ids else None
-        left = build_roster_players(db, run)[player_id]
-        left_name = (
-            clean(left["name"]) if player_id.startswith("test-") else f"<@{player_id}>"
-        )
+        known = build_roster_players(db, run)
+        left_name = format_roster_players(known, [player_id])
         if promoted_id:
-            promoted_name = format_promoted_players(db, run, promoted_ids)
+            promoted_name = format_roster_players(known, promoted_ids)
             content = (
                 f"{promoted_name} has been promoted from the waitlist "
                 f"to **{clean(table_name)}**."
@@ -426,29 +373,12 @@ def assign_player_to_table(
             time.time(),
             previous_withdrawal.withdrawn_at + 0.000001 if previous_withdrawal else 0,
         )
-        assignment = db.get(EventManualAssignment, (event_id, player_id))
-        if assignment is None:
-            db.add(
-                EventManualAssignment(
-                    event_id=event_id,
-                    discord_id=player_id,
-                    table_name=table_name,
-                    assigned_at=assigned_at,
-                )
-            )
-        else:
-            assignment.table_name = table_name
-            assignment.assigned_at = assigned_at
+        record_manual_assignment(db, event_id, player_id, table_name, assigned_at)
         set_removed(db, event_id, player_id, table_name, False)
         queue_member(db, event, player_id)
         if event.status == "assigned":
             action = "promoted from the waitlist" if waitlisted else "added"
-            promoted = known[player_id]
-            name = (
-                clean(promoted["name"])
-                if player_id.startswith("test-")
-                else f"<@{player_id}>"
-            )
+            name = format_roster_players(known, [player_id])
             enqueue_table_change(
                 db,
                 event,
@@ -497,20 +427,7 @@ def add_player_to_waitlist(
         else:
             assert known is not None
             name = known["name"]
-        addition = db.get(EventWaitlistAddition, (event_id, player_id, table_name))
-        if addition is None:
-            db.add(
-                EventWaitlistAddition(
-                    event_id=event_id,
-                    discord_id=player_id,
-                    table_name=table_name,
-                    discord_name=name,
-                    added_at=time.time(),
-                )
-            )
-        else:
-            addition.discord_name = name
-            addition.added_at = time.time()
+        record_waitlist_addition(db, event_id, player_id, table_name, name, time.time())
         run.waitlist_order = {
             name: [pid for pid in ids if pid != player_id]
             if name == table_name

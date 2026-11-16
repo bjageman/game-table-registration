@@ -3,6 +3,7 @@
 import hashlib
 import uuid
 from collections.abc import Iterable
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -64,8 +65,8 @@ def enqueue_table_change(
     )
 
 
-def format_promoted_players(db: Session, run: LotteryRun, ids: list[str]) -> str:
-    players = build_roster_players(db, run)
+def format_roster_players(players: dict[str, Any], ids: list[str]) -> str:
+    """Use safe names for test players and mentions for Discord players."""
     return " and ".join(
         clean(players[pid]["name"]) if pid.startswith("test-") else f"<@{pid}>"
         for pid in ids
@@ -75,8 +76,9 @@ def format_promoted_players(db: Session, run: LotteryRun, ids: list[str]) -> str
 def format_pair_promotion(db: Session, run: LotteryRun, ids: list[str]) -> str:
     """A split promotion must name each player's actual destination table."""
     current = build_current_roster(db, run)
+    players = build_roster_players(db, run)
     return " ".join(
-        f"{format_promoted_players(db, run, [pid])} "
+        f"{format_roster_players(players, [pid])} "
         "has been promoted from the waitlist "
         f"to **{clean(current['assignments'][pid])}**."
         for pid in ids
