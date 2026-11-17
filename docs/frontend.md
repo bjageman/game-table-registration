@@ -8,7 +8,7 @@ Checks: `npm run lint`, `npm run build`, `npm test`, and `npx playwright install
 
 Run `docker compose -f compose.yml -f compose.frontend.yml up --build -d --wait` from the repository root. Open http://localhost:8080. Set PUBLIC_URL to your browser origin. The frontend Compose file extends the backend Compose file and is not a standalone deployment.
 
-The event list loads the server's event records with start times, signup duration, table capacities, and publication status. Times use the timezone selected in General settings, falling back to the browser timezone. Refresh retrieves the latest server state. A lost session or removed moderator access hides the dashboard. Events awaiting publication review show a check-Discord notice.
+The event list loads the server's event records with start times, signup duration, table capacities, and publication status. Times use the timezone selected in Preferences, falling back to the browser timezone. Refresh retrieves the latest server state. A lost session or removed moderator access hides the dashboard. Events awaiting publication review show a check-Discord notice.
 
 Create event opens a draft form for the title, start, optional end, signup closing offset, and 1–10 tables with capacities (1–999, default 15). MUI X uses combined date/time pickers on desktop and separate date and time pickers on mobile, with 15-minute selection steps. The initial reference is the next whole hour. The end defaults to four elapsed hours after the start until manually edited. Unscheduled signups can close manually or a whole number of hours before the event; scheduled events specify opening/closing offsets and can repeat. The browser resolves wall times in the selected timezone and sends UTC timestamps. Saving a draft does not publish to Discord; failed requests retain the form.
 
@@ -40,9 +40,9 @@ Display Name overrides Discord names in app signup, assignment, and waitlist ent
 
 Assigned event modals offer an Archive icon with shared Cancel/Confirm controls. Archived events are hidden from the default list; Show Archived includes them again with saved placements and waitlists.
 
-Settings → General includes Automatically Adjust Player Weights and Discord options. All boolean options default on for a new organization or personal workspace; explicit saved opt-outs remain off. Checkboxes and timezone changes autosave without a Save button. Organization editors can view settings; only admins can change shared options.
+Settings → Preferences groups player weight and guarantee options under Player Management, followed by Discord options. Timezone is first, above both sections. All boolean options default on for a new organization or personal workspace; explicit saved opt-outs remain off. Checkboxes and timezone changes autosave without a Save button. Organization editors can view settings; only admins can change shared options.
 
-The Discord connection controls offer Disconnect with confirmation. Disconnect hides server/channel controls until authorization succeeds again. General remains accessible without a connection. The Refresh Channels icon beside Signup Channel reloads eligible channels without leaving Settings.
+The Discord connection controls offer Disconnect with confirmation. Disconnect hides server/channel controls until authorization succeeds again. Preferences remains accessible without a connection. The Refresh Channels icon beside Signup Channel reloads eligible channels without leaving Settings.
 
 The event list toolbar searches titles case-insensitively and sorts by title, event date, or creation datetime in either direction. Event date ascending is the default; search and sort respect Show Archived. Older events without a recorded creation time sort after dated records. The sort icon reflects direction.
 
@@ -61,9 +61,9 @@ Major sections, controls, and dialogs have descriptive HTML `id` attributes for 
 | Table controls | `event-{eventId}-table-{number}-add-player`, `event-{eventId}-table-{number}-player-remove-{playerId}` |
 | Player lookup | `player-lookup`, `player-lookup-search`, `player-lookup-sort-guaranteed_seat`, `player-open-{playerId}` |
 | Player information | `player-profile-dialog-{playerId}`, `player-display-name-{playerId}`, `player-weight-{playerId}`, `player-guaranteed-seat-{playerId}` |
-| Settings tabs | `settings-discord-tab`, `settings-assignments-tab` (General), `settings-organization-tab` |
+| Settings tabs | `settings-preferences-tab`, `settings-connection-tab`, `settings-organization-tab` |
 | Discord settings | `discord-connect-button`, `discord-server-select`, `discord-channel-select`, `discord-settings-save-button` |
-| General settings | `assignment-auto-weights`, `assignment-announce-changes`, `assignment-thread-updates`, `general-timezone`, `general-dm-waitlist-promotions` |
+| Preferences | `assignment-auto-weights`, `assignment-announce-changes`, `assignment-thread-updates`, `general-timezone`, `general-dm-waitlist-promotions` |
 | Organization | `organization-select`, `organization-create-button`, `organization-delete-button`, `organization-add-user-button` |
 | Organization members | `organization-member-{userId}`, `organization-member-role-{userId}`, `organization-member-delete-{userId}` |
 | Confirmation | `organization-delete-dialog`, `organization-delete-dialog-cancel`, `organization-delete-dialog-confirm`; other confirmation controls also use their dialog ID plus `-cancel`, `-confirm`, or `-close` |
@@ -73,23 +73,23 @@ New table rows default to Table #1, Table #2, and so on, with Name and Capacity 
 
 The create form actions use save icons with Draft (Schedule for recurring events), Template, and Cancel, and stay on one row on mobile.
 
-The footer has a top divider and a single GitHub repository icon link, using the compact rounded icon style from Tiny Grimoire. General settings use dividers between checkbox options. Organization deletion requires confirmation, and member removal uses a trash icon with an accessible username label.
+The footer has a top divider and a single GitHub repository icon link, using the compact rounded icon style from Tiny Grimoire. The full-width settings page opens Preferences first, followed by Connection and Organization tabs. Timezone appears above the Player Management and Discord sections, with dividers between checkbox options. Organization uses an inline Active Organization selector. Organization deletion requires confirmation, and member removal uses a trash icon with an accessible username label.
 
 Event process buttons share the 46px primary action height. Icon actions and modal close buttons are square at 46×46px. The event toolbar wraps on narrow screens, uses a Discord icon for the signup link, and relies on automatic signup polling rather than a toolbar refresh button.
 
 All modal headers use ModalHeader to fit their title onto one line beside the square close button. Badges shrink more aggressively than the title so their text remains smaller. Titles refit when their text, available width, or fonts change, including after resizing an open dialog. Keep new modal headers on the shared component rather than implementing separate sizing logic.
 
-Active assigned events offer Add Player for known players who are not already seated. The backend saves the placement as a manual override and keeps the original lottery snapshot/result unchanged. New additions can overfill a table, join the event thread, and queue a refresh of the existing Discord assignment posts. The General announcement setting controls separate table-change notices; roster edits are queued regardless. Previously withdrawn players can be re-added explicitly. Assigned, verification, and open-signup edits use the shared table-specific player-edit service; removing one table membership preserves other selections.
+Active assigned events offer Add Player for known players who are not already seated. The backend saves the placement as a manual override and keeps the original lottery snapshot/result unchanged. New additions can overfill a table, join the event thread, and queue a refresh of the existing Discord assignment posts. The Discord announcement preference controls separate table-change notices; roster edits are queued regardless. Previously withdrawn players can be re-added explicitly. Assigned, verification, and open-signup edits use the shared table-specific player-edit service; removing one table membership preserves other selections.
 
 On mobile, event-detail date labels and values appear inline with a colon, labels aligned left and timestamps aligned right. All date rows share one fitted font size so they stay consistent and do not wrap. Desktop keeps labels stacked above values at the standard font size. Timestamps omit timezone abbreviations.
 
 
-General → Timezone persists an IANA timezone for the selected organization or personal workspace. Default (<current timezone>) follows the browser timezone; organization admins control shared settings. The setting applies to event lists/details, shared assignment pages, event date entry, recurring schedules, and PDF exports. Changing display timezone does not alter existing event instants or an existing series’ recurrence timezone. Date entry rejects nonexistent or repeated wall times at daylight-saving transitions. Discord continues rendering its timestamp markup in each viewer’s own timezone.
+Preferences → Timezone persists an IANA timezone for the selected organization or personal workspace. Default (<current timezone>) follows the browser timezone; organization admins control shared settings. The setting applies to event lists/details, shared assignment pages, event date entry, recurring schedules, and PDF exports. Changing display timezone does not alter existing event instants or an existing series’ recurrence timezone. Date entry rejects nonexistent or repeated wall times at daylight-saving transitions. Discord continues rendering its timestamp markup in each viewer’s own timezone.
 
 The timezone preference adds a nullable column to assignment_preferences; run the normal Alembic upgrade to head before starting a backend without local automatic migrations.
 
-General → Send private messages for waitlist promotions defaults on in new organizations and personal workspaces. It is independent of Announce Table Changes on Discord. Each DM includes Give up my seat for the intended recipient to withdraw directly in Discord. Initial draw placements and test users do not receive promotion DMs.
+Preferences → Discord → Send private messages for waitlist promotions defaults on in new organizations and personal workspaces. It is independent of Announce table changes. Each DM includes Give up my seat for the intended recipient to withdraw directly in Discord. Initial draw placements and test users do not receive promotion DMs.
 
-`features/settings/GeneralSettings.tsx` renders General Settings, using the shared `lib/generalSettings.ts` values/defaults contract. Existing API paths and control IDs remain stable. The event form uses `useEventTimes` for a single start wall-clock state and end override shared by desktop and mobile pickers. The end continues to follow the start by four elapsed hours until explicitly edited; raw wall times remain available to DST validation.
+`features/settings/GeneralSettings.tsx` renders Preferences, using the shared `lib/generalSettings.ts` values/defaults contract. Existing API paths and control IDs remain stable. The event form uses `useEventTimes` for a single start wall-clock state and end override shared by desktop and mobile pickers. The end continues to follow the start by four elapsed hours until explicitly edited; raw wall times remain available to DST validation.
 
 The Download all event signups control is intentionally hidden. Its download handler, CSV generation, and API endpoint remain available for a future UI location.

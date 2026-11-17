@@ -13,9 +13,11 @@ it("shows Connect and allows saving assignment settings without Discord", async 
       : { automatic_weight_adjustment: true, announce_table_changes: false })));
   vi.stubGlobal("fetch", fetchMock);
   render(<ConnectionSettings {...props} />);
+  expect(screen.getByRole("tab", { name: "Preferences" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(screen.getByRole("tab", { name: "Connection" }));
   expect(await screen.findByRole("link", { name: "Connect" })).toHaveAttribute("href", "/api/auth/connect");
-  fireEvent.click(screen.getByRole("tab", { name: "General" }));
-  fireEvent.click(await screen.findByRole("checkbox", { name: "Announce Table Changes on Discord" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Preferences" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Announce table changes" }));
   await waitFor(() => expect(fetchMock.mock.calls.filter(([path, options]) => path === "/api/settings/assignment" && options?.method === "PUT")).toHaveLength(1));
 });
 
@@ -28,6 +30,7 @@ it("shows Disconnect beside Save and refreshes the server dropdown", async () =>
       : { automatic_weight_adjustment: true, announce_table_changes: false }
   ))));
   render(<ConnectionSettings {...props} />);
+  fireEvent.click(screen.getByRole("tab", { name: "Connection" }));
   const server = await screen.findByRole("combobox", { name: "Discord Server" });
   expect(server).toHaveAttribute("aria-disabled", "true");
   const disconnect = screen.getByRole("button", { name: "Disconnect" });
@@ -38,4 +41,18 @@ it("shows Disconnect beside Save and refreshes the server dropdown", async () =>
   fireEvent.mouseDown(server);
   fireEvent.click(await screen.findByRole("option", { name: "Second" }));
   expect(server).toHaveTextContent("Second");
+});
+
+
+it("shows settings load failures on the initial Preferences tab and allows retry", async () => {
+  let attempts = 0;
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+    if (path === "/api/settings" && ++attempts === 1) return new Response(JSON.stringify({ detail: "Settings unavailable" }), { status: 503 });
+    return new Response(JSON.stringify(path === "/api/settings" ? { selection: null } : {}));
+  }));
+  render(<ConnectionSettings {...props} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Settings unavailable");
+  fireEvent.click(screen.getByRole("button", { name: "Retry settings" }));
+  expect(await screen.findByRole("form", { name: "Preferences" })).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

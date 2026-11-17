@@ -17,7 +17,7 @@ test("waitlist guarantees default off with five hours and retain a saved cutoff"
       guarantee_waitlisted_players: enabled, waitlist_guarantee_retention_hours: hours, keep_waitlist_guarantee_on_short_notice: keep } });
   });
   await page.goto("/#/settings");
-  await page.getByRole("tab", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   const option = page.getByRole("checkbox", { name: "Waitlisted players will be guaranteed a seat for the next event" });
   await expect(option).not.toBeChecked();
   await option.click();
@@ -28,7 +28,7 @@ test("waitlist guarantees default off with five hours and retain a saved cutoff"
   await cutoff.blur();
   await expect.poll(() => hours).toBe(3);
   await page.reload();
-  await page.getByRole("tab", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   await expect(option).toBeChecked();
   await expect(cutoff).toHaveValue("3");
   const shortNotice = page.getByRole("checkbox", { name: "Player keeps the guarantee if placed on short notice" });
@@ -46,7 +46,7 @@ test("waitlist guarantees default off with five hours and retain a saved cutoff"
   await expect(cutoff).toHaveValue("3");
   await expect(page.getByText("0 disables the late-promotion exception.")).toHaveCount(0);
   await page.reload();
-  await page.getByRole("tab", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   await expect(shortNotice).not.toBeChecked();
   await expect(cutoff).toBeDisabled();
   await expect(cutoff).toHaveValue("3");

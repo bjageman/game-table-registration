@@ -26,13 +26,13 @@ test("assignment PM setting persists and player preference stays visible when it
       guaranteed_seat: false, seat_notifications: receive } });
   });
   await page.goto("/#/settings");
-  await page.getByRole("tab", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   const organization = page.getByRole("checkbox", { name: "Send private messages for table assignments" });
   await expect(organization).toBeChecked();
   await organization.click();
   await expect(page.getByRole("status")).toHaveText("Settings saved.");
   await page.reload();
-  await page.getByRole("tab", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   await expect(organization).not.toBeChecked();
   await page.goto("/");
   await page.locator("#event-open-event").click();

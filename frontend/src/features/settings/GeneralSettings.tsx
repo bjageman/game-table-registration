@@ -75,40 +75,11 @@ export default function GeneralSettings({ csrf, restricted = false, onAccessErro
     }
   }
 
-  return <section id="assignment-settings" className="assignment-settings" aria-label="General settings">
-    {!loaded && !error && <p><LoadingIndicator label="Loading general settings…" /></p>}
+  return <section id="assignment-settings" className="assignment-settings" aria-label="Preferences">
+    {!loaded && !error && <p><LoadingIndicator label="Loading preferences…" /></p>}
     {error && <p role="alert" className="error">{error}{!loaded && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry</button>}</p>}
-    {loaded && <form id="assignment-settings-form" aria-label="General settings" onSubmit={(event) => event.preventDefault()}>
-      <div className="general-setting-option"><FormControlLabel label="Create an event when a signup is published" control={<Checkbox id="general-create-discord-event" checked={settings.create_discord_event} disabled={busy || restricted}
-        onChange={(event) => toggle("create_discord_event", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Review assignments before sending to Discord" control={<Checkbox id="general-review-assignments" checked={settings.review_assignments_before_discord} disabled={busy || restricted}
-        onChange={(event) => toggle("review_assignments_before_discord", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox id="assignment-auto-weights" checked={settings.automatic_weight_adjustment} disabled={busy || restricted}
-        onChange={(event) => toggle("automatic_weight_adjustment", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Announce Table Changes on Discord" control={<Checkbox id="assignment-announce-changes" checked={settings.announce_table_changes} disabled={busy || restricted}
-        onChange={(event) => toggle("announce_table_changes", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Post Discord updates to a new thread" control={<Checkbox id="assignment-thread-updates" checked={settings.post_discord_updates_to_thread} disabled={busy || restricted}
-        onChange={(event) => toggle("post_discord_updates_to_thread", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Show players in open Discord signups" control={<Checkbox id="general-show-signup-players" checked={settings.show_open_signup_players} disabled={busy || restricted}
-        onChange={(event) => toggle("show_open_signup_players", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Send private messages for waitlist promotions" control={<Checkbox id="general-dm-waitlist-promotions" checked={settings.dm_waitlist_promotions} disabled={busy || restricted}
-        onChange={(event) => toggle("dm_waitlist_promotions", event.target.checked)} />} /></div>
-      <div className="general-setting-option"><FormControlLabel label="Send private messages for table assignments" control={<Checkbox id="general-dm-assignments" checked={settings.dm_assignments} disabled={busy || restricted}
-        onChange={(event) => toggle("dm_assignments", event.target.checked)} />} /></div>
-      <div className="general-setting-option">
-        <FormControlLabel label="Waitlisted players will be guaranteed a seat for the next event" control={<Checkbox id="general-guarantee-waitlisted" checked={settings.guarantee_waitlisted_players} disabled={busy || restricted}
-          onChange={(event) => toggle("guarantee_waitlisted_players", event.target.checked)} />} />
-        {settings.guarantee_waitlisted_players && <div className="short-notice-setting">
-          <FormControlLabel label="Player keeps the guarantee if placed on short notice" control={<Checkbox id="general-keep-short-notice-guarantee" checked={settings.keep_waitlist_guarantee_on_short_notice} disabled={busy || restricted}
-            onChange={(event) => toggle("keep_waitlist_guarantee_on_short_notice", event.target.checked)} />} />
-          <FormField id="general-guarantee-retention-hours" label="Hours before event" type="number" value={retentionHours} className="short-notice-hours" fullWidth={false}
-            disabled={busy || restricted || !settings.keep_waitlist_guarantee_on_short_notice}
-            slotProps={{ htmlInput: { min: 1, max: 768, step: 1 } }}
-            onChange={(event) => setRetentionHours(event.target.value)} onBlur={saveRetentionHours}
-            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveRetentionHours(); } }} />
-        </div>}
-      </div>
-      <div className="general-setting-option general-timezone-setting">
+    {loaded && <form id="assignment-settings-form" aria-label="Preferences" onSubmit={(event) => event.preventDefault()}>
+      <div className="general-timezone-setting">
         <FormField id="general-timezone" select label="Timezone" value={settings.timezone ?? ""} disabled={busy || restricted}
           slotProps={{ select: { native: true } }}
           onChange={(event) => void updateSettings({ timezone: event.target.value || null })}>
@@ -116,6 +87,41 @@ export default function GeneralSettings({ csrf, restricted = false, onAccessErro
           {timezones.map((zone) => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}
         </FormField>
       </div>
+      <section className="settings-group" aria-labelledby="player-management-heading">
+        <h3 id="player-management-heading">Player Management</h3>
+        <div className="general-setting-option"><FormControlLabel label="Automatically Adjust Player Weights" control={<Checkbox id="assignment-auto-weights" checked={settings.automatic_weight_adjustment} disabled={busy || restricted}
+          onChange={(event) => toggle("automatic_weight_adjustment", event.target.checked)} />} /></div>
+        <div className="general-setting-option">
+          <FormControlLabel label="Waitlisted players will be guaranteed a seat for the next event" control={<Checkbox id="general-guarantee-waitlisted" checked={settings.guarantee_waitlisted_players} disabled={busy || restricted}
+            onChange={(event) => toggle("guarantee_waitlisted_players", event.target.checked)} />} />
+          {settings.guarantee_waitlisted_players && <div className="short-notice-setting">
+            <FormControlLabel label="Player keeps the guarantee if placed on short notice" control={<Checkbox id="general-keep-short-notice-guarantee" checked={settings.keep_waitlist_guarantee_on_short_notice} disabled={busy || restricted}
+              onChange={(event) => toggle("keep_waitlist_guarantee_on_short_notice", event.target.checked)} />} />
+            <FormField id="general-guarantee-retention-hours" label="Hours before event" type="number" value={retentionHours} className="short-notice-hours" fullWidth={false}
+              disabled={busy || restricted || !settings.keep_waitlist_guarantee_on_short_notice}
+              slotProps={{ htmlInput: { min: 1, max: 768, step: 1 } }}
+              onChange={(event) => setRetentionHours(event.target.value)} onBlur={saveRetentionHours}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveRetentionHours(); } }} />
+          </div>}
+        </div>
+      </section>
+      <section className="settings-group" aria-labelledby="discord-preferences-heading">
+        <h3 id="discord-preferences-heading">Discord</h3>
+        <div className="general-setting-option"><FormControlLabel label="Create an event when a signup is published" control={<Checkbox id="general-create-discord-event" checked={settings.create_discord_event} disabled={busy || restricted}
+          onChange={(event) => toggle("create_discord_event", event.target.checked)} />} /></div>
+        <div className="general-setting-option"><FormControlLabel label="Review assignments before sending" control={<Checkbox id="general-review-assignments" checked={settings.review_assignments_before_discord} disabled={busy || restricted}
+          onChange={(event) => toggle("review_assignments_before_discord", event.target.checked)} />} /></div>
+        <div className="general-setting-option"><FormControlLabel label="Announce table changes" control={<Checkbox id="assignment-announce-changes" checked={settings.announce_table_changes} disabled={busy || restricted}
+          onChange={(event) => toggle("announce_table_changes", event.target.checked)} />} /></div>
+        <div className="general-setting-option"><FormControlLabel label="Post updates to a new thread" control={<Checkbox id="assignment-thread-updates" checked={settings.post_discord_updates_to_thread} disabled={busy || restricted}
+          onChange={(event) => toggle("post_discord_updates_to_thread", event.target.checked)} />} /></div>
+        <div className="general-setting-option"><FormControlLabel label="Show players in open signups" control={<Checkbox id="general-show-signup-players" checked={settings.show_open_signup_players} disabled={busy || restricted}
+          onChange={(event) => toggle("show_open_signup_players", event.target.checked)} />} /></div>
+        <div className="general-setting-option"><FormControlLabel label="Send private messages for waitlist promotions" control={<Checkbox id="general-dm-waitlist-promotions" checked={settings.dm_waitlist_promotions} disabled={busy || restricted}
+          onChange={(event) => toggle("dm_waitlist_promotions", event.target.checked)} />} /></div>
+        <div className="general-setting-option"><FormControlLabel label="Send private messages for table assignments" control={<Checkbox id="general-dm-assignments" checked={settings.dm_assignments} disabled={busy || restricted}
+          onChange={(event) => toggle("dm_assignments", event.target.checked)} />} /></div>
+      </section>
       {busy && <p role="status">Saving…</p>}
       {saved && <p role="status">Settings saved.</p>}
     </form>}
