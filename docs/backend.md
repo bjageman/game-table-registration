@@ -44,7 +44,7 @@ Guaranteed seats are persistent, organization/personal-scoped profile settings f
 
 POST `/api/events/{id}/archive` requires scoped moderator authorization and CSRF. It idempotently timestamps assigned events with saved placements, preserving the assigned status, lottery, signup data, and profiles. Cleanup removes promotion notices and the event thread; optional checkboxes also delete signup/assignment messages and the scheduled Discord event. The event listing includes archived records with `archived_at`.
 
-Organization/personal-scoped General settings are read/written at `/api/settings/assignment` using the authenticated destination and CSRF on mutation. Automatic weight adjustment defaults on and is captured when closing starts. Successful placement applies +0.1 to each waitlisted player and −0.1 to each assigned player (including guaranteed and test players), clamped to 0.1–10, in the same transaction as the unique lottery run. New player profiles start at 5.0 before adjustment; names and other profile settings are preserved. Retries, announcement delivery, and archiving do not reapply adjustments. Migration `20261101_weight_adjustments` resets existing profile weights to 1.0 once, without changing saved lottery inputs/results.
+Organization/personal-scoped Preferences are read/written at `/api/settings/assignment` using the authenticated destination and CSRF on mutation. Automatic weight adjustment defaults on and is captured when closing starts. Successful placement applies +0.1 to each waitlisted player and −0.1 to each assigned player (including guaranteed and test players), clamped to 0.1–10, in the same transaction as the unique lottery run. New player profiles start at 5.0 before adjustment; names and other profile settings are preserved. Retries, announcement delivery, and archiving do not reapply adjustments. Migration `20261101_weight_adjustments` resets existing profile weights to 1.0 once, without changing saved lottery inputs/results.
 
 DELETE `/api/settings` disconnects only the signed-in account with CSRF enforcement. An explicit disconnected state prevents the legacy server default from reconnecting it, including after sign-in. Events, profiles, server settings, and Discord messages are preserved. PUT `/api/settings` validates and restores a saved connection.
 
@@ -77,7 +77,7 @@ Keep source and test files below 1,000 total lines. Run `python3 scripts/check_f
 
 ## Private waitlist promotion notices
 
-General → Send private messages for waitlist promotions defaults on for new scopes and is scoped to the selected organization or personal events. When enabled, automatic promotions after a withdrawal and organizer moves from the waitlist queue a private bot message. Initial lottery placements, simulated players, and adding a known player who was not waiting do not trigger a DM. The option is independent of public table-change announcements.
+Preferences → Discord → Send private messages for waitlist promotions defaults on for new scopes and is scoped to the selected organization or personal events. When enabled, automatic promotions after a withdrawal and organizer moves from the waitlist queue a private bot message. Initial lottery placements, simulated players, and adding a known player who was not waiting do not trigger a DM. The option is independent of public table-change announcements.
 
 Each message names the event, table, and start time and includes a **Give up my seat** button. The Gateway verifies the application, private message, and intended recipient, then uses the same locked withdrawal service as channel reactions. Repeated clicks cannot release another player's seat or promote anyone twice. Withdrawals stop when the event starts or is archived. The saved lottery draw remains unchanged.
 
@@ -118,7 +118,7 @@ and saved draw formats are unchanged. No migration is required.
 
 Event API presentation lives in `events/event_views.py`. Event-list requests load scheduled Discord events, assignment delivery rows, and pairing-warning inputs in batches for the already scoped event list. `assignments/roster.py` accepts a typed `RosterRecords` bundle for these batch reads and computes waitlist membership once; single-event callers use the same projection. Name decoration reads only profiles and event settings for players present in the roster and retains the organization/personal scope filters.
 
-`settings/general_settings.py` declares General Settings fields and enabled defaults. ORM defaults, unsaved preferences, and response mappings use that contract. Existing `/api/settings/assignment` paths and the `assignment_preferences` table remain compatible; older clients still preserve omitted saved options. No migration is needed.
+`settings/general_settings.py` declares Preferences fields and enabled defaults. ORM defaults, unsaved preferences, and response mappings use that contract. Existing `/api/settings/assignment` paths and the `assignment_preferences` table remain compatible; older clients still preserve omitted saved options. No migration is needed.
 
 
 ## Cleanup and compatibility evidence

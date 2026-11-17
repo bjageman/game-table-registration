@@ -146,10 +146,13 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
   return <div id="organization-settings" className="organization-settings">
     {loading && <LoadingIndicator label="Loading organizations…" />}
     {error && <p role="alert" className="error">{error}</p>}
-    <select id="organization-select" aria-label="Organization" value={selectedId} disabled={busy} onChange={(event) => void changeSelection(event.target.value)}>
-      <option value="">Personal events</option>
-      {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
-    </select>
+    <div className="organization-selection">
+      <label htmlFor="organization-select">Active Organization:</label>
+      <select id="organization-select" value={selectedId} disabled={busy} onChange={(event) => void changeSelection(event.target.value)}>
+        <option value="">Personal events</option>
+        {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
+      </select>
+    </div>
     <div className="form-actions">
       <button id="organization-create-button" type="button" disabled={busy} onClick={() => { setCreateError(""); setCreating(true); }}>Create</button>
       {selected?.role === "admin" && <button id="organization-edit-button" type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>}

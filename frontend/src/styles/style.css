@@ -299,7 +299,12 @@ h3 {
   .event-date-line dt { font-size: 0.875em; }
   .event-date-line dd { flex: none; }
 }
-.general-timezone-setting { padding-top: 24px; }
+.general-timezone-setting { max-width: 28rem; }
+.settings-group { margin-top: 28px; }
+.settings-group h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 600; }
+.organization-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.organization-selection label { font-weight: 600; }
+.organization-selection select { flex: 1; min-width: 10rem; }
 dt {
   color: #52665a;
   font-size: 0.875rem;
@@ -647,15 +652,17 @@ dd {
 .form-fields > dl,
 .form-fields > .form-actions { margin: 0; }
 
-.settings-panel { max-width: 800px; margin-inline: auto; }
 .settings-connections { margin-bottom: 24px; }
-.settings-panel .form-grid { margin-bottom: 16px; }
+.connection-settings .form-grid { margin-bottom: 16px; }
 
 .announcement-status { margin-top: 20px; }
 
 .archive-filter { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
 
 .settings-tabs { margin-bottom: 24px; }
+@media (max-width: 600px) {
+  .settings-tabs .MuiTab-root { min-width: 0; padding-inline: 8px; }
+}
 
 .signup-channel-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-width: 0; }
 .settings-refresh { padding: 8px 12px; }

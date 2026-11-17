@@ -46,14 +46,14 @@ configuration details and alternative startup methods.
 See [deployment and promotion](docs/deployment.md) for hosted dev/prod setup,
 GitHub secrets, and the feature → dev → main review process.
 
-Private table-assignment messages are enabled in General Settings and are sent
+Private table-assignment messages are enabled in Preferences and are sent
 after assignments are finalized. They include the table, event, time, location,
 and controls to give up the seat or stop private seat notifications. Each player’s
 notification preference remains available in Player Information even when the
 organizer disables messages. Player opt-outs apply to both assignment and waitlist
 promotion messages for that organizer.
 
-General Settings can also guarantee a seat in the next event a waitlisted player
+Preferences can also guarantee a seat in the next event a waitlisted player
 joins within the same organization. This is off by default. When enabled, finalized
 waitlists set the player's Guaranteed Seat profile option, and a later seating clears
 it, including guarantees set manually. A waitlisted player promoted within the

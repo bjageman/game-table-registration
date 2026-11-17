@@ -48,7 +48,7 @@ test("saves the timezone and keeps all three event timestamps on single lines", 
   }
   await page.locator("#event-close-event").click();
   await page.goto("/#/settings");
-  await page.getByRole("tab", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   await page.locator("#general-timezone").selectOption("America/Los_Angeles");
   await expect(page.getByRole("status")).toHaveText("Settings saved.");
   await page.locator("#home-link").click();
