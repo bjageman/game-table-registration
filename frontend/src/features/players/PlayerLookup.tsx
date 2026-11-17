@@ -7,14 +7,14 @@ import { FormField } from "../../components/FormFields";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import useRememberedCheckbox from "../../hooks/useRememberedCheckbox";
 
-interface Player extends PlayerSummary { weighting: number; guaranteed_seat: boolean; is_test: boolean; partner?: { id: string; name: string } | null; }
-type SortKey = "guaranteed_seat" | "discord_name" | "real_name" | "weighting" | "is_test" | "partner";
+interface Player extends PlayerSummary { weighting: number; guaranteed_seat: boolean; is_test: boolean; paired_preferences?: { id: string; name: string }[]; }
+type SortKey = "guaranteed_seat" | "discord_name" | "real_name" | "weighting" | "is_test" | "paired_preferences";
 type SortOrder = { key: SortKey; direction: "asc" | "desc" };
 const sortHeaders: { key: SortKey; label: string }[] = [
   { key: "guaranteed_seat", label: "Priority" },
   { key: "discord_name", label: "Username" },
   { key: "real_name", label: "Display Name" },
-  { key: "partner", label: "Linked Player" },
+  { key: "paired_preferences", label: "Paired Player Preferences" },
   { key: "weighting", label: "Weight" },
   { key: "is_test", label: "Label" },
 ];
@@ -47,8 +47,8 @@ export default function PlayerLookup({ session, onAccessError }: {
     (!hideTestUsers || !player.is_test) && matchesPlayer(player, normalized),
   );
   const sorted = [...visible].sort((left, right) => {
-    const leftValue = sort.key === "partner" ? left.partner?.name ?? "" : left[sort.key];
-    const rightValue = sort.key === "partner" ? right.partner?.name ?? "" : right[sort.key];
+    const leftValue = sort.key === "paired_preferences" ? (left.paired_preferences ?? []).map((player) => player.name).join(", ") : left[sort.key];
+    const rightValue = sort.key === "paired_preferences" ? (right.paired_preferences ?? []).map((player) => player.name).join(", ") : right[sort.key];
     let result = typeof leftValue === "number" && typeof rightValue === "number"
       ? leftValue - rightValue
       : typeof leftValue === "boolean" && typeof rightValue === "boolean"
@@ -85,7 +85,7 @@ export default function PlayerLookup({ session, onAccessError }: {
           <span className="player-lookup-star">{player.guaranteed_seat && <Star size={18} fill="currentColor" aria-label="Guaranteed seat" />}</span>
           <span className="player-lookup-username">{player.discord_name}</span>
           <span className="player-lookup-display-name">{player.real_name || "—"}</span>
-          <span className="player-lookup-partner">{player.partner?.name || "—"}</span>
+          <span className="player-lookup-partner">{player.paired_preferences?.map((preferred) => preferred.name).join(", ") || "—"}</span>
           <span className="player-lookup-weight" aria-label={`${player.weighting.toFixed(1)} weighting`}>{player.weighting.toFixed(1)}</span>
           <span className="player-lookup-test">{player.is_test && <span className="badge">Test User</span>}</span>
         </button>

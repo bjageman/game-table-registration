@@ -1,31 +1,26 @@
-# Player pairing
+# Paired Player Preferences
 
-Player profiles, weights, guarantees, display names, test-player identities, and links belong to the selected organization. Personal events use the signed-in account's own profile scope. Sharing a Discord server does not share profiles between organizations.
+Preferences, profiles, weights, guarantees, display names, and test identities belong to the selected organization or personal workspace, additionally scoped by Discord server. Organizations sharing a server do not share these settings.
 
-## Links
+## Editing preferences
 
-An organizer can search for another known player in Player Information. A link is reciprocal and each player can have one partner. Unlinking clears both profiles. Changing Alice from Bob to Carol clears Bob's link. If Carol is already linked to Dave, the organizer must confirm breaking Carol and Dave's link before saving. Confirmation is repeated if Carol's partner changes in the meantime.
+Player Information has a searchable, unordered multi-player **Paired Player Preferences** field, replacing Linked Player. Adding Alice → Bob also adds Bob → Alice. Adding Alice → Carol does not add Bob → Carol. Removing a preference removes the same edge from both players, preserving all their other preferences. Multiple organizers' changes are serialized within the profile scope.
 
-Links are frozen when closing signups begins and saved in the draw snapshot. Changing profiles later affects future draws only. Manual assignment changes affect only the player selected by the organizer. A seated player's withdrawal does not remove their partner.
+PUT `/api/players/{id}/preferences` accepts `{ "player_ids": ["other-id", ...] }` and replaces that player's direct preferences. An empty list removes them all. IDs must refer to known players in the same organization/workspace and server; self-preferences are rejected and duplicates are ignored. Moderator access and CSRF protection are required. Read-only members can view preferences.
 
 ## Draws
 
-- If only one partner signs up, that player participates normally.
-- If both sign up but have no table choices in common, they participate independently for that event; the profile link remains saved.
-- A pair receives one random priority using the average of its members' effective weights. Each player's later weight adjustment applies to their own weight.
-- Shared eligible tables are attempted first. If shared seating is unavailable, both players may be seated at separate eligible tables.
-- A placement accepts both members or neither. When only one member could be seated, both are waitlisted. A single player can use a remaining seat.
-- Either member's guaranteed-seat flag extends to the pair for that draw, without changing the other member's profile. Guaranteed pairs cannot automatically split across tables.
-- Conflicting table guarantees or insufficient capacity for a guaranteed pair leave both members waitlisted and show an organizer alert. Existing individual guarantees are honored before attempting inherited pair guarantees. An organizer resolves the pair conflict with manual edits; it does not abort everyone else's draw.
+1. The individual weighted lottery (`-ln(U)/weight`) and each player's own guarantees select the seated players. Preferences cannot change the winner set, lottery order, or waitlist order. A guaranteed seat never extends to a preferred player.
+2. Among those winners, try to improve the number of direct preferences seated at the same table. Respect selected tables, capacities, and individual table guarantees. Partial matches are allowed; incompatible preferences leave winners seated separately.
 
-The paired allocator uses deterministic augmenting placements and keeps previously accepted groups seated. Each insertion first searches all choices without splitting an already-seated pair, then permits split relocations only if that search fails. Each group is visited once per search pass to bound exploration. Draws with no active pairs retain the existing individual matching algorithm. The saved seed, snapshot, and algorithm version allow replay.
+For example, if Alice prefers Bob, Carl, and David, but only Alice and David win seats, they can sit together while Bob and Carl remain waitlisted. A player with one guaranteed seat and one companion can still take the last available seat alone.
 
-## Automatic promotions
+The deterministic, best-effort placement pass tries unmatched direct pairs at shared tables, reserves their seats, and uses capacity-aware matching to retain every other winner. A proposed arrangement is accepted only when it increases the total number of satisfied direct edges. Earlier lottery priorities break processing ties. Overlapping preferences do not become mandatory transitive groups. Optional optimization stops after 1,000 candidate arrangements; it does not promise a globally optimal grouping.
 
-Automatic promotions use the links saved in the draw, not current profile links. A waiting pair needs seats for both members. A single player behind a pair can take a lone vacancy. When both members can be promoted, both receive promotion notices with their actual destination tables. Guarantee conflicts remain for organizer intervention. Manual additions never automatically move the linked player.
+Preferences are frozen when closing begins and recorded in the immutable draw snapshot with its seed and algorithm version (`preference-weighted-matching-v6`). Later profile edits affect future draws only. Automatic promotions follow the individual saved waitlist order and do not pull additional preferred players into seats. Manual changes affect only the selected player.
 
-## Existing profiles
+## Migration and historical draws
 
-The migration converts existing server-wide profiles into independent copies for existing organization and personal scopes associated with that server, preserving saved settings. No rows are shared and subsequent edits never propagate between scopes. New organizations start with fresh profiles and no links. Historical draw snapshots remain unchanged.
+Existing reciprocal Linked Player pairs become preference edges, preserving their organization/workspace and server scope. The old profile partner column is removed. Downgrading can represent only disjoint pairs and retains a deterministic subset of multi-player preferences.
 
-The downgrade can represent only one profile per server/player; it picks a deterministic copy because the older schema cannot store independent organization profiles.
+Historical snapshots containing `pairs` retain the previous allocator and promotion behavior for replay and existing rosters. An already-started close with frozen legacy pairs also finishes using those rules. New draws use the individual-winners-first preference behavior above. Existing saved draws are never rewritten.

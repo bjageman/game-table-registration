@@ -1,42 +1,46 @@
 import { test, expect } from "./fixtures";
 
-test("pairs players reciprocally after confirming replacement of an existing pair", async ({ page }) => {
+test("manages reciprocal preferences without linking preferences to each other", async ({ page }) => {
   const names: Record<string, string> = { "1": "Alice", "2": "Bob", "3": "Carol", "4": "Dave" };
-  const partners: Record<string, string | null> = { "1": "2", "2": "1", "3": "4", "4": "3" };
+  const preferences: Record<string, string[]> = { "1": ["2"], "2": ["1"], "3": ["4"], "4": ["3"] };
   const profile = (id: string) => ({ discord_id: id, discord_name: names[id], real_name: "", weighting: 5,
-    guaranteed_seat: false, is_test: false, partner: partners[id] ? { id: partners[id], name: names[partners[id]!] } : null });
+    guaranteed_seat: false, is_test: false, paired_preferences: preferences[id].map((pid) => ({ id: pid, name: names[pid] })) });
   await page.route("**/api/**", async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/me") return route.fulfill({ json: { username: "organizer", csrf: "csrf" } });
     if (path === "/api/players") return route.fulfill({ json: Object.keys(names).map(profile) });
-    const match = path.match(/^\/api\/players\/(\d+)(\/partner)?$/);
+    const match = path.match(/^\/api\/players\/(\d+)(\/preferences)?$/);
     if (!match) return route.fallback();
     const id = match[1];
     if (!match[2]) return route.fulfill({ json: profile(id) });
-    const body = route.request().postDataJSON();
+    const targets: string[] = route.request().postDataJSON().player_ids;
     expect(route.request().headers()["x-csrf-token"]).toBe("csrf");
-    if (!body.replace_partner_id) return route.fulfill({ json: {
-      confirmation_required: true, replace_partner_id: "4", message: "This will break the link between Carol and Dave. Continue?",
-    } });
-    partners["2"] = null; partners["4"] = null;
-    partners["1"] = "3"; partners["3"] = "1";
+    for (const pid of Object.keys(names)) {
+      if (pid === id) continue;
+      preferences[pid] = preferences[pid].filter((other) => other !== id);
+      if (targets.includes(pid)) preferences[pid].push(id);
+    }
+    preferences[id] = targets;
     return route.fulfill({ json: { profile: profile(id) } });
   });
   await page.goto("/#/players");
-  await expect(page.getByRole("button", { name: "Sort by Linked Player" })).toBeVisible();
-  await expect(page.locator("#player-open-1 .player-lookup-partner")).toHaveText("Bob");
+  await expect(page.getByRole("button", { name: "Sort by Paired Player Preferences" })).toBeVisible();
   await page.locator("#player-open-1").click();
-  await expect(page.getByRole("combobox", { name: "Linked Player" })).toHaveValue("Bob");
-  await page.getByRole("combobox", { name: "Linked Player" }).fill("Carol");
+  const dialog = page.getByRole("dialog", { name: "Player Information" });
+  await expect(dialog.getByText("Bob", { exact: true })).toBeVisible();
+  await dialog.getByRole("combobox", { name: "Paired Player Preferences" }).fill("Carol");
   await page.getByRole("option", { name: "Carol (3)" }).click();
-  const confirmation = page.getByRole("dialog", { name: "Replace player link?" });
-  await expect(confirmation).toContainText("Carol and Dave");
-  expect(partners["1"]).toBe("2");
-  await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "Linked Player" })).toHaveValue("Carol");
-  await page.getByRole("button", { name: "Close player information" }).click();
-  await expect(page.locator("#player-open-1 .player-lookup-partner")).toHaveText("Carol");
-  await expect(page.locator("#player-open-2 .player-lookup-partner")).toHaveText("—");
+  await expect(dialog.getByText("Carol", { exact: true })).toBeVisible();
+  expect(preferences["1"]).toEqual(["2", "3"]);
+  expect(preferences["2"]).toEqual(["1"]);
+  expect(preferences["3"]).toEqual(["4", "1"]);
+  await dialog.getByRole("button", { name: "Close player information" }).click();
+  await expect(page.locator("#player-open-1 .player-lookup-partner")).toHaveText("Bob, Carol");
   await page.locator("#player-open-3").click();
-  await expect(page.getByRole("combobox", { name: "Linked Player" })).toHaveValue("Alice");
+  await expect(dialog.getByText("Alice", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Dave", { exact: true })).toBeVisible();
+  await dialog.getByRole("combobox").press("Backspace");
+  await expect(dialog.getByText("Alice", { exact: true })).toHaveCount(0);
+  expect(preferences["1"]).toEqual(["2"]);
+  expect(preferences["3"]).toEqual(["4"]);
 });

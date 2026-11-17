@@ -8,22 +8,27 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
-from app.models import Event, LotteryRun, PlayerProfile, TableSignup
-from app.schemas import PlayerPairInput, PlayerProfileInput
+from app.models import Event, LotteryRun, PlayerPreference, PlayerProfile, TableSignup
+from app.schemas import PlayerPreferencesInput, PlayerProfileInput
 
 
 def register(context: ApplicationContext) -> None:
     router = APIRouter()
     engine = context.engine
 
-    def partner_data(partner: PlayerProfile | None) -> dict[str, str] | None:
-        return (
-            {
-                "id": partner.discord_id,
-                "name": partner.real_name or partner.discord_name,
-            }
-            if partner
-            else None
+    def preference_data(
+        profiles: dict[str, PlayerProfile], ids: list[str]
+    ) -> list[dict[str, str]]:
+        return sorted(
+            [
+                {
+                    "id": pid,
+                    "name": profiles[pid].real_name or profiles[pid].discord_name,
+                }
+                for pid in ids
+                if pid in profiles
+            ],
+            key=lambda player: (player["name"].casefold(), player["id"]),
         )
 
     def profile_data(
@@ -34,12 +39,14 @@ def register(context: ApplicationContext) -> None:
         name: str | None = None,
     ) -> dict[str, Any]:
         result = context.player_data(player_id, profile, name)
-        partner = (
-            context.player_scope(request).get(db, profile.partner_id)
-            if profile and profile.partner_id
-            else None
+        scope = context.player_scope(request)
+        profiles = {
+            p.discord_id: p
+            for p in db.scalars(select(PlayerProfile).where(*scope.filters()))
+        }
+        result["paired_preferences"] = preference_data(
+            profiles, scope.preferences(db).get(player_id, [])
         )
-        result["partner"] = partner_data(partner)
         return result
 
     def known_players(db: DBSession, request: Request) -> dict[str, dict[str, Any]]:
@@ -55,12 +62,13 @@ def register(context: ApplicationContext) -> None:
             p.discord_id: p
             for p in db.scalars(select(PlayerProfile).where(*scope.filters()))
         }
+        preferences = scope.preferences(db)
         found = {
             pid: {
                 **context.player_data(pid, p),
-                "partner": partner_data(profiles.get(p.partner_id))
-                if p.partner_id
-                else None,
+                "paired_preferences": preference_data(
+                    profiles, preferences.get(pid, [])
+                ),
             }
             for pid, p in profiles.items()
         }
@@ -84,6 +92,8 @@ def register(context: ApplicationContext) -> None:
                     )
                     if player.get("is_test"):
                         found[player_id]["is_test"] = True
+        for player in found.values():
+            player.setdefault("paired_preferences", [])
         return found
 
     @router.get("/api/players")
@@ -150,76 +160,66 @@ def register(context: ApplicationContext) -> None:
                 db.commit()
             return profile_data(db, request, player_id, profile)
 
-    @router.put("/api/players/{player_id}/partner")
-    def save_partner(
-        player_id: str, body: PlayerPairInput, request: Request
+    @router.put("/api/players/{player_id}/preferences")
+    def save_preferences(
+        player_id: str, body: PlayerPreferencesInput, request: Request
     ) -> dict[str, Any]:
         context.authenticated(request, True)
         context.valid_player_id(player_id)
-        if body.partner_id:
-            context.valid_player_id(body.partner_id)
-        if body.partner_id == player_id:
-            raise HTTPException(422, "A player cannot be linked to themselves")
+        targets = set(body.player_ids)
+        for pid in targets:
+            context.valid_player_id(pid)
+        if player_id in targets:
+            raise HTTPException(422, "A player cannot prefer themselves")
         scope = context.player_scope(request)
         with DBSession(engine) as db:
-            # Lock in a consistent order so concurrent re-pairings stay reciprocal.
             scope.lock(db)
-            profiles = {
-                p.discord_id: p
-                for p in db.scalars(
-                    select(PlayerProfile)
-                    .where(*scope.filters())
-                    .order_by(PlayerProfile.discord_id)
-                    .with_for_update()
+            known = known_players(db, request)
+            for pid in targets | {player_id}:
+                if pid not in known:
+                    raise HTTPException(404, "Player not found in this organization")
+                if scope.get(db, pid) is None:
+                    data = known[pid]
+                    db.add(
+                        scope.create(
+                            pid,
+                            discord_name=data["discord_name"],
+                            is_test=data["is_test"],
+                        )
+                    )
+            edges = list(
+                db.scalars(
+                    select(PlayerPreference).where(
+                        PlayerPreference.scope_key == scope.key,
+                        PlayerPreference.guild_id == scope.guild_id,
+                        (PlayerPreference.player_id == player_id)
+                        | (PlayerPreference.preferred_id == player_id),
+                    )
+                )
+            )
+            existing = set()
+            for edge in edges:
+                other = (
+                    edge.preferred_id if edge.player_id == player_id else edge.player_id
+                )
+                existing.add(other)
+                if other not in targets:
+                    db.delete(edge)
+            for target in sorted(targets - existing):
+                first, second = sorted((player_id, target))
+                db.add(
+                    PlayerPreference(
+                        scope_key=scope.key,
+                        guild_id=scope.guild_id,
+                        player_id=first,
+                        preferred_id=second,
+                    )
+                )
+            db.commit()
+            return {
+                "profile": profile_data(
+                    db, request, player_id, scope.get(db, player_id)
                 )
             }
-            known = known_players(db, request)
-            for pid in (player_id, body.partner_id):
-                if pid and pid not in known:
-                    raise HTTPException(404, "Player not found in this organization")
-            target = profiles.get(body.partner_id) if body.partner_id else None
-            if (
-                target
-                and target.partner_id
-                and target.partner_id != player_id
-                and target.partner_id != body.replace_partner_id
-            ):
-                previous = profiles.get(target.partner_id)
-                previous_name = (
-                    (previous.real_name or previous.discord_name)
-                    if previous
-                    else target.partner_id
-                )
-                return {
-                    "confirmation_required": True,
-                    "replace_partner_id": target.partner_id,
-                    "message": "Linking these players will break the link between "
-                    f"{target.real_name or target.discord_name} and "
-                    f"{previous_name}. Continue?",
-                }
-            for pid in (player_id, body.partner_id):
-                if pid and pid not in profiles:
-                    data = known[pid]
-                    profiles[pid] = scope.create(
-                        pid, discord_name=data["discord_name"], is_test=data["is_test"]
-                    )
-                    db.add(profiles[pid])
-            source = profiles[player_id]
-            for profile in (source, target):
-                if profile and profile.partner_id:
-                    previous = profiles.get(profile.partner_id)
-                    if previous and previous.partner_id == profile.discord_id:
-                        previous.partner_id = None
-                    profile.partner_id = None
-            source.partner_id = body.partner_id
-            if body.partner_id:
-                profiles[body.partner_id].partner_id = player_id
-            try:
-                db.commit()
-            except IntegrityError:
-                raise HTTPException(
-                    409, "Player links changed. Refresh and try again."
-                ) from None
-            return {"profile": profile_data(db, request, player_id, source)}
 
     context.app.include_router(router)

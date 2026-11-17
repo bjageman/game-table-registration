@@ -132,6 +132,9 @@ def event_pdf(
     card_width = (page_width - 2 * margin) / 2 - 8
     cards: list[list[Any]] = []
     pairs = getattr(event, "close_pairs", None) or {}
+    preferences = getattr(event, "close_preferences", None)
+    if preferences is None:
+        preferences = {pid: [partner] for pid, partner in pairs.items()}
     names = {
         player.get("id"): player.get("display_name") or player["name"]
         for table in rows
@@ -199,7 +202,16 @@ def event_pdf(
                     Paragraph(escape(player.get("display_name") or ""), name_style),
                     Paragraph(escape(player["name"]), name_style),
                     Paragraph(
-                        escape(names.get(pairs.get(player.get("id")), "")), name_style
+                        escape(
+                            ", ".join(
+                                sorted(
+                                    names[pid]
+                                    for pid in preferences.get(player.get("id"), [])
+                                    if pid in names
+                                )
+                            )
+                        ),
+                        name_style,
                     ),
                 ]
             )

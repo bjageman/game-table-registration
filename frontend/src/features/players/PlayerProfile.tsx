@@ -10,9 +10,9 @@ import { api, errorMessage, mutationOptions } from "../../lib/api";
 import { isBackdropClick } from "../../lib/dialogBackdrop";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import type { PlayerSummary } from "../../lib/players";
-import PlayerPairEditor, { type Partner } from "./PlayerPairEditor";
+import PlayerPreferencesEditor, { type PreferredPlayer } from "./PlayerPreferencesEditor";
 
-interface Profile extends PlayerSummary { seat_notifications?: boolean; weighting: number; is_test?: boolean; guaranteed_seat?: boolean; partner?: Partner | null; }
+interface Profile extends PlayerSummary { seat_notifications?: boolean; weighting: number; is_test?: boolean; guaranteed_seat?: boolean; paired_preferences?: PreferredPlayer[]; }
 type ProfileChange = { seat_notifications?: boolean; real_name?: string; weighting?: number; guaranteed_seat?: boolean };
 
 export default function PlayerProfile({ player, csrf, readOnly = false, onClose, onAccessError, onSaved }: {
@@ -77,7 +77,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
           ...mutationOptions(csrf, change), method: "PUT",
         });
         profileRef.current = updated;
-        setProfile(updated);
+        setProfile((current) => ({ ...updated, paired_preferences: current?.paired_preferences ?? updated.paired_preferences }));
         if (change.real_name !== undefined) {
           setRealName((current) => current === change.real_name ? updated.real_name : current);
           if (submitted.current.real_name === change.real_name) submitted.current.real_name = updated.real_name;
@@ -190,9 +190,9 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
         onBlur={() => { saveWeight(); }}
         slotProps={{ htmlInput: { min: MIN_WEIGHT, max: MAX_WEIGHT, step: 0.1 } }} />
       </div>
-      <PlayerPairEditor playerId={player.id} partner={profile.partner ?? null} csrf={csrf} readOnly={readOnly} onAccessError={onAccessError} onError={setPairError}
-        onBusy={(busy) => { pairingBusy.current = busy; }} onChanged={(partner) => {
-          setProfile((current) => current ? { ...current, partner } : current);
+      <PlayerPreferencesEditor playerId={player.id} preferences={profile.paired_preferences ?? []} csrf={csrf} readOnly={readOnly} onAccessError={onAccessError} onError={setPairError}
+        onBusy={(busy) => { pairingBusy.current = busy; }} onChanged={(paired_preferences) => {
+          setProfile((current) => current ? { ...current, paired_preferences } : current);
           onSaved?.();
         }} />
       <FormControlLabel label="Private Notifications" control={<Checkbox id={`player-seat-notifications-${player.id}`} checked={seatNotifications} disabled={readOnly}

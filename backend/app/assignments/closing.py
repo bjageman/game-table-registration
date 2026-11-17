@@ -11,7 +11,7 @@ from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.assignments.assignment_finalization import finalize
-from app.assignments.lottery import VERSION, GuaranteeConflict, assign
+from app.assignments.lottery import LEGACY_VERSION, VERSION, GuaranteeConflict, assign
 from app.discord.discord_api import DiscordAPI
 from app.discord.reactions import reaction_queue
 from app.events.signups import apply_manager_players
@@ -213,8 +213,9 @@ def _close_and_assign(
             ).review_assignments_before_discord
         seed = event.close_seed or secrets.token_hex(32)
         pairs = event.close_pairs
-        if pairs is None:
-            pairs = player_scope_for_event(event).pairs(db)
+        preferences = event.close_preferences
+        if preferences is None and event.close_pairs is None:
+            preferences = player_scope_for_event(event).preferences(db)
         claimed = db.execute(
             update(Event)
             .where(
@@ -232,6 +233,7 @@ def _close_and_assign(
                 close_seed=seed,
                 close_weights=weights,
                 close_pairs=pairs,
+                close_preferences=preferences,
                 close_guarantees=guarantees,
                 close_adjust_weights=adjust_weights,
                 close_review_assignments=review_required,
@@ -261,7 +263,10 @@ def _close_and_assign(
         assert message_id is not None
 
     def with_guarantees(snapshot: dict[str, Any]) -> dict[str, Any]:
-        snapshot["pairs"] = pairs
+        if preferences is not None:
+            snapshot["paired_preferences"] = preferences
+        else:
+            snapshot["pairs"] = pairs
         for player in snapshot["players"]:
             saved = guarantees.get(player["id"], {})
             player.update(
@@ -366,7 +371,7 @@ def _close_and_assign(
                 )
             run = LotteryRun(
                 event_id=event_id,
-                version=VERSION,
+                version=VERSION if preferences is not None else LEGACY_VERSION,
                 seed=seed,
                 snapshot=snapshot,
                 result=result,
@@ -394,6 +399,7 @@ def _close_and_assign(
                         close_guarantees=None,
                         close_weights=None,
                         close_pairs=None,
+                        close_preferences=None,
                         close_adjust_weights=None,
                         close_review_assignments=None,
                         close_error=str(failure)[:500],

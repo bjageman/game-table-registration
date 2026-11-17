@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     Float,
     ForeignKey,
     Index,
@@ -96,6 +97,9 @@ class Event(SignupWarningSettings, Base):
     close_adjust_weights: Mapped[bool | None] = mapped_column(nullable=True)
     close_weights: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
     close_pairs: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
+    close_preferences: Mapped[dict[str, list[str]] | None] = mapped_column(
+        JSON, nullable=True
+    )
     close_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     signup_mode: Mapped[str] = mapped_column(String(16), default="poll")
@@ -218,7 +222,19 @@ class PlayerProfile(Base):
     is_test: Mapped[bool] = mapped_column(default=False)
     real_name: Mapped[str] = mapped_column(String(100), default="")
     weighting: Mapped[float] = mapped_column(Float, default=5.0)
-    partner_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class PlayerPreference(Base):
+    """One unordered, reciprocal preference edge within a player scope."""
+
+    __tablename__ = "player_preferences"
+    __table_args__ = (
+        CheckConstraint("player_id < preferred_id", name="ck_player_preference_order"),
+    )
+    scope_key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    player_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    preferred_id: Mapped[str] = mapped_column(String(32), primary_key=True)
 
 
 class UserSettings(Base):

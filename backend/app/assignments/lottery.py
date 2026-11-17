@@ -3,9 +3,11 @@
 import math
 from typing import Any
 
+from app.assignments.matching import place_player
 from app.assignments.randomness import digest, weighted_priority
 
-VERSION = "paired-weighted-matching-v5"
+LEGACY_VERSION = "paired-weighted-matching-v5"
+VERSION = "preference-weighted-matching-v6"
 
 
 class GuaranteeConflict(ValueError):
@@ -63,35 +65,28 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
     seated: dict[str, list[str]] = {name: [] for name in capacities}
     assignments: dict[str, str] = {}
 
-    def place(pid: str, seen: set[str]) -> bool:
-        for name in (
-            [by_id[pid]["guaranteed_table"]]
-            if by_id[pid].get("guaranteed_table")
-            else choices[pid]
-        ):
-            if name in seen:
-                continue
-            seen.add(name)
-            if len(seated[name]) < capacities[name]:
-                seated[name].append(pid)
-                assignments[pid] = name
-                return True
-            for occupant in list(seated[name]):
-                if place(occupant, seen):
-                    seated[name].remove(occupant)
-                    seated[name].append(pid)
-                    assignments[pid] = name
-                    return True
-        return False
+    placement_choices = {
+        pid: [by_id[pid]["guaranteed_table"]]
+        if by_id[pid].get("guaranteed_table")
+        else options
+        for pid, options in choices.items()
+    }
 
     for pid in order:
-        if not place(pid, set()) and (
-            by_id[pid].get("guaranteed_seat") or by_id[pid].get("guaranteed_table")
-        ):
+        if not place_player(
+            pid, placement_choices, capacities, seated, assignments, set()
+        ) and (by_id[pid].get("guaranteed_seat") or by_id[pid].get("guaranteed_table")):
             raise GuaranteeConflict(
                 "Guaranteed seats exceed capacity for the selected tables. "
                 "Adjust guaranteed seats or table capacity before closing signups."
             )
+    if snapshot.get("paired_preferences"):
+        from app.assignments.preference_placement import arrange_preferences
+
+        assignments = arrange_preferences(snapshot, seed, assignments, order)
+        seated = {name: [] for name in capacities}
+        for pid, name in assignments.items():
+            seated[name].append(pid)
     waiting = [pid for pid in order if pid not in assignments]
 
     def display(pid: str) -> dict[str, str]:

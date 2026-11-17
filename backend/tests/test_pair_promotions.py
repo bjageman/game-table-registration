@@ -117,3 +117,15 @@ def test_one_partner_withdrawing_does_not_remove_the_other(promotion_db):
     with Session(engine) as db:
         current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"]["2"] == "Table A"
+
+
+def test_new_preferences_promote_one_waiter_without_needing_companions(promotion_db):
+    with Session(promotion_db) as db:
+        run = db.get(LotteryRun, "event")
+        run.snapshot = {**run.snapshot, "paired_preferences": {"2": ["3"], "3": ["2"]}}
+        db.commit()
+    assert remove_player_from_roster(promotion_db, "guild", "event", "1")
+    with Session(promotion_db) as db:
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
+        assert current["assignments"] == {"2": "Table A"}
+        assert current["waitlist"] == ["3"]

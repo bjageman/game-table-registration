@@ -11,7 +11,8 @@ from flow_helpers import (
 )
 from sqlalchemy.orm import Session
 
-from app.models import Event, PlayerProfile
+from app.assignments.lottery import assign
+from app.models import Event
 
 
 def save_profiles(client, headers, ids=("1", "2", "3", "4")):
@@ -27,53 +28,44 @@ def save_profiles(client, headers, ids=("1", "2", "3", "4")):
         )
 
 
-def link(client, headers, source, target, **body):
+def link(client, headers, source, *targets):
     return client.put(
-        f"/api/players/{source}/partner",
+        f"/api/players/{source}/preferences",
         headers=headers,
-        json={"partner_id": target, **body},
+        json={"player_ids": list(targets)},
     )
 
 
-def test_links_are_reciprocal_and_replacement_requires_confirmation(client):
+def ids(client, pid):
+    return {
+        p["id"] for p in client.get(f"/api/players/{pid}").json()["paired_preferences"]
+    }
+
+
+def test_preferences_are_reciprocal_not_transitive_and_removal_preserves_other_edges(
+    client,
+):
     headers = login(client)
     save_profiles(client, headers)
-    assert link(client, headers, "1", "2").json()["profile"]["partner"]["id"] == "2"
-    assert client.get("/api/players/2").json()["partner"]["id"] == "1"
+    assert link(client, headers, "1", "2", "3").status_code == 200
+    assert ids(client, "1") == {"2", "3"}
+    assert ids(client, "2") == ids(client, "3") == {"1"}
+    assert link(client, headers, "2", "1", "4").status_code == 200
+    assert link(client, headers, "1", "3", "3").status_code == 200
+    assert ids(client, "1") == {"3"}
+    assert ids(client, "2") == {"4"}
+    assert ids(client, "4") == {"2"}
     lookup = {p["discord_id"]: p for p in client.get("/api/players").json()}
-    assert lookup["1"]["partner"] == {"id": "2", "name": "Name 2"}
-    assert lookup["2"]["partner"] == {"id": "1", "name": "Name 1"}
-    assert link(client, headers, "3", "4").status_code == 200
-    needs_confirmation = link(client, headers, "1", "3").json()
-    assert needs_confirmation["confirmation_required"]
-    assert "Name 3" in needs_confirmation["message"]
-    assert "Name 4" in needs_confirmation["message"]
-    assert client.get("/api/players/1").json()["partner"]["id"] == "2"
-    assert client.get("/api/players/4").json()["partner"]["id"] == "3"
-    assert link(client, headers, "1", "3", replace_partner_id="4").status_code == 200
-    for pid, partner in (("1", "3"), ("3", "1")):
-        assert client.get(f"/api/players/{pid}").json()["partner"]["id"] == partner
-    for pid in ("2", "4"):
-        assert client.get(f"/api/players/{pid}").json()["partner"] is None
+    assert lookup["1"]["paired_preferences"] == [{"id": "3", "name": "Name 3"}]
     assert link(client, headers, "1", "1").status_code == 422
     assert link(client, headers, "1", "999").status_code == 404
-    assert link(client, headers, "1", None).status_code == 200
-    assert client.get("/api/players/3").json()["partner"] is None
+    assert ids(client, "1") == {"3"}
+    assert link(client, headers, "3").status_code == 200
+    assert ids(client, "1") == set()
+    assert link(client, {}, "1", "2").status_code == 403
 
 
-def test_confirmation_is_repeated_if_target_partner_changed(client):
-    headers = login(client)
-    save_profiles(client, headers, ("1", "2", "3", "4", "5"))
-    link(client, headers, "3", "4")
-    assert link(client, headers, "1", "3").json()["replace_partner_id"] == "4"
-    link(client, headers, "3", "5")
-    response = link(client, headers, "1", "3", replace_partner_id="4").json()
-    assert response["confirmation_required"]
-    assert response["replace_partner_id"] == "5"
-    assert client.get("/api/players/5").json()["partner"]["id"] == "3"
-
-
-def test_concurrent_links_do_not_create_one_sided_pairs(client):
+def test_concurrent_preferences_preserve_both_reciprocal_edges(client):
     headers = login(client)
     save_profiles(client, headers, ("1", "2", "3"))
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -81,11 +73,8 @@ def test_concurrent_links_do_not_create_one_sided_pairs(client):
             pool.map(lambda pid: link(client, headers, pid, "2"), ("1", "3"))
         )
     assert all(response.status_code == 200 for response in results)
-    assert sum("confirmation_required" in response.json() for response in results) == 1
-    partner = client.get("/api/players/2").json()["partner"]["id"]
-    assert client.get(f"/api/players/{partner}").json()["partner"]["id"] == "2"
-    other = "1" if partner == "3" else "3"
-    assert client.get(f"/api/players/{other}").json()["partner"] is None
+    assert ids(client, "2") == {"1", "3"}
+    assert ids(client, "1") == ids(client, "3") == {"2"}
 
 
 def test_same_discord_server_has_completely_independent_organization_profiles(client):
@@ -122,7 +111,7 @@ def test_same_discord_server_has_completely_independent_organization_profiles(cl
     assert second["real_name"] == ""
     assert second["weighting"] == 5
     assert not second["guaranteed_seat"]
-    assert second["partner"] is None
+    assert second["paired_preferences"] == []
     save_profiles(client, headers, ("1",))
     assert link(client, headers, "1", "2").status_code == 404
     client.put(
@@ -135,7 +124,7 @@ def test_same_discord_server_has_completely_independent_organization_profiles(cl
     assert first["real_name"] == "Name 1"
     assert first["weighting"] == 8
     assert first["guaranteed_seat"]
-    assert first["partner"]["id"] == "2"
+    assert ids(client, "1") == {"2"}
     select(None)
     assert client.get("/api/players").json() == []
 
@@ -180,59 +169,23 @@ def test_draw_freezes_pair_and_adjusts_each_players_own_weight(client):
     assert closed.status_code == 200, closed.text
     assert closed.json()["status"] == "review"
     original = deepcopy(client.get(path + "/assignments").json())
-    assert (
-        original["result"]["assignments"]["1"]
-        == original["result"]["assignments"]["2"]
-        == "A"
-    )
+    snapshot = original["snapshot"]
+    assert snapshot["paired_preferences"] == {"1": ["2"], "2": ["1"]}
+    baseline = assign({**snapshot, "paired_preferences": {}}, original["seed"])
+    assert set(original["result"]["assignments"]) == set(baseline["assignments"])
+    assert original["result"]["waitlist"] == baseline["waitlist"]
+    assert "1" in original["result"]["assignments"]
+    assert not closed.json()["pairing_warnings"]
     link(client, headers, "1", "3")
     assert client.get(path + "/assignments").json() == original
     assert (
         client.post(path + "/assignments/approve", headers=headers).status_code == 200
     )
-    assert client.get("/api/players/1").json()["weighting"] == 7.5
-    assert client.get("/api/players/2").json()["weighting"] == 1.5
+    for pid, weight in (("1", 8), ("2", 2)):
+        expected = weight - 0.5 if pid in baseline["assignments"] else weight + 0.5
+        assert client.get(f"/api/players/{pid}").json()["weighting"] == expected
     assert not client.get("/api/players/2").json()["guaranteed_seat"]
-    with Session(client.app.state.engine) as db:
-        assert db.get(PlayerProfile, ("user:owner", "guild", "1")).partner_id == "3"
-
-
-def test_guaranteed_pair_conflict_alerts_manager_and_waitlists_both(client):
-    headers, _, path, _ = closing_event(client, review=True)
-    save_profiles(client, headers, ("1", "2"))
-    client.put("/api/players/1", headers=headers, json={"guaranteed_seat": True})
-    link(client, headers, "1", "2")
-    client.app.state.discord.table_signups.return_value = [
-        {
-            "name": "A",
-            "players": [
-                {"id": "1", "name": "Mary"},
-                {"id": "2", "name": "Dan"},
-                {"id": "3", "name": "Shirley"},
-            ],
-        },
-        {
-            "name": "B",
-            "players": [{"id": "1", "name": "Mary"}, {"id": "4", "name": "Carl"}],
-        },
-    ]
-    client.app.state.discord.poll_message.return_value = closing_message()
-    closed = client.post(path + "/close", headers=headers)
-    assert closed.status_code == 200, closed.text
-    assert closed.json()["pairing_warnings"]
-    result = client.get(path + "/assignments").json()["current_result"]
-    assert set(result["waitlist"]) == {"1", "2"}
-    assert set(result["assignments"]) == {"3", "4"}
-    for pid in ("1", "2"):
-        assert (
-            client.post(
-                path + f"/assigned-players/{pid}", headers=headers, json={"table": "A"}
-            ).status_code
-            == 200
-        )
-    approved = client.post(path + "/assignments/approve", headers=headers)
-    assert approved.status_code == 200
-    assert approved.json()["pairing_warnings"] == []
+    assert ids(client, "1") == {"3"}
 
 
 def test_first_time_poll_participants_can_be_linked_before_the_first_draw(client):
@@ -252,12 +205,52 @@ def test_first_time_poll_participants_can_be_linked_before_the_first_draw(client
     }
     linked = link(client, headers, "1", "2")
     assert linked.status_code == 200
-    assert linked.json()["profile"]["partner"] == {"id": "2", "name": "Bob"}
-    assert client.get("/api/players/2").json()["partner"] == {
-        "id": "1",
-        "name": "Alice",
-    }
+    assert linked.json()["profile"]["paired_preferences"] == [
+        {"id": "2", "name": "Bob"}
+    ]
+    assert client.get("/api/players/2").json()["paired_preferences"] == [
+        {"id": "1", "name": "Alice"}
+    ]
     with Session(client.app.state.engine) as db:
         from app.models import TableSignup
 
         assert all(not row.choices for row in db.query(TableSignup).all())
+
+
+def test_retry_keeps_original_frozen_preferences_after_profile_edits(client):
+    from fastapi import HTTPException
+
+    headers, event, path, users = closing_event(client, review=True)
+    save_profiles(client, headers)
+    link(client, headers, "1", "2")
+    discord = client.app.state.discord
+    discord.poll_message.return_value = closing_message()
+    discord.voter_users.side_effect = HTTPException(502, "Discord unavailable")
+    assert client.post(path + "/close", headers=headers).status_code == 502
+    with Session(client.app.state.engine) as db:
+        saved = db.get(Event, event["id"])
+        seed = saved.close_seed
+        assert saved.close_preferences == {"1": ["2"], "2": ["1"]}
+    link(client, headers, "1", "3", "4")
+    discord.voter_users.side_effect = lambda msg, answer: users[answer]
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    draw = client.get(path + "/assignments").json()
+    assert draw["snapshot"]["paired_preferences"] == {"1": ["2"], "2": ["1"]}
+    assert draw["seed"] == seed
+
+
+def test_pending_legacy_close_retains_old_snapshot_and_algorithm_version(client):
+    from app.assignments.lottery import LEGACY_VERSION
+
+    headers, event, path, _ = closing_event(client, review=True)
+    with Session(client.app.state.engine) as db:
+        saved = db.get(Event, event["id"])
+        saved.status = "closing"
+        saved.close_pairs = {"1": "2", "2": "1"}
+        db.commit()
+    client.app.state.discord.poll_message.return_value = closing_message()
+    assert client.post(path + "/close", headers=headers).status_code == 200
+    draw = client.get(path + "/assignments").json()
+    assert draw["version"] == LEGACY_VERSION
+    assert draw["snapshot"]["pairs"] == {"1": "2", "2": "1"}
+    assert "paired_preferences" not in draw["snapshot"]
