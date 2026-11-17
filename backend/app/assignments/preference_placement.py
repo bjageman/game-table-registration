@@ -10,13 +10,19 @@ MAX_ATTEMPTS = 1000
 
 
 def arrange_preferences(
-    snapshot: dict[str, Any], seed: str, assignments: dict[str, str], order: list[str]
+    snapshot: dict[str, Any],
+    seed: str,
+    assignments: dict[str, str],
+    order: list[str],
+    *,
+    prioritize_short_lists: bool = True,
 ) -> dict[str, str]:
     """Improve direct matches without evicting winners or moving guaranteed tables.
 
     Try each unmatched edge at shared tables, reserving those two seats and
     matching every other winner around them. Accept only a strict increase in
-    satisfied direct edges. This is deterministic and deliberately best effort:
+    satisfied direct edges, prioritizing the shortest lists. This is deterministic
+    and deliberately best effort:
     overlapping preferences do not become mandatory transitive groups.
     """
     preferences = snapshot.get("paired_preferences", {})
@@ -49,8 +55,27 @@ def arrange_preferences(
         ),
     )
 
-    def score(placement: dict[str, str]) -> int:
-        return sum(placement[a] == placement[b] for a, b in edges)
+    # Use saved list lengths so one preference outranks a longer list even
+    # when some of that longer list's players did not win seats.
+    degrees = {pid: len(set(preferences.get(pid, [])) - {pid}) for pid in winners}
+    edge_priority = {
+        edge: min(degrees[edge[0]], degrees[edge[1]]) if prioritize_short_lists else 0
+        for edge in edges
+    }
+    edges.sort(key=lambda edge: edge_priority[edge])
+    bucket_indices = {
+        priority: index
+        for index, priority in enumerate(sorted(set(edge_priority.values())))
+    }
+
+    def score(placement: dict[str, str]) -> tuple[int, ...]:
+        # Lexicographic buckets keep a single-choice match ahead of any number
+        # of matches from larger lists, while still allowing partial matches.
+        counts = [0] * len(bucket_indices)
+        for a, b in edges:
+            if placement[a] == placement[b]:
+                counts[bucket_indices[edge_priority[(a, b)]]] += 1
+        return tuple(counts)
 
     best = dict(assignments)
     best_score = score(best)

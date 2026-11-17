@@ -7,14 +7,17 @@ from app.assignments.matching import place_player
 from app.assignments.randomness import digest, weighted_priority
 
 LEGACY_VERSION = "paired-weighted-matching-v5"
-VERSION = "preference-weighted-matching-v6"
+UNORDERED_VERSION = "preference-weighted-matching-v6"
+VERSION = "preference-priority-matching-v7"
 
 
 class GuaranteeConflict(ValueError):
     pass
 
 
-def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
+def assign(
+    snapshot: dict[str, Any], seed: str, *, version: str = VERSION
+) -> dict[str, Any]:
     tables = snapshot["tables"]
     players = snapshot["players"]
     capacities = {t["name"]: t["capacity"] for t in tables}
@@ -83,7 +86,13 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
     if snapshot.get("paired_preferences"):
         from app.assignments.preference_placement import arrange_preferences
 
-        assignments = arrange_preferences(snapshot, seed, assignments, order)
+        assignments = arrange_preferences(
+            snapshot,
+            seed,
+            assignments,
+            order,
+            prioritize_short_lists=version != UNORDERED_VERSION,
+        )
         seated = {name: [] for name in capacities}
         for pid, name in assignments.items():
             seated[name].append(pid)

@@ -120,7 +120,7 @@ def test_incompatible_table_choices_leave_winners_seated_separately():
 
 
 @pytest.mark.parametrize("seed", range(30))
-def test_varied_graphs_preserve_constraints_and_never_reduce_direct_matches(seed):
+def test_varied_graphs_preserve_constraints_and_ignore_list_order(seed):
     import random
 
     rng = random.Random(seed)
@@ -158,18 +158,75 @@ def test_varied_graphs_preserve_constraints_and_never_reduce_direct_matches(seed
             <= table["capacity"]
         )
 
-    def score(placement):
-        return sum(
-            pid in placement
-            and other in placement
-            and placement[pid] == placement[other]
-            for pid, others in preferences.items()
-            for other in others
-        )
-
-    assert score(result["assignments"]) >= score(baseline["assignments"])
     data["paired_preferences"] = {
         pid: list(reversed(others))
         for pid, others in reversed(list(preferences.items()))
     }
     assert assign(data, str(seed)) == result
+
+
+def single_preference_snapshot():
+    return {
+        "tables": [{"name": "A", "capacity": 3}, {"name": "B", "capacity": 2}],
+        "players": [
+            {"id": pid, "name": pid, "weight": 5, "choices": choices}
+            for pid, choices in (
+                ("Alice", ["A", "B"]),
+                ("Anya", ["B"]),
+                ("Bob", ["A"]),
+                ("Carl", ["A"]),
+            )
+        ],
+        "paired_preferences": {
+            "Alice": ["Anya", "Bob", "Carl"],
+            "Anya": ["Alice"],
+            "Bob": ["Alice", "Carl"],
+            "Carl": ["Alice", "Bob"],
+        },
+    }
+
+
+@pytest.mark.parametrize("seed", [str(i) for i in range(10)])
+def test_single_preference_takes_priority_over_more_matches_in_larger_lists(seed):
+    data = single_preference_snapshot()
+    baseline = assign({**data, "paired_preferences": {}}, seed)
+    result = assign(data, seed)
+    assert set(result["assignments"]) == set(baseline["assignments"])
+    assert result["assignments"]["Alice"] == result["assignments"]["Anya"] == "B"
+    assert result["assignments"]["Bob"] == result["assignments"]["Carl"] == "A"
+
+
+def test_original_v6_preference_draws_keep_their_replay_behavior():
+    from app.assignments.lottery import UNORDERED_VERSION
+
+    result = assign(
+        single_preference_snapshot(), "single preference", version=UNORDERED_VERSION
+    )
+    assert result["assignments"] == {"Alice": "A", "Bob": "A", "Carl": "A", "Anya": "B"}
+
+
+def test_saved_list_length_counts_even_if_some_preferences_did_not_win_seats():
+    data = {
+        "tables": [{"name": "A", "capacity": 2}, {"name": "B", "capacity": 1}],
+        "players": [
+            {
+                "id": pid,
+                "name": pid,
+                "weight": 5,
+                "choices": ["A", "B"],
+                "guaranteed_seat": pid == "Bob",
+            }
+            for pid in ("Alice", "Anya", "Bob")
+        ],
+        "paired_preferences": {
+            "Alice": ["Anya", "Bob"],
+            "Anya": ["Alice"],
+            "Bob": ["Alice", "Absent"],
+            "Absent": ["Bob"],
+        },
+    }
+    # Bob wins earlier but still has a longer list than Anya, even though only
+    # Alice from his list is seated. This cannot override Anya's sole preference.
+    result = assign(data, "absent preferences")
+    assert result["assignments"]["Alice"] == result["assignments"]["Anya"] == "A"
+    assert result["assignments"]["Bob"] == "B"
