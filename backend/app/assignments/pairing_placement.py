@@ -1,15 +1,15 @@
-"""Best-effort direct preferences, after individual lottery winners are fixed."""
+"""Best-effort direct pairings, after individual lottery winners are fixed."""
 
 from typing import Any
 
 from app.assignments.matching import place_player
 from app.assignments.randomness import digest
 
-# Bound optional optimization independently of the number of saved preferences.
+# Bound optional optimization independently of the number of saved pairings.
 MAX_ATTEMPTS = 1000
 
 
-def arrange_preferences(
+def arrange_pairings(
     snapshot: dict[str, Any],
     seed: str,
     assignments: dict[str, str],
@@ -21,9 +21,9 @@ def arrange_preferences(
     matching every other winner around them. Accept only a strict increase in
     satisfied direct edges, prioritizing the shortest lists. This is deterministic
     and deliberately best effort:
-    overlapping preferences do not become mandatory transitive groups.
+    overlapping pairings do not become mandatory transitive groups.
     """
-    preferences = snapshot.get("paired_preferences", {})
+    pairings = snapshot.get("pairings", {})
     rank = {pid: index for index, pid in enumerate(order)}
     winners = [pid for pid in order if pid in assignments]
     players = {p["id"]: p for p in snapshot["players"]}
@@ -40,12 +40,10 @@ def arrange_preferences(
     edges = sorted(
         {
             (min(pid, other), max(pid, other))
-            for pid, others in preferences.items()
+            for pid, others in pairings.items()
             if pid in assignments
             for other in others
-            if other in assignments
-            and other != pid
-            and pid in preferences.get(other, [])
+            if other in assignments and other != pid and pid in pairings.get(other, [])
         },
         key=lambda edge: (
             min(rank[edge[0]], rank[edge[1]]),
@@ -53,9 +51,9 @@ def arrange_preferences(
         ),
     )
 
-    # Use saved list lengths so one preference outranks a longer list even
+    # Use saved list lengths so one pairing outranks a longer list even
     # when some of that longer list's players did not win seats.
-    degrees = {pid: len(set(preferences.get(pid, [])) - {pid}) for pid in winners}
+    degrees = {pid: len(set(pairings.get(pid, [])) - {pid}) for pid in winners}
     edge_priority = {edge: min(degrees[edge[0]], degrees[edge[1]]) for edge in edges}
     edges.sort(key=lambda edge: edge_priority[edge])
     bucket_indices = {
@@ -112,7 +110,7 @@ def _match_winners(
     pair: tuple[str, str],
     table: str,
 ) -> dict[str, str] | None:
-    """Reserve a preferred pair, then retain every other already-selected winner."""
+    """Reserve a paired players, then retain every other already-selected winner."""
     seated: dict[str, list[str]] = {name: [] for name in capacities}
     seated[table] = list(pair)
     result = dict.fromkeys(pair, table)

@@ -3,7 +3,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-from app.models import PlayerPreference, PlayerProfile
+from app.models import PlayerPairing, PlayerProfile
 
 
 def test_migration_copies_shared_profiles_into_independent_organization_records(
@@ -43,7 +43,7 @@ def test_migration_copies_shared_profiles_into_independent_organization_records(
         db.commit()
         assert b.weighting == 8
         assert b.real_name == "Saved name"
-        assert db.query(PlayerPreference).count() == 0
+        assert db.query(PlayerPairing).count() == 0
     command.downgrade(config, "base")
     command.upgrade(config, "head")
     command.check(config)
@@ -73,14 +73,14 @@ def test_preferences_migrate_existing_reciprocal_pairs_and_round_trip(
     command.upgrade(config, "head")
     command.check(config)
     with Session(engine) as db:
-        edges = db.query(PlayerPreference).all()
+        edges = db.query(PlayerPairing).all()
         assert {(e.scope_key, e.player_id, e.preferred_id) for e in edges} == {
             ("org:a", "1", "2"),
             ("org:b", "1", "2"),
         }
         # Multi-preference downgrade keeps one reciprocal pair deterministically.
         db.add(
-            PlayerPreference(
+            PlayerPairing(
                 scope_key="org:a", guild_id="guild", player_id="1", preferred_id="3"
             )
         )

@@ -128,7 +128,7 @@ class EventTemplateInput(EventDetailsInput):
     duration_hours: int = Field(ge=1, le=768)
 
 
-class PlayerPreferencesInput(BaseModel):
+class PlayerPairingsInput(BaseModel):
     model_config = {"extra": "forbid"}
     player_ids: list[str]
 

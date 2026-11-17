@@ -79,10 +79,10 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
                 "Guaranteed seats exceed capacity for the selected tables. "
                 "Adjust guaranteed seats or table capacity before closing signups."
             )
-    if snapshot.get("paired_preferences"):
-        from app.assignments.preference_placement import arrange_preferences
+    if snapshot.get("pairings"):
+        from app.assignments.pairing_placement import arrange_pairings
 
-        assignments = arrange_preferences(snapshot, seed, assignments, order)
+        assignments = arrange_pairings(snapshot, seed, assignments, order)
         seated = {name: [] for name in capacities}
         for pid, name in assignments.items():
             seated[name].append(pid)

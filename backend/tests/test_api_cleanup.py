@@ -108,7 +108,7 @@ def test_player_profile_survives_event_and_poll_deletion(client):
         "seat_notifications": True,
         "real_name": "",
         "weighting": 5.0,
-        "paired_preferences": [],
+        "pairings": [],
     }
     client.app.state.discord.bot.reset_mock()
     assert (

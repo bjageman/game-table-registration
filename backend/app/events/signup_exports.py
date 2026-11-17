@@ -132,9 +132,9 @@ def event_pdf(
     card_width = (page_width - 2 * margin) / 2 - 8
     cards: list[list[Any]] = []
     pairs = getattr(event, "close_pairs", None) or {}
-    preferences = getattr(event, "close_preferences", None)
-    if preferences is None:
-        preferences = {pid: [partner] for pid, partner in pairs.items()}
+    pairings = getattr(event, "close_pairings", None)
+    if pairings is None:
+        pairings = {pid: [partner] for pid, partner in pairs.items()}
     names = {
         player.get("id"): player.get("display_name") or player["name"]
         for table in rows
@@ -179,7 +179,7 @@ def event_pdf(
                 check_icon(),
                 Paragraph("Display", header_style),
                 Paragraph("Discord", header_style),
-                Paragraph("Paired", header_style),
+                Paragraph("Pairings", header_style),
             ]
         ]
         sections: list[int] = []
@@ -206,7 +206,7 @@ def event_pdf(
                             ", ".join(
                                 sorted(
                                     names[pid]
-                                    for pid in preferences.get(player.get("id"), [])
+                                    for pid in pairings.get(player.get("id"), [])
                                     if pid in names
                                 )
                             )

@@ -21,14 +21,14 @@ def snapshot(capacity=2):
 
 
 @pytest.mark.parametrize("seed", [str(i) for i in range(100)])
-def test_preferences_preserve_winners_priority_waitlist_capacity_and_replay(seed):
+def test_pairings_preserve_winners_priority_waitlist_capacity_and_replay(seed):
     data = snapshot()
     data["players"][0]["guaranteed_seat"] = True
     data["players"][1]["guaranteed_table"] = "B"
     baseline = assign(data, seed)
     winners = list(baseline["assignments"])
-    # Alice's waitlisted preferences cannot gain a seat or inherit her guarantee.
-    data["paired_preferences"] = {
+    # Alice's waitlisted pairings cannot gain a seat or inherit her guarantee.
+    data["pairings"] = {
         "1": [str(i) for i in range(2, 9)],
         **{str(i): ["1"] for i in range(2, 9)},
     }
@@ -61,7 +61,7 @@ def test_alice_and_david_match_while_bob_and_carl_remain_waitlisted():
         }
         for pid in ("Alice", "Bob", "Carl", "David")
     ]
-    data["paired_preferences"] = {
+    data["pairings"] = {
         "Alice": ["Bob", "Carl", "David"],
         **{pid: ["Alice"] for pid in ("Bob", "Carl", "David")},
     }
@@ -83,29 +83,29 @@ def test_guarantee_does_not_pull_companion_in_or_waitlist_guaranteed_player():
             }
             for pid in ("Alice", "Bob")
         ],
-        "paired_preferences": {"Alice": ["Bob"], "Bob": ["Alice"]},
+        "pairings": {"Alice": ["Bob"], "Bob": ["Alice"]},
     }
     result = assign(data, "one seat")
     assert result["assignments"] == {"Alice": "A"}
     assert result["waitlist"] == ["Bob"]
 
 
-def test_rearranges_winners_at_full_tables_to_match_direct_preferences():
+def test_rearranges_winners_at_full_tables_to_match_direct_pairings():
     data = snapshot()
     data["players"] = data["players"][:4]
     baseline = assign(data, "swap")
     a = baseline["tables"][0]["players"][0]["id"]
     b = baseline["tables"][1]["players"][0]["id"]
-    data["paired_preferences"] = {a: [b], b: [a]}
+    data["pairings"] = {a: [b], b: [a]}
     result = assign(data, "swap")
     assert result["assignments"][a] == result["assignments"][b]
     assert set(result["assignments"]) == set(baseline["assignments"])
 
 
-def test_overlapping_preferences_can_share_three_seats_without_becoming_atomic():
+def test_overlapping_pairings_can_share_three_seats_without_becoming_atomic():
     data = snapshot(3)
     data["players"] = data["players"][:6]
-    data["paired_preferences"] = {"1": ["2", "3"], "2": ["1"], "3": ["1"]}
+    data["pairings"] = {"1": ["2", "3"], "2": ["1"], "3": ["1"]}
     result = assign(data, "star")
     assert len({result["assignments"][pid] for pid in ("1", "2", "3")}) == 1
 
@@ -115,7 +115,7 @@ def test_incompatible_table_choices_leave_winners_seated_separately():
     data["players"] = data["players"][:2]
     data["players"][0]["choices"] = ["A"]
     data["players"][1]["choices"] = ["B"]
-    data["paired_preferences"] = {"1": ["2"], "2": ["1"]}
+    data["pairings"] = {"1": ["2"], "2": ["1"]}
     assert assign(data, "choices")["assignments"] == {"1": "A", "2": "B"}
 
 
@@ -138,13 +138,13 @@ def test_varied_graphs_preserve_constraints_and_ignore_list_order(seed):
         ],
     }
     baseline = assign(data, str(seed))
-    preferences = {str(i): [] for i in range(20)}
+    pairings = {str(i): [] for i in range(20)}
     for i in range(20):
         for j in range(i + 1, 20):
             if rng.random() < 0.2:
-                preferences[str(i)].append(str(j))
-                preferences[str(j)].append(str(i))
-    data["paired_preferences"] = preferences
+                pairings[str(i)].append(str(j))
+                pairings[str(j)].append(str(i))
+    data["pairings"] = pairings
     result = assign(data, str(seed))
     assert result["order"] == baseline["order"]
     assert result["waitlist"] == baseline["waitlist"]
@@ -158,14 +158,13 @@ def test_varied_graphs_preserve_constraints_and_ignore_list_order(seed):
             <= table["capacity"]
         )
 
-    data["paired_preferences"] = {
-        pid: list(reversed(others))
-        for pid, others in reversed(list(preferences.items()))
+    data["pairings"] = {
+        pid: list(reversed(others)) for pid, others in reversed(list(pairings.items()))
     }
     assert assign(data, str(seed)) == result
 
 
-def single_preference_snapshot():
+def single_pairing_snapshot():
     return {
         "tables": [{"name": "A", "capacity": 3}, {"name": "B", "capacity": 2}],
         "players": [
@@ -177,7 +176,7 @@ def single_preference_snapshot():
                 ("Carl", ["A"]),
             )
         ],
-        "paired_preferences": {
+        "pairings": {
             "Alice": ["Anya", "Bob", "Carl"],
             "Anya": ["Alice"],
             "Bob": ["Alice", "Carl"],
@@ -187,16 +186,16 @@ def single_preference_snapshot():
 
 
 @pytest.mark.parametrize("seed", [str(i) for i in range(10)])
-def test_single_preference_takes_priority_over_more_matches_in_larger_lists(seed):
-    data = single_preference_snapshot()
-    baseline = assign({**data, "paired_preferences": {}}, seed)
+def test_single_pairing_takes_priority_over_more_matches_in_larger_lists(seed):
+    data = single_pairing_snapshot()
+    baseline = assign({**data, "pairings": {}}, seed)
     result = assign(data, seed)
     assert set(result["assignments"]) == set(baseline["assignments"])
     assert result["assignments"]["Alice"] == result["assignments"]["Anya"] == "B"
     assert result["assignments"]["Bob"] == result["assignments"]["Carl"] == "A"
 
 
-def test_saved_list_length_counts_even_if_some_preferences_did_not_win_seats():
+def test_saved_list_length_counts_even_if_some_pairings_did_not_win_seats():
     data = {
         "tables": [{"name": "A", "capacity": 2}, {"name": "B", "capacity": 1}],
         "players": [
@@ -209,7 +208,7 @@ def test_saved_list_length_counts_even_if_some_preferences_did_not_win_seats():
             }
             for pid in ("Alice", "Anya", "Bob")
         ],
-        "paired_preferences": {
+        "pairings": {
             "Alice": ["Anya", "Bob"],
             "Anya": ["Alice"],
             "Bob": ["Alice", "Absent"],
@@ -217,7 +216,7 @@ def test_saved_list_length_counts_even_if_some_preferences_did_not_win_seats():
         },
     }
     # Bob wins earlier but still has a longer list than Anya, even though only
-    # Alice from his list is seated. This cannot override Anya's sole preference.
-    result = assign(data, "absent preferences")
+    # Alice from his list is seated. This cannot override Anya's sole pairing.
+    result = assign(data, "absent pairings")
     assert result["assignments"]["Alice"] == result["assignments"]["Anya"] == "A"
     assert result["assignments"]["Bob"] == "B"

@@ -37,9 +37,7 @@ def link(client, headers, source, *targets):
 
 
 def ids(client, pid):
-    return {
-        p["id"] for p in client.get(f"/api/players/{pid}").json()["paired_preferences"]
-    }
+    return {p["id"] for p in client.get(f"/api/players/{pid}").json()["pairings"]}
 
 
 def test_preferences_are_reciprocal_not_transitive_and_removal_preserves_other_edges(
@@ -56,7 +54,7 @@ def test_preferences_are_reciprocal_not_transitive_and_removal_preserves_other_e
     assert ids(client, "2") == {"4"}
     assert ids(client, "4") == {"2"}
     lookup = {p["discord_id"]: p for p in client.get("/api/players").json()}
-    assert lookup["1"]["paired_preferences"] == [{"id": "3", "name": "Name 3"}]
+    assert lookup["1"]["pairings"] == [{"id": "3", "name": "Name 3"}]
     assert link(client, headers, "1", "1").status_code == 422
     assert link(client, headers, "1", "999").status_code == 404
     assert ids(client, "1") == {"3"}
@@ -111,7 +109,7 @@ def test_same_discord_server_has_completely_independent_organization_profiles(cl
     assert second["real_name"] == ""
     assert second["weighting"] == 5
     assert not second["guaranteed_seat"]
-    assert second["paired_preferences"] == []
+    assert second["pairings"] == []
     save_profiles(client, headers, ("1",))
     assert link(client, headers, "1", "2").status_code == 404
     client.put(
@@ -170,8 +168,8 @@ def test_draw_freezes_pair_and_adjusts_each_players_own_weight(client):
     assert closed.json()["status"] == "review"
     original = deepcopy(client.get(path + "/assignments").json())
     snapshot = original["snapshot"]
-    assert snapshot["paired_preferences"] == {"1": ["2"], "2": ["1"]}
-    baseline = assign({**snapshot, "paired_preferences": {}}, original["seed"])
+    assert snapshot["pairings"] == {"1": ["2"], "2": ["1"]}
+    baseline = assign({**snapshot, "pairings": {}}, original["seed"])
     assert set(original["result"]["assignments"]) == set(baseline["assignments"])
     assert original["result"]["waitlist"] == baseline["waitlist"]
     assert "1" in original["result"]["assignments"]
@@ -205,10 +203,8 @@ def test_first_time_poll_participants_can_be_linked_before_the_first_draw(client
     }
     linked = link(client, headers, "1", "2")
     assert linked.status_code == 200
-    assert linked.json()["profile"]["paired_preferences"] == [
-        {"id": "2", "name": "Bob"}
-    ]
-    assert client.get("/api/players/2").json()["paired_preferences"] == [
+    assert linked.json()["profile"]["pairings"] == [{"id": "2", "name": "Bob"}]
+    assert client.get("/api/players/2").json()["pairings"] == [
         {"id": "1", "name": "Alice"}
     ]
     with Session(client.app.state.engine) as db:
@@ -230,12 +226,12 @@ def test_retry_keeps_original_frozen_preferences_after_profile_edits(client):
     with Session(client.app.state.engine) as db:
         saved = db.get(Event, event["id"])
         seed = saved.close_seed
-        assert saved.close_preferences == {"1": ["2"], "2": ["1"]}
+        assert saved.close_pairings == {"1": ["2"], "2": ["1"]}
     link(client, headers, "1", "3", "4")
     discord.voter_users.side_effect = lambda msg, answer: users[answer]
     assert client.post(path + "/close", headers=headers).status_code == 200
     draw = client.get(path + "/assignments").json()
-    assert draw["snapshot"]["paired_preferences"] == {"1": ["2"], "2": ["1"]}
+    assert draw["snapshot"]["pairings"] == {"1": ["2"], "2": ["1"]}
     assert draw["seed"] == seed
 
 
@@ -253,4 +249,4 @@ def test_pending_close_retains_frozen_pair_snapshot(client):
     draw = client.get(path + "/assignments").json()
     assert draw["version"] == VERSION
     assert draw["snapshot"]["pairs"] == {"1": "2", "2": "1"}
-    assert "paired_preferences" not in draw["snapshot"]
+    assert "pairings" not in draw["snapshot"]

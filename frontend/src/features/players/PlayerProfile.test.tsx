@@ -151,12 +151,12 @@ function expectFeedbackAboveDiscordName(feedback: HTMLElement) {
   expect(feedback.compareDocumentPosition(screen.getByText("Discord Name")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 }
 
-it("shows paired-player preference lookup errors above Discord Name", async () => {
+it("shows pairing lookup errors above Discord Name", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => url === "/api/players"
     ? new Response(JSON.stringify({ detail: "Could not load players." }), { status: 502 })
     : new Response(JSON.stringify(baseProfile))));
   render(<PlayerProfile player={player} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} />);
-  fireEvent.focus(await screen.findByRole("combobox", { name: "Paired Player Preferences" }));
+  fireEvent.focus(await screen.findByRole("combobox", { name: "Pairings" }));
   const feedback = await screen.findByRole("alert");
   expect(feedback).toHaveTextContent("Could not load players.");
   expectFeedbackAboveDiscordName(feedback);

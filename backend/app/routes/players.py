@@ -8,15 +8,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
-from app.models import Event, LotteryRun, PlayerPreference, PlayerProfile, TableSignup
-from app.schemas import PlayerPreferencesInput, PlayerProfileInput
+from app.models import Event, LotteryRun, PlayerPairing, PlayerProfile, TableSignup
+from app.schemas import PlayerPairingsInput, PlayerProfileInput
 
 
 def register(context: ApplicationContext) -> None:
     router = APIRouter()
     engine = context.engine
 
-    def preference_data(
+    def pairing_data(
         profiles: dict[str, PlayerProfile], ids: list[str]
     ) -> list[dict[str, str]]:
         return sorted(
@@ -44,8 +44,8 @@ def register(context: ApplicationContext) -> None:
             p.discord_id: p
             for p in db.scalars(select(PlayerProfile).where(*scope.filters()))
         }
-        result["paired_preferences"] = preference_data(
-            profiles, scope.preferences(db).get(player_id, [])
+        result["pairings"] = pairing_data(
+            profiles, scope.pairings(db).get(player_id, [])
         )
         return result
 
@@ -62,13 +62,11 @@ def register(context: ApplicationContext) -> None:
             p.discord_id: p
             for p in db.scalars(select(PlayerProfile).where(*scope.filters()))
         }
-        preferences = scope.preferences(db)
+        pairings = scope.pairings(db)
         found = {
             pid: {
                 **context.player_data(pid, p),
-                "paired_preferences": preference_data(
-                    profiles, preferences.get(pid, [])
-                ),
+                "pairings": pairing_data(profiles, pairings.get(pid, [])),
             }
             for pid, p in profiles.items()
         }
@@ -93,7 +91,7 @@ def register(context: ApplicationContext) -> None:
                     if player.get("is_test"):
                         found[player_id]["is_test"] = True
         for player in found.values():
-            player.setdefault("paired_preferences", [])
+            player.setdefault("pairings", [])
         return found
 
     @router.get("/api/players")
@@ -162,7 +160,7 @@ def register(context: ApplicationContext) -> None:
 
     @router.put("/api/players/{player_id}/pairings")
     def save_pairings(
-        player_id: str, body: PlayerPreferencesInput, request: Request
+        player_id: str, body: PlayerPairingsInput, request: Request
     ) -> dict[str, Any]:
         context.authenticated(request, True)
         context.valid_player_id(player_id)
@@ -170,7 +168,7 @@ def register(context: ApplicationContext) -> None:
         for pid in targets:
             context.valid_player_id(pid)
         if player_id in targets:
-            raise HTTPException(422, "A player cannot prefer themselves")
+            raise HTTPException(422, "A player cannot be paired with themselves")
         scope = context.player_scope(request)
         with DBSession(engine) as db:
             scope.lock(db)
@@ -189,11 +187,11 @@ def register(context: ApplicationContext) -> None:
                     )
             edges = list(
                 db.scalars(
-                    select(PlayerPreference).where(
-                        PlayerPreference.scope_key == scope.key,
-                        PlayerPreference.guild_id == scope.guild_id,
-                        (PlayerPreference.player_id == player_id)
-                        | (PlayerPreference.preferred_id == player_id),
+                    select(PlayerPairing).where(
+                        PlayerPairing.scope_key == scope.key,
+                        PlayerPairing.guild_id == scope.guild_id,
+                        (PlayerPairing.player_id == player_id)
+                        | (PlayerPairing.preferred_id == player_id),
                     )
                 )
             )
@@ -208,7 +206,7 @@ def register(context: ApplicationContext) -> None:
             for target in sorted(targets - existing):
                 first, second = sorted((player_id, target))
                 db.add(
-                    PlayerPreference(
+                    PlayerPairing(
                         scope_key=scope.key,
                         guild_id=scope.guild_id,
                         player_id=first,

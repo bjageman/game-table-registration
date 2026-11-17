@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Event,
     Organization,
-    PlayerPreference,
+    PlayerPairing,
     PlayerProfile,
     TableSignup,
     UserIdentity,
@@ -52,15 +52,15 @@ class PlayerScope:
             scope_key=self.key, guild_id=self.guild_id, discord_id=player_id, **values
         )
 
-    def preferences(self, db: Session) -> dict[str, list[str]]:
+    def pairings(self, db: Session) -> dict[str, list[str]]:
         result: dict[str, list[str]] = {}
         for edge in db.scalars(
-            select(PlayerPreference)
+            select(PlayerPairing)
             .where(
-                PlayerPreference.scope_key == self.key,
-                PlayerPreference.guild_id == self.guild_id,
+                PlayerPairing.scope_key == self.key,
+                PlayerPairing.guild_id == self.guild_id,
             )
-            .order_by(PlayerPreference.player_id, PlayerPreference.preferred_id)
+            .order_by(PlayerPairing.player_id, PlayerPairing.preferred_id)
         ):
             result.setdefault(edge.player_id, []).append(edge.preferred_id)
             result.setdefault(edge.preferred_id, []).append(edge.player_id)

@@ -631,7 +631,7 @@ dd {
 .player-lookup-star { display: grid; place-items: center; color: #a27618; }
 .player-lookup-username,
 .player-lookup-display-name,
-.player-lookup-partner { min-width: 0; overflow-wrap: anywhere; }
+.player-lookup-pairings { min-width: 0; overflow-wrap: anywhere; }
 .player-lookup-weight { text-align: center; font-variant-numeric: tabular-nums; color: #52665a; }
 .player-lookup-test { display: flex; }
 /* Reserve room for floating labels and keep spacing independent of field type. */

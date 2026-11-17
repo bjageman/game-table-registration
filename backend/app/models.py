@@ -97,8 +97,8 @@ class Event(SignupWarningSettings, Base):
     close_adjust_weights: Mapped[bool | None] = mapped_column(nullable=True)
     close_weights: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
     close_pairs: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
-    close_preferences: Mapped[dict[str, list[str]] | None] = mapped_column(
-        JSON, nullable=True
+    close_pairings: Mapped[dict[str, list[str]] | None] = mapped_column(
+        "close_preferences", JSON, nullable=True
     )
     close_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
@@ -224,8 +224,8 @@ class PlayerProfile(Base):
     weighting: Mapped[float] = mapped_column(Float, default=5.0)
 
 
-class PlayerPreference(Base):
-    """One unordered, reciprocal preference edge within a player scope."""
+class PlayerPairing(Base):
+    """One unordered, reciprocal pairing edge within a player scope."""
 
     __tablename__ = "player_preferences"
     __table_args__ = (
