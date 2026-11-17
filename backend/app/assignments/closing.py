@@ -212,9 +212,8 @@ def _close_and_assign(
                 db, event
             ).review_assignments_before_discord
         seed = event.close_seed or secrets.token_hex(32)
-        pairs = event.close_pairs
         pairings = event.close_pairings
-        if pairings is None and event.close_pairs is None:
+        if pairings is None:
             pairings = player_scope_for_event(event).pairings(db)
         claimed = db.execute(
             update(Event)
@@ -232,7 +231,6 @@ def _close_and_assign(
                 close_started_at=now,
                 close_seed=seed,
                 close_weights=weights,
-                close_pairs=pairs,
                 close_pairings=pairings,
                 close_guarantees=guarantees,
                 close_adjust_weights=adjust_weights,
@@ -263,10 +261,7 @@ def _close_and_assign(
         assert message_id is not None
 
     def with_guarantees(snapshot: dict[str, Any]) -> dict[str, Any]:
-        if pairings is not None:
-            snapshot["pairings"] = pairings
-        else:
-            snapshot["pairs"] = pairs
+        snapshot["pairings"] = pairings
         for player in snapshot["players"]:
             saved = guarantees.get(player["id"], {})
             player.update(
@@ -398,7 +393,6 @@ def _close_and_assign(
                         close_token=None,
                         close_guarantees=None,
                         close_weights=None,
-                        close_pairs=None,
                         close_pairings=None,
                         close_adjust_weights=None,
                         close_review_assignments=None,

@@ -235,10 +235,10 @@ def test_retry_keeps_original_frozen_preferences_after_profile_edits(client):
     assert draw["seed"] == seed
 
 
-def test_pending_close_retains_frozen_pair_snapshot(client):
-    from app.assignments.lottery import VERSION
-
+def test_closing_always_saves_current_pairings_format(client):
     headers, event, path, _ = closing_event(client, review=True)
+    save_profiles(client, headers)
+    link(client, headers, "1", "3")
     with Session(client.app.state.engine) as db:
         saved = db.get(Event, event["id"])
         saved.status = "closing"
@@ -247,6 +247,5 @@ def test_pending_close_retains_frozen_pair_snapshot(client):
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     draw = client.get(path + "/assignments").json()
-    assert draw["version"] == VERSION
-    assert draw["snapshot"]["pairs"] == {"1": "2", "2": "1"}
-    assert "pairings" not in draw["snapshot"]
+    assert draw["snapshot"]["pairings"] == {"1": ["3"], "3": ["1"]}
+    assert "pairs" not in draw["snapshot"]
