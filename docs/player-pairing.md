@@ -24,5 +24,3 @@ Preferences are frozen when closing begins and recorded in the immutable draw sn
 Existing reciprocal Linked Player pairs become preference edges, preserving their organization/workspace and server scope. The old profile partner column is removed. Downgrading can represent only disjoint pairs and retains a deterministic subset of multi-player preferences.
 
 Historical snapshots containing `pairs` retain the previous allocator and promotion behavior for replay and existing rosters. An already-started close with frozen legacy pairs also finishes using those rules. New draws use the individual-winners-first preference behavior above. Existing saved draws are never rewritten.
-
-For replay of draws saved by the initial v6 preference implementation, call `assign(snapshot, seed, version=run.version)`. Its original total-match objective is preserved; the default version uses shorter-list priority.

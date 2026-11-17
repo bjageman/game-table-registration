@@ -14,8 +14,6 @@ def arrange_preferences(
     seed: str,
     assignments: dict[str, str],
     order: list[str],
-    *,
-    prioritize_short_lists: bool = True,
 ) -> dict[str, str]:
     """Improve direct matches without evicting winners or moving guaranteed tables.
 
@@ -58,10 +56,7 @@ def arrange_preferences(
     # Use saved list lengths so one preference outranks a longer list even
     # when some of that longer list's players did not win seats.
     degrees = {pid: len(set(preferences.get(pid, [])) - {pid}) for pid in winners}
-    edge_priority = {
-        edge: min(degrees[edge[0]], degrees[edge[1]]) if prioritize_short_lists else 0
-        for edge in edges
-    }
+    edge_priority = {edge: min(degrees[edge[0]], degrees[edge[1]]) for edge in edges}
     edges.sort(key=lambda edge: edge_priority[edge])
     bucket_indices = {
         priority: index

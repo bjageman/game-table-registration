@@ -239,8 +239,8 @@ def test_retry_keeps_original_frozen_preferences_after_profile_edits(client):
     assert draw["seed"] == seed
 
 
-def test_pending_legacy_close_retains_old_snapshot_and_algorithm_version(client):
-    from app.assignments.lottery import LEGACY_VERSION
+def test_pending_close_retains_frozen_pair_snapshot(client):
+    from app.assignments.lottery import VERSION
 
     headers, event, path, _ = closing_event(client, review=True)
     with Session(client.app.state.engine) as db:
@@ -251,6 +251,6 @@ def test_pending_legacy_close_retains_old_snapshot_and_algorithm_version(client)
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200
     draw = client.get(path + "/assignments").json()
-    assert draw["version"] == LEGACY_VERSION
+    assert draw["version"] == VERSION
     assert draw["snapshot"]["pairs"] == {"1": "2", "2": "1"}
     assert "paired_preferences" not in draw["snapshot"]

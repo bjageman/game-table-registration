@@ -196,15 +196,6 @@ def test_single_preference_takes_priority_over_more_matches_in_larger_lists(seed
     assert result["assignments"]["Bob"] == result["assignments"]["Carl"] == "A"
 
 
-def test_original_v6_preference_draws_keep_their_replay_behavior():
-    from app.assignments.lottery import UNORDERED_VERSION
-
-    result = assign(
-        single_preference_snapshot(), "single preference", version=UNORDERED_VERSION
-    )
-    assert result["assignments"] == {"Alice": "A", "Bob": "A", "Carl": "A", "Anya": "B"}
-
-
 def test_saved_list_length_counts_even_if_some_preferences_did_not_win_seats():
     data = {
         "tables": [{"name": "A", "capacity": 2}, {"name": "B", "capacity": 1}],

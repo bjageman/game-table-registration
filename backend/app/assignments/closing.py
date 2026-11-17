@@ -11,7 +11,7 @@ from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.assignments.assignment_finalization import finalize
-from app.assignments.lottery import LEGACY_VERSION, VERSION, GuaranteeConflict, assign
+from app.assignments.lottery import VERSION, GuaranteeConflict, assign
 from app.discord.discord_api import DiscordAPI
 from app.discord.reactions import reaction_queue
 from app.events.signups import apply_manager_players
@@ -371,7 +371,7 @@ def _close_and_assign(
                 )
             run = LotteryRun(
                 event_id=event_id,
-                version=VERSION if preferences is not None else LEGACY_VERSION,
+                version=VERSION,
                 seed=seed,
                 snapshot=snapshot,
                 result=result,
