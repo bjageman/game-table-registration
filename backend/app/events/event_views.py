@@ -6,16 +6,14 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.assignments.roster import build_current_roster, load_roster_records
 from app.events.signup_warnings import settings as warning_settings
-from app.models import Announcement, DiscordScheduledEvent, Event, LotteryRun
+from app.models import Announcement, DiscordScheduledEvent, Event
 
 
 @dataclass
 class EventRelatedData:
     scheduled: dict[str, DiscordScheduledEvent] = field(default_factory=dict)
     delivery: dict[str, list[Announcement]] = field(default_factory=dict)
-    warnings: dict[str, list[str]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, db: Session, events: list[Event]) -> "EventRelatedData":
@@ -40,26 +38,6 @@ class EventRelatedData:
                 )
             ):
                 data.delivery.setdefault(row.event_id, []).append(row)
-        pair_ids = [
-            event.id
-            for event in events
-            if event.status in ("review", "assigned") and event.close_pairs
-        ]
-        if pair_ids:
-            runs = [
-                run
-                for run in db.scalars(
-                    select(LotteryRun).where(LotteryRun.event_id.in_(pair_ids))
-                )
-                if run.result.get("pairing_conflicts")
-            ]
-            records = load_roster_records(db, [run.event_id for run in runs])
-            data.warnings = {
-                run.event_id: build_current_roster(
-                    db, run, records=records[run.event_id]
-                ).get("pairing_warnings", [])
-                for run in runs
-            }
         return data
 
 
@@ -68,7 +46,6 @@ def serialize_event(
 ) -> dict[str, Any]:
     discord_event = related.scheduled.get(event.id)
     delivery = related.delivery.get(event.id, [])
-    warnings = related.warnings.get(event.id, [])
     return {
         **warning_settings(event),
         "auto_promote_waitlist": event.auto_promote_waitlist,
@@ -100,7 +77,6 @@ def serialize_event(
         "archived_at": event.archived_at,
         "signup_deleted_at": event.signup_deleted_at,
         "close_error": event.close_error or event.reaction_error,
-        "pairing_warnings": warnings,
         "is_test": bool(event.test_signups),
         "test_generation": event.test_signups.get("generation")
         if event.test_signups

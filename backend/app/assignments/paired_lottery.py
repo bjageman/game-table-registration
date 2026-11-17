@@ -1,201 +1,133 @@
-"""Place reciprocal pairs atomically, preferring shared tables before split seating."""
+"""Best-effort direct pairings, after individual lottery winners are fixed."""
 
-from collections import Counter
 from typing import Any
 
-from app.assignments.randomness import digest, weighted_priority
+from app.assignments.matching import place_player
+from app.assignments.randomness import digest
+
+# Bound optional optimization independently of the number of saved pairings.
+MAX_ATTEMPTS = 1000
 
 
-def active_pairs(snapshot: dict[str, Any]) -> dict[str, str]:
+def arrange_pairings(
+    snapshot: dict[str, Any],
+    seed: str,
+    assignments: dict[str, str],
+    order: list[str],
+) -> dict[str, str]:
+    """Improve direct matches without evicting winners or moving guaranteed tables.
+
+    Try each unmatched edge at shared tables, reserving those two seats and
+    matching every other winner around them. Accept only a strict increase in
+    satisfied direct edges, prioritizing the shortest lists. This is deterministic
+    and deliberately best effort:
+    overlapping pairings do not become mandatory transitive groups.
+    """
+    pairings = snapshot.get("pairings", {})
+    rank = {pid: index for index, pid in enumerate(order)}
+    winners = [pid for pid in order if pid in assignments]
     players = {p["id"]: p for p in snapshot["players"]}
-    links = snapshot.get("pairs", {})
-    return {
-        pid: partner
-        for pid, partner in links.items()
-        if pid != partner
-        and pid in players
-        and partner in players
-        and links.get(partner) == pid
-        and set(players[pid]["choices"]) & set(players[partner]["choices"])
-    }
-
-
-def assign_pairs(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
-    from app.assignments.lottery import GuaranteeConflict
-
-    people = {p["id"]: p for p in snapshot["players"]}
     capacities = {t["name"]: t["capacity"] for t in snapshot["tables"]}
-    pairs = active_pairs(snapshot)
-    groups = sorted(
-        {tuple(sorted((pid, pairs[pid]))) if pid in pairs else (pid,) for pid in people}
+    choices = {
+        pid: [players[pid]["guaranteed_table"]]
+        if players[pid].get("guaranteed_table")
+        else sorted(
+            set(players[pid]["choices"]),
+            key=lambda name: digest(seed, f"table:{pid}:{name}"),
+        )
+        for pid in winners
+    }
+    edges = sorted(
+        {
+            (min(pid, other), max(pid, other))
+            for pid, others in pairings.items()
+            if pid in assignments
+            for other in others
+            if other in assignments and other != pid and pid in pairings.get(other, [])
+        },
+        key=lambda edge: (
+            min(rank[edge[0]], rank[edge[1]]),
+            max(rank[edge[0]], rank[edge[1]]),
+        ),
     )
 
-    def guaranteed(group: tuple[str, ...]) -> bool:
-        return any(
-            people[pid].get("guaranteed_seat") or people[pid].get("guaranteed_table")
-            for pid in group
-        )
+    # Use saved list lengths so one pairing outranks a longer list even
+    # when some of that longer list's players did not win seats.
+    degrees = {pid: len(set(pairings.get(pid, [])) - {pid}) for pid in winners}
+    edge_priority = {edge: min(degrees[edge[0]], degrees[edge[1]]) for edge in edges}
+    edges.sort(key=lambda edge: edge_priority[edge])
+    bucket_indices = {
+        priority: index
+        for index, priority in enumerate(sorted(set(edge_priority.values())))
+    }
 
-    def priority(group: tuple[str, ...]) -> tuple[bool, bool, float, tuple[str, ...]]:
-        label = group[0] if len(group) == 1 else "pair:" + ":".join(group)
-        average = sum(float(people[pid]["weight"]) for pid in group) / len(group)
-        # Preserve individual guarantees before attempting inherited pair guarantees;
-        # conflicting pairs can then wait with an organizer alert instead of
-        # preventing an otherwise valid draw for everyone else.
-        return (
-            not guaranteed(group),
-            guaranteed(group) and len(group) == 2,
-            weighted_priority(seed, label, average),
-            group,
-        )
+    def score(placement: dict[str, str]) -> tuple[int, ...]:
+        # Lexicographic buckets keep a single-choice match ahead of any number
+        # of matches from larger lists, while still allowing partial matches.
+        counts = [0] * len(bucket_indices)
+        for a, b in edges:
+            if placement[a] == placement[b]:
+                counts[bucket_indices[edge_priority[(a, b)]]] += 1
+        return tuple(counts)
 
-    groups.sort(key=priority)
-    options: dict[tuple[str, ...], list[tuple[str, ...]]] = {}
-    for group in groups:
-        choices = [
-            set([people[pid]["guaranteed_table"]])
-            if people[pid].get("guaranteed_table")
-            else set(people[pid]["choices"])
-            for pid in group
-        ]
-        shared = set.intersection(*choices)
-        together = [
-            (name,) * len(group)
-            for name in sorted(
-                shared, key=lambda name: digest(seed, f"table:{':'.join(group)}:{name}")
-            )
-            if capacities[name] >= len(group)
-        ]
-        split = (
-            sorted(
-                [(a, b) for a in choices[0] for b in choices[1] if a != b],
-                key=lambda option: digest(seed, f"split:{group}:{option}"),
-            )
-            if len(group) == 2 and not guaranteed(group)
-            else []
-        )
-        options[group] = together + split
-
-    Allocation = dict[tuple[str, ...], tuple[str, ...]]
-
-    def place(
-        group: tuple[str, ...],
-        allocated: Allocation,
-        visited: set[tuple[str, ...]],
-        locked: set[tuple[str, ...]],
-        allow_split_existing: bool,
-    ) -> Allocation | None:
-        if group in visited:
-            return None
-        visited.add(group)
-        previous = allocated.get(group)
-        for option in options[group]:
-            if previous == option:
+    best = dict(assignments)
+    best_score = score(best)
+    attempts = 0
+    improved = True
+    while improved and attempts < MAX_ATTEMPTS:
+        improved = False
+        for first, second in edges:
+            if best[first] == best[second]:
                 continue
-            if (
-                not allow_split_existing
-                and previous is not None
-                and len(group) == 2
-                and previous[0] == previous[1]
-                and option[0] != option[1]
-            ):
-                continue
-            trial = {**allocated, group: option}
-            while True:
-                counts = Counter(name for names in trial.values() for name in names)
-                full = next(
-                    (
-                        name
-                        for name in sorted(capacities)
-                        if counts[name] > capacities[name]
-                    ),
-                    None,
+            shared = sorted(
+                set(choices[first]) & set(choices[second]),
+                key=lambda name: digest(seed, f"preference:{first}:{second}:{name}"),
+            )
+            for table in shared:
+                if attempts >= MAX_ATTEMPTS:
+                    return best
+                attempts += 1
+                if capacities[table] < 2:
+                    continue
+                candidate = _match_winners(
+                    winners, choices, capacities, best, (first, second), table
                 )
-                if full is None:
-                    return trial
-                moved = None
-                # Each group is explored once per insertion, bounding the search
-                # for large rosters while retaining every previously accepted group.
-                for occupant in reversed(groups):
-                    if (
-                        occupant in locked
-                        or occupant == group
-                        or full not in trial.get(occupant, ())
-                    ):
-                        continue
-                    moved = place(
-                        occupant, trial, visited, locked | {group}, allow_split_existing
-                    )
-                    if moved is not None:
-                        trial = moved
-                        break
-                if moved is None:
+                if candidate is None:
+                    continue
+                candidate_score = score(candidate)
+                if candidate_score > best_score:
+                    best, best_score = candidate, candidate_score
+                    improved = True
                     break
-        return None
+    return best
 
-    allocated: Allocation = {}
-    conflicts = []
-    for group in groups:
-        # Exhaust alternatives that preserve already-seated pairs first. A full
-        # preferred table must not split a pair when another choice has room.
-        placed = place(group, allocated, set(), set(), False)
-        if placed is None:
-            placed = place(group, allocated, set(), set(), True)
-        if placed is not None:
-            allocated = placed
-        elif guaranteed(group):
-            if len(group) == 1:
-                raise GuaranteeConflict(
-                    "Guaranteed seats exceed capacity for the selected tables. "
-                    "Adjust guaranteed seats or table capacity before closing signups."
-                )
-            conflicts.append(
-                {
-                    "players": list(group),
-                    "message": f"{people[group[0]]['name']} and "
-                    f"{people[group[1]]['name']} were waitlisted: "
-                    "their guaranteed seats cannot be honored together. "
-                    "An organizer must resolve this conflict.",
-                }
-            )
-    order = [pid for group in groups for pid in group]
-    assignments = {
-        pid: table
-        for group, tables in allocated.items()
-        for pid, table in zip(group, tables, strict=True)
+
+def _match_winners(
+    winners: list[str],
+    choices: dict[str, list[str]],
+    capacities: dict[str, int],
+    previous: dict[str, str],
+    pair: tuple[str, str],
+    table: str,
+) -> dict[str, str] | None:
+    """Reserve a paired players, then retain every other already-selected winner."""
+    seated: dict[str, list[str]] = {name: [] for name in capacities}
+    seated[table] = list(pair)
+    result = dict.fromkeys(pair, table)
+
+    ordered_choices = {
+        pid: [previous[pid], *(name for name in choices[pid] if name != previous[pid])]
+        for pid in winners
     }
-    waiting = [pid for pid in order if pid not in assignments]
-
-    def display(pid: str) -> dict[str, str]:
-        return {"id": pid, "name": people[pid]["name"]}
-
-    return {
-        "order": order,
-        "assignments": assignments,
-        "waitlist": waiting,
-        "pairs": pairs,
-        "pairing_conflicts": conflicts,
-        "pair_guarantees": [
-            pid
-            for group in groups
-            if len(group) == 2 and guaranteed(group)
-            for pid in group
-        ],
-        "pairing_warnings": [conflict["message"] for conflict in conflicts],
-        "tables": [
-            {
-                "name": table["name"],
-                "players": [
-                    display(pid)
-                    for pid in order
-                    if assignments.get(pid) == table["name"]
-                ],
-                "waitlist": [
-                    display(pid)
-                    for pid in waiting
-                    if table["name"] in people[pid]["choices"]
-                ],
-            }
-            for table in snapshot["tables"]
-        ],
-    }
+    for pid in winners:
+        if pid not in pair and not place_player(
+            pid,
+            ordered_choices,
+            capacities,
+            seated,
+            result,
+            set(),
+            fixed=frozenset(pair),
+        ):
+            return None
+    return result

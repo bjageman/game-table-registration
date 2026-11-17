@@ -23,4 +23,4 @@ Pairings are frozen when closing begins and recorded in the immutable draw snaps
 
 Existing reciprocal Linked Player pairs become pairing edges, preserving their organization/workspace and server scope. The old profile partner column is removed. Downgrading can represent only disjoint pairs and retains a deterministic subset of multi-player pairings.
 
-Historical snapshots containing `pairs` retain the previous allocator and promotion behavior for replay and existing rosters. All new and resumed closes use the individual-winners-first pairing behavior above. Existing saved draws are never rewritten.
+All closes and automatic promotions use the current pairing and individual-seat rules. Saved draw results are not rewritten.

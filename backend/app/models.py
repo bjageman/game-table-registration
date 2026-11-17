@@ -96,7 +96,6 @@ class Event(SignupWarningSettings, Base):
     close_review_assignments: Mapped[bool | None] = mapped_column(nullable=True)
     close_adjust_weights: Mapped[bool | None] = mapped_column(nullable=True)
     close_weights: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
-    close_pairs: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     close_pairings: Mapped[dict[str, list[str]] | None] = mapped_column(
         "close_preferences", JSON, nullable=True
     )

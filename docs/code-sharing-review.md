@@ -47,10 +47,7 @@ These repeat announcement part allocation, recipient filtering, durable announce
 
 ### 5. Deterministic lottery sampling
 
-- [lottery.py](../backend/app/assignments/lottery.py) — `digest` and `priority`.
-- [paired_lottery.py](../backend/app/assignments/paired_lottery.py) — `digest` and `priority`.
-
-Both derive the same SHA-256 digest, 52-bit uniform value, and exponential weighted priority. Extract seed/label sampling and weighted score functions. Preserve existing labels, numeric operations, and tie-breakers exactly so historical draws remain replayable. Keep pair grouping, average weights, guarantees, and allocation algorithms separate.
+[lottery.py](../backend/app/assignments/lottery.py) uses shared weighted sampling from [randomness.py](../backend/app/assignments/randomness.py). [paired_lottery.py](../backend/app/assignments/paired_lottery.py) arranges only the already-selected winners, using the shared [matching.py](../backend/app/assignments/matching.py) helper. The old atomic pair allocator is removed.
 
 ### 6. Player search data and matching
 

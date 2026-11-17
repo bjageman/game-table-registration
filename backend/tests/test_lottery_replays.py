@@ -15,6 +15,6 @@ FIXTURES = json.loads(
 
 @pytest.mark.parametrize("case", FIXTURES["cases"])
 def test_shared_sampling_preserves_existing_draws(case):
-    result = assign({**FIXTURES["snapshot"], "pairs": case["pairs"]}, case["seed"])
+    result = assign(FIXTURES["snapshot"], case["seed"])
     actual = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
     assert actual == case["sha256"]

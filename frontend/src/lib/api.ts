@@ -127,7 +127,6 @@ export interface EventRecord extends SignupWarningSettings {
   close_error?: string | null;
   discord_event_error?: string | null;
   has_discord_event?: boolean;
-  pairing_warnings?: string[];
   is_test?: boolean;
   test_generation?: string | null;
   test_user_count?: number;

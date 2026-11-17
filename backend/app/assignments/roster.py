@@ -196,11 +196,6 @@ def build_current_roster(
     waitlisted = {player["id"] for table in tables for player in table["waitlist"]}
     return {
         **result,
-        "pairing_warnings": [
-            conflict["message"]
-            for conflict in result.get("pairing_conflicts", [])
-            if not all(pid in assignments for pid in conflict["players"])
-        ],
         "assignments": assignments,
         "waitlist": list(
             dict.fromkeys(

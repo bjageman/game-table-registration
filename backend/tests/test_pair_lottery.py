@@ -1,7 +1,5 @@
-"""Pairing scenarios agreed with the organizer for issue 156."""
+"""Preferences rearrange individual winners and never inherit guarantees."""
 
-import hashlib
-import math
 from copy import deepcopy
 
 import pytest
@@ -9,150 +7,216 @@ import pytest
 from app.assignments.lottery import assign
 
 
-def draw(choices, capacities, **fields):
-    players = [
-        {
-            "id": str(i),
-            "name": f"Player {i}",
-            "choices": names,
-            "weight": 5.0,
-            **fields.get(str(i), {}),
-        }
-        for i, names in enumerate(choices, 1)
-    ]
+def snapshot(capacity=2):
     return {
-        "players": players,
-        "tables": [{"name": name, "capacity": n} for name, n in capacities.items()],
-        "pairs": {"1": "2", "2": "1"},
+        "tables": [
+            {"name": "A", "capacity": capacity},
+            {"name": "B", "capacity": capacity},
+        ],
+        "players": [
+            {"id": str(i), "name": str(i), "weight": i, "choices": ["A", "B"]}
+            for i in range(1, 9)
+        ],
     }
 
 
-def test_absent_partner_participates_alone_and_no_common_choices_are_independent():
-    alone = draw([["A"]], {"A": 1})
-    assert assign(alone, "solo")["assignments"] == {"1": "A"}
-    separate = draw([["A"], ["B"]], {"A": 1, "B": 1})
-    assert assign(separate, "separate")["assignments"] == {"1": "A", "2": "B"}
+@pytest.mark.parametrize("seed", [str(i) for i in range(100)])
+def test_pairings_preserve_winners_priority_waitlist_capacity_and_replay(seed):
+    data = snapshot()
+    data["players"][0]["guaranteed_seat"] = True
+    data["players"][1]["guaranteed_table"] = "B"
+    baseline = assign(data, seed)
+    winners = list(baseline["assignments"])
+    # Alice's waitlisted pairings cannot gain a seat or inherit her guarantee.
+    data["pairings"] = {
+        "1": [str(i) for i in range(2, 9)],
+        **{str(i): ["1"] for i in range(2, 9)},
+    }
+    saved = deepcopy(data)
+    result = assign(data, seed)
+    assert data == saved
+    assert result == assign(deepcopy(data), seed)
+    assert result["order"] == baseline["order"]
+    assert result["waitlist"] == baseline["waitlist"]
+    assert set(result["assignments"]) == set(winners)
+    assert result["assignments"]["2"] == "B"
+    assert "1" in result["assignments"]
+    for table in result["tables"]:
+        assert len(table["players"]) <= 2
+        for player in table["players"]:
+            assert result["assignments"][player["id"]] == table["name"]
+    assert "pair_guarantees" not in result
 
 
-def test_shared_table_is_preferred_to_splitting():
-    data = draw([["A", "C"], ["B", "C"]], {"A": 1, "B": 1, "C": 2})
-    for seed in map(str, range(30)):
-        assert assign(data, seed)["assignments"] == {"1": "C", "2": "C"}
+def test_alice_and_david_match_while_bob_and_carl_remain_waitlisted():
+    data = snapshot(1)
+    data["tables"] = [{"name": "A", "capacity": 2}]
+    data["players"] = [
+        {
+            "id": pid,
+            "name": pid,
+            "weight": 5,
+            "choices": ["A"],
+            "guaranteed_seat": pid in ("Alice", "David"),
+        }
+        for pid in ("Alice", "Bob", "Carl", "David")
+    ]
+    data["pairings"] = {
+        "Alice": ["Bob", "Carl", "David"],
+        **{pid: ["Alice"] for pid in ("Bob", "Carl", "David")},
+    }
+    result = assign(data, "example")
+    assert result["assignments"] == {"Alice": "A", "David": "A"}
+    assert set(result["waitlist"]) == {"Bob", "Carl"}
 
 
-def test_split_is_allowed_only_when_both_can_be_seated():
-    data = draw([["A", "C"], ["B", "C"]], {"A": 1, "B": 1, "C": 1})
-    for seed in map(str, range(30)):
-        result = assign(data, seed)
-        assert set(result["assignments"]) == {"1", "2"}
-        assert len(set(result["assignments"].values())) == 2
-    partial = draw(
-        [["A", "C"], ["B", "C"], ["B"], ["C"]],
-        {"A": 1, "B": 1, "C": 1},
-        **{"3": {"guaranteed_seat": True}, "4": {"guaranteed_seat": True}},
-    )
-    result = assign(partial, "partial")
-    assert set(result["assignments"]) == {"3", "4"}
-    assert result["waitlist"] == ["1", "2"]
+def test_guarantee_does_not_pull_companion_in_or_waitlist_guaranteed_player():
+    data = {
+        "tables": [{"name": "A", "capacity": 1}],
+        "players": [
+            {
+                "id": pid,
+                "name": pid,
+                "weight": 5,
+                "choices": ["A"],
+                "guaranteed_seat": pid == "Alice",
+            }
+            for pid in ("Alice", "Bob")
+        ],
+        "pairings": {"Alice": ["Bob"], "Bob": ["Alice"]},
+    }
+    result = assign(data, "one seat")
+    assert result["assignments"] == {"Alice": "A"}
+    assert result["waitlist"] == ["Bob"]
 
 
-def test_single_seat_goes_to_single_player_and_pair_waits():
-    data = draw([["A"], ["A"], ["A"]], {"A": 1})
-    for seed in map(str, range(30)):
-        result = assign(data, seed)
-        assert result["assignments"] == {"3": "A"}
-        assert result["waitlist"] == ["1", "2"]
+def test_rearranges_winners_at_full_tables_to_match_direct_pairings():
+    data = snapshot()
+    data["players"] = data["players"][:4]
+    baseline = assign(data, "swap")
+    a = baseline["tables"][0]["players"][0]["id"]
+    b = baseline["tables"][1]["players"][0]["id"]
+    data["pairings"] = {a: [b], b: [a]}
+    result = assign(data, "swap")
+    assert result["assignments"][a] == result["assignments"][b]
+    assert set(result["assignments"]) == set(baseline["assignments"])
 
 
-def test_pair_uses_one_average_weight_draw():
-    data = draw(
-        [["A"], ["A"], ["A"]],
-        {"A": 3},
-        **{"1": {"weight": 8}, "2": {"weight": 2}, "3": {"weight": 4}},
-    )
-    for seed in map(str, range(30)):
+def test_overlapping_pairings_can_share_three_seats_without_becoming_atomic():
+    data = snapshot(3)
+    data["players"] = data["players"][:6]
+    data["pairings"] = {"1": ["2", "3"], "2": ["1"], "3": ["1"]}
+    result = assign(data, "star")
+    assert len({result["assignments"][pid] for pid in ("1", "2", "3")}) == 1
 
-        def score(label, weight):
-            digest = hashlib.sha256(f"{seed}\0priority:{label}".encode()).hexdigest()
-            uniform = (int(digest[:13], 16) + 1) / (2**52 + 1)
-            return -math.log(uniform) / weight
 
-        expected = (
-            ["1", "2", "3"] if score("pair:1:2", 5) < score("3", 4) else ["3", "1", "2"]
+def test_incompatible_table_choices_leave_winners_seated_separately():
+    data = snapshot(1)
+    data["players"] = data["players"][:2]
+    data["players"][0]["choices"] = ["A"]
+    data["players"][1]["choices"] = ["B"]
+    data["pairings"] = {"1": ["2"], "2": ["1"]}
+    assert assign(data, "choices")["assignments"] == {"1": "A", "2": "B"}
+
+
+@pytest.mark.parametrize("seed", range(30))
+def test_varied_graphs_preserve_constraints_and_ignore_list_order(seed):
+    import random
+
+    rng = random.Random(seed)
+    tables = ["A", "B", "C", "D"]
+    data = {
+        "tables": [{"name": name, "capacity": rng.randint(1, 4)} for name in tables],
+        "players": [
+            {
+                "id": str(i),
+                "name": str(i),
+                "weight": rng.uniform(0.1, 10),
+                "choices": rng.sample(tables, rng.randint(1, 4)),
+            }
+            for i in range(20)
+        ],
+    }
+    baseline = assign(data, str(seed))
+    pairings = {str(i): [] for i in range(20)}
+    for i in range(20):
+        for j in range(i + 1, 20):
+            if rng.random() < 0.2:
+                pairings[str(i)].append(str(j))
+                pairings[str(j)].append(str(i))
+    data["pairings"] = pairings
+    result = assign(data, str(seed))
+    assert result["order"] == baseline["order"]
+    assert result["waitlist"] == baseline["waitlist"]
+    assert set(result["assignments"]) == set(baseline["assignments"])
+    for player in data["players"]:
+        if player["id"] in result["assignments"]:
+            assert result["assignments"][player["id"]] in player["choices"]
+    for table in data["tables"]:
+        assert (
+            sum(name == table["name"] for name in result["assignments"].values())
+            <= table["capacity"]
         )
-        assert assign(data, seed)["order"] == expected
+
+    data["pairings"] = {
+        pid: list(reversed(others)) for pid, others in reversed(list(pairings.items()))
+    }
+    assert assign(data, str(seed)) == result
 
 
-def test_guarantee_extends_to_partner_without_changing_their_profile():
-    data = draw([["A"], ["A"], ["A"]], {"A": 2}, **{"1": {"guaranteed_seat": True}})
-    result = assign(data, "guarantee")
-    assert result["assignments"] == {"1": "A", "2": "A"}
-    assert not result["pairing_warnings"]
-    assert "guaranteed_seat" not in data["players"][1]
+def single_pairing_snapshot():
+    return {
+        "tables": [{"name": "A", "capacity": 3}, {"name": "B", "capacity": 2}],
+        "players": [
+            {"id": pid, "name": pid, "weight": 5, "choices": choices}
+            for pid, choices in (
+                ("Alice", ["A", "B"]),
+                ("Anya", ["B"]),
+                ("Bob", ["A"]),
+                ("Carl", ["A"]),
+            )
+        ],
+        "pairings": {
+            "Alice": ["Anya", "Bob", "Carl"],
+            "Anya": ["Alice"],
+            "Bob": ["Alice", "Carl"],
+            "Carl": ["Alice", "Bob"],
+        },
+    }
 
 
-@pytest.mark.parametrize("conflicting", [False, True])
-def test_guaranteed_pair_conflicts_are_waitlisted_with_an_alert(conflicting):
-    data = draw(
-        [["A", "C"], ["B", "C"]],
-        {"A": 1, "B": 1, "C": 1},
-        **{"1": {"guaranteed_seat": True}},
-    )
-    if conflicting:
-        data["players"][0]["guaranteed_table"] = "A"
-        data["players"][1]["guaranteed_table"] = "B"
-    result = assign(data, "conflict")
-    assert result["assignments"] == {}
-    assert result["waitlist"] == ["1", "2"]
-    assert len(result["pairing_warnings"]) == 1
-    assert "organizer" in result["pairing_warnings"][0]
+@pytest.mark.parametrize("seed", [str(i) for i in range(10)])
+def test_single_pairing_takes_priority_over_more_matches_in_larger_lists(seed):
+    data = single_pairing_snapshot()
+    baseline = assign({**data, "pairings": {}}, seed)
+    result = assign(data, seed)
+    assert set(result["assignments"]) == set(baseline["assignments"])
+    assert result["assignments"]["Alice"] == result["assignments"]["Anya"] == "B"
+    assert result["assignments"]["Bob"] == result["assignments"]["Carl"] == "A"
 
 
-def test_pairs_replay_independently_of_input_order_and_respect_capacity():
-    data = draw([["A", "B"], ["A", "B"], ["A"], ["B"]], {"A": 2, "B": 2})
-    for seed in map(str, range(30)):
-        expected = assign(data, seed)
-        changed = deepcopy(data)
-        changed["players"].reverse()
-        for player in changed["players"]:
-            player["choices"].reverse()
-        assert assign(changed, seed) == expected
-        assert set(expected["assignments"]) == {"1", "2", "3", "4"}
-        assert all(len(row["players"]) <= 2 for row in expected["tables"])
-
-
-def test_pair_guarantee_conflict_does_not_abort_other_guaranteed_players():
-    data = draw(
-        [["A"], ["A"], ["A"]],
-        {"A": 2},
-        **{"1": {"guaranteed_seat": True}, "3": {"guaranteed_seat": True}},
-    )
-    result = assign(data, "guarantees")
-    assert result["assignments"] == {"3": "A"}
-    assert result["waitlist"] == ["1", "2"]
-    assert result["pairing_warnings"]
-
-
-def test_later_player_uses_alternative_vacancy_without_splitting_a_seated_pair():
-    data = draw(
-        [["A", "C"], ["B", "C"], ["B", "C"]],
-        {"A": 1, "B": 1, "C": 2},
-        **{"1": {"weight": 10}, "2": {"weight": 10}, "3": {"weight": 0.1}},
-    )
-    for seed in map(str, range(40)):
-        result = assign(data, seed)
-        assert result["assignments"]["1"] == result["assignments"]["2"] == "C"
-        assert result["assignments"]["3"] == "B"
-
-
-def test_split_relocation_remains_available_when_no_pair_preserving_option_fits():
-    data = draw(
-        [["A", "C"], ["B", "C"], ["C"]],
-        {"A": 1, "B": 1, "C": 2},
-        **{"1": {"weight": 10}, "2": {"weight": 10}, "3": {"weight": 0.1}},
-    )
-    for seed in map(str, range(40)):
-        result = assign(data, seed)
-        assert set(result["assignments"]) == {"1", "2", "3"}
-        assert result["assignments"]["3"] == "C"
-        assert result["assignments"]["1"] != result["assignments"]["2"]
+def test_saved_list_length_counts_even_if_some_pairings_did_not_win_seats():
+    data = {
+        "tables": [{"name": "A", "capacity": 2}, {"name": "B", "capacity": 1}],
+        "players": [
+            {
+                "id": pid,
+                "name": pid,
+                "weight": 5,
+                "choices": ["A", "B"],
+                "guaranteed_seat": pid == "Bob",
+            }
+            for pid in ("Alice", "Anya", "Bob")
+        ],
+        "pairings": {
+            "Alice": ["Anya", "Bob"],
+            "Anya": ["Alice"],
+            "Bob": ["Alice", "Absent"],
+            "Absent": ["Bob"],
+        },
+    }
+    # Bob wins earlier but still has a longer list than Anya, even though only
+    # Alice from his list is seated. This cannot override Anya's sole pairing.
+    result = assign(data, "absent pairings")
+    assert result["assignments"]["Alice"] == result["assignments"]["Anya"] == "A"
+    assert result["assignments"]["Bob"] == "B"

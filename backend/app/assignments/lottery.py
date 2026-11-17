@@ -34,11 +34,6 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
         if p.get("guaranteed_table") and p["guaranteed_table"] not in p["choices"]:
             raise ValueError("Guaranteed table must be one of the player's choices")
 
-    from app.assignments.paired_lottery import active_pairs, assign_pairs
-
-    if active_pairs(snapshot):
-        return assign_pairs(snapshot, seed)
-
     def priority(player_id: str) -> tuple[float, str]:
         return weighted_priority(
             seed, player_id, float(by_id[player_id]["weight"])
@@ -80,7 +75,7 @@ def assign(snapshot: dict[str, Any], seed: str) -> dict[str, Any]:
                 "Adjust guaranteed seats or table capacity before closing signups."
             )
     if snapshot.get("pairings"):
-        from app.assignments.pairing_placement import arrange_pairings
+        from app.assignments.paired_lottery import arrange_pairings
 
         assignments = arrange_pairings(snapshot, seed, assignments, order)
         seated = {name: [] for name in capacities}

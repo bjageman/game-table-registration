@@ -53,7 +53,6 @@ def test_event_list_batches_related_reads_and_preserves_scope_and_order(client, 
                     duration_hours=24,
                     tables=[],
                     status="review",
-                    close_pairs={"1": "2"},
                 )
             )
         db.add(
@@ -88,24 +87,6 @@ def test_event_list_batches_related_reads_and_preserves_scope_and_order(client, 
                     error="Delivery error",
                 )
             )
-            db.add(
-                LotteryRun(
-                    event_id=event_id,
-                    version="test",
-                    seed="test",
-                    created_by="owner",
-                    created_at=0,
-                    snapshot={"players": []},
-                    result={
-                        "assignments": {},
-                        "tables": [],
-                        "waitlist": [],
-                        "pairing_conflicts": [
-                            {"players": ["1", "2"], "message": "Pair needs attention"}
-                        ],
-                    },
-                )
-            )
         db.commit()
     with recorded_queries(engine) as statements:
         response = client.get("/api/events")
@@ -121,16 +102,9 @@ def test_event_list_batches_related_reads_and_preserves_scope_and_order(client, 
         and row["assignment_publication_error"] == "Delivery error"
         for row in rows
     )
-    assert all(row["pairing_warnings"] == ["Pair needs attention"] for row in rows)
     for table in (
         "discord_scheduled_events",
         "announcements",
-        "lottery_runs",
-        "event_withdrawals",
-        "event_manual_assignments",
-        "event_waitlist_additions",
-        "event_manager_signups",
-        "event_table_removals",
     ):
         assert (
             sum(f"FROM {table} " in sql.replace("\n", " ") for sql, _ in statements)

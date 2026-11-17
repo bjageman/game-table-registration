@@ -173,7 +173,6 @@ def test_draw_freezes_pair_and_adjusts_each_players_own_weight(client):
     assert set(original["result"]["assignments"]) == set(baseline["assignments"])
     assert original["result"]["waitlist"] == baseline["waitlist"]
     assert "1" in original["result"]["assignments"]
-    assert not closed.json()["pairing_warnings"]
     link(client, headers, "1", "3")
     assert client.get(path + "/assignments").json() == original
     assert (
@@ -242,7 +241,6 @@ def test_closing_always_saves_current_pairings_format(client):
     with Session(client.app.state.engine) as db:
         saved = db.get(Event, event["id"])
         saved.status = "closing"
-        saved.close_pairs = {"1": "2", "2": "1"}
         db.commit()
     client.app.state.discord.poll_message.return_value = closing_message()
     assert client.post(path + "/close", headers=headers).status_code == 200

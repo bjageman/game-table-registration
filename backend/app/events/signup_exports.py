@@ -131,10 +131,7 @@ def event_pdf(
     )
     card_width = (page_width - 2 * margin) / 2 - 8
     cards: list[list[Any]] = []
-    pairs = getattr(event, "close_pairs", None) or {}
-    pairings = getattr(event, "close_pairings", None)
-    if pairings is None:
-        pairings = {pid: [partner] for pid, partner in pairs.items()}
+    pairings = getattr(event, "close_pairings", None) or {}
     names = {
         player.get("id"): player.get("display_name") or player["name"]
         for table in rows

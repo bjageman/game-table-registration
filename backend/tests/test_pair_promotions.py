@@ -1,131 +1,38 @@
-from copy import deepcopy
+"""Pairings do not change individual waitlist promotion or manual edits."""
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.assignments.player_changes import (
-    add_player_to_waitlist,
     assign_player_to_table,
     remove_player_from_roster,
 )
 from app.assignments.roster import build_current_roster
-from app.models import (
-    Announcement,
-    AssignmentPreference,
-    Event,
-    LotteryRun,
-    PlayerProfile,
-    PromotionDM,
-)
+from app.models import LotteryRun, PromotionDM
 
 
-def pair_waitlist(engine, *, capacity=1, split=False):
+def save_pairings(engine):
     with Session(engine) as db:
-        event = db.get(Event, "event")
-        event.tables = [{"name": "Table A", "capacity": capacity}]
-        run = db.get(LotteryRun, "event")
-        result = deepcopy(run.result)
-        result["pairs"] = {"2": "3", "3": "2"}
-        if split:
-            event.tables = [*event.tables, {"name": "Table B", "capacity": 1}]
-            result["tables"].append(
-                {
-                    "name": "Table B",
-                    "players": [],
-                    "waitlist": [{"id": "3", "name": "Carol"}],
-                }
-            )
-        run.result = result
-        db.commit()
-
-
-def test_pair_waits_for_two_seats_and_single_behind_them_gets_one(promotion_db):
-    engine = promotion_db
-    pair_waitlist(engine)
-    with Session(engine) as db:
-        db.add(
-            PlayerProfile(
-                scope_key="user:owner",
-                guild_id="guild",
-                discord_id="4",
-                discord_name="Single",
-            )
-        )
-        db.commit()
-    assert add_player_to_waitlist(engine, "guild", "event", "4", "Table A")
-    assert remove_player_from_roster(engine, "guild", "event", "1")
-    with Session(engine) as db:
-        current = build_current_roster(db, db.get(LotteryRun, "event"))
-        assert current["assignments"] == {"4": "Table A"}
-        assert current["waitlist"] == ["2", "3"]
-
-
-def test_pair_promotes_together_when_two_seats_are_available(promotion_db):
-    engine = promotion_db
-    pair_waitlist(engine, capacity=2)
-    assert remove_player_from_roster(engine, "guild", "event", "1")
-    with Session(engine) as db:
-        current = build_current_roster(db, db.get(LotteryRun, "event"))
-        assert current["assignments"] == {"2": "Table A", "3": "Table A"}
-        assert current["waitlist"] == []
-        assert set(db.scalars(select(PromotionDM.discord_id))) == {"2", "3"}
-
-
-def test_pair_can_promote_to_separate_eligible_tables_if_both_get_a_seat(promotion_db):
-    engine = promotion_db
-    pair_waitlist(engine, split=True)
-    with Session(engine) as db:
-        db.get(AssignmentPreference, "user:owner").announce_table_changes = True
-        db.commit()
-    assert remove_player_from_roster(engine, "guild", "event", "1")
-    with Session(engine) as db:
-        current = build_current_roster(db, db.get(LotteryRun, "event"))
-        assert current["assignments"] == {"2": "Table A", "3": "Table B"}
-        assert current["waitlist"] == []
-        notices = list(db.scalars(select(PromotionDM)))
-        assert {(notice.discord_id, notice.table_name) for notice in notices} == {
-            ("2", "Table A"),
-            ("3", "Table B"),
-        }
-        post = db.scalar(select(Announcement).where(Announcement.kind == "promotion"))
-        assert (
-            "<@2> has been promoted from the waitlist to **Table A**."
-            in post.payload["content"]
-        )
-        assert (
-            "<@3> has been promoted from the waitlist to **Table B**."
-            in post.payload["content"]
-        )
-
-
-def test_manual_addition_does_not_automatically_move_the_partner(promotion_db):
-    engine = promotion_db
-    pair_waitlist(engine)
-    assert assign_player_to_table(engine, "guild", "event", "2", "Table A")
-    with Session(engine) as db:
-        current = build_current_roster(db, db.get(LotteryRun, "event"))
-        assert current["assignments"]["2"] == "Table A"
-        assert "3" in current["waitlist"]
-        assert "3" not in current["assignments"]
-
-
-def test_one_partner_withdrawing_does_not_remove_the_other(promotion_db):
-    engine = promotion_db
-    pair_waitlist(engine, capacity=2)
-    assert assign_player_to_table(engine, "guild", "event", "2", "Table A")
-    assert remove_player_from_roster(engine, "guild", "event", "1")
-    with Session(engine) as db:
-        current = build_current_roster(db, db.get(LotteryRun, "event"))
-        assert current["assignments"]["2"] == "Table A"
-
-
-def test_new_preferences_promote_one_waiter_without_needing_companions(promotion_db):
-    with Session(promotion_db) as db:
         run = db.get(LotteryRun, "event")
         run.snapshot = {**run.snapshot, "pairings": {"2": ["3"], "3": ["2"]}}
         db.commit()
+
+
+def test_promotes_one_waiter_without_needing_their_paired_player(promotion_db):
+    save_pairings(promotion_db)
     assert remove_player_from_roster(promotion_db, "guild", "event", "1")
     with Session(promotion_db) as db:
         current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"2": "Table A"}
         assert current["waitlist"] == ["3"]
+        assert list(db.scalars(select(PromotionDM.discord_id))) == ["2"]
+
+
+def test_manual_addition_does_not_automatically_move_the_paired_player(promotion_db):
+    save_pairings(promotion_db)
+    assert assign_player_to_table(promotion_db, "guild", "event", "2", "Table A")
+    with Session(promotion_db) as db:
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
+        assert current["assignments"]["2"] == "Table A"
+        assert "3" in current["waitlist"]
+        assert "3" not in current["assignments"]
