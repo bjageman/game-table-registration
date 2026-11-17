@@ -15,14 +15,7 @@ def arrange_pairings(
     assignments: dict[str, str],
     order: list[str],
 ) -> dict[str, str]:
-    """Improve direct matches without evicting winners or moving guaranteed tables.
-
-    Try each unmatched edge at shared tables, reserving those two seats and
-    matching every other winner around them. Accept only a strict increase in
-    satisfied direct edges, prioritizing the shortest lists. This is deterministic
-    and deliberately best effort:
-    overlapping pairings do not become mandatory transitive groups.
-    """
+    """Arrange seated players, prioritizing shorter pairing lists."""
     pairings = snapshot.get("pairings", {})
     rank = {pid: index for index, pid in enumerate(order)}
     winners = [pid for pid in order if pid in assignments]
@@ -51,8 +44,7 @@ def arrange_pairings(
         ),
     )
 
-    # Use saved list lengths so one pairing outranks a longer list even
-    # when some of that longer list's players did not win seats.
+    # Count saved pairings even when some players did not win seats.
     degrees = {pid: len(set(pairings.get(pid, [])) - {pid}) for pid in winners}
     edge_priority = {edge: min(degrees[edge[0]], degrees[edge[1]]) for edge in edges}
     edges.sort(key=lambda edge: edge_priority[edge])
@@ -62,8 +54,7 @@ def arrange_pairings(
     }
 
     def score(placement: dict[str, str]) -> tuple[int, ...]:
-        # Lexicographic buckets keep a single-choice match ahead of any number
-        # of matches from larger lists, while still allowing partial matches.
+        # Earlier tuple entries give shorter lists strict priority.
         counts = [0] * len(bucket_indices)
         for a, b in edges:
             if placement[a] == placement[b]:

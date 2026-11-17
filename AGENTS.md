@@ -2,6 +2,8 @@
 
 - Ask clarifying questions when requirements or expected behavior are unclear, especially before making assumptions that affect behavior, scope, or defaults.
 
+- Keep comments and docstrings brief. Put detailed algorithm explanations in documentation.
+
 # Repository workflow
 
 - Work on feature branches and commit completed changes.
