@@ -31,7 +31,7 @@ it("adds multiple preferences without replacing the existing selection, then rem
   await waitFor(() => expect(onChanged).toHaveBeenCalledWith([...initial, { id: "3", name: "Carol" }]));
   expect(screen.getByText("Bob")).toBeVisible();
   expect(screen.getByText("Carol")).toBeVisible();
-  expect(fetchMock).toHaveBeenLastCalledWith("/api/players/1/preferences", expect.objectContaining({
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/players/1/pairings", expect.objectContaining({
     method: "PUT", body: JSON.stringify({ player_ids: ["2", "3"] }),
     headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }),
   }));

@@ -39,7 +39,7 @@ export default function PlayerPreferencesEditor({ playerId, preferences, csrf, r
     if (inFlight.current) return;
     inFlight.current = true; setBusy(true); setOpen(false); onBusy(true); setError(""); onError?.("");
     try {
-      const result = await api<{ profile: { paired_preferences: PreferredPlayer[] } }>(`/players/${encodeURIComponent(playerId)}/preferences`, {
+      const result = await api<{ profile: { paired_preferences: PreferredPlayer[] } }>(`/players/${encodeURIComponent(playerId)}/pairings`, {
         ...mutationOptions(csrf, { player_ids: values.map((value) => value.id) }), method: "PUT",
       });
       onChanged(result.profile.paired_preferences);

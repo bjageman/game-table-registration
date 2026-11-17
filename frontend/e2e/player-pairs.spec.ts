@@ -9,7 +9,7 @@ test("manages reciprocal preferences without linking preferences to each other",
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/me") return route.fulfill({ json: { username: "organizer", csrf: "csrf" } });
     if (path === "/api/players") return route.fulfill({ json: Object.keys(names).map(profile) });
-    const match = path.match(/^\/api\/players\/(\d+)(\/preferences)?$/);
+    const match = path.match(/^\/api\/players\/(\d+)(\/pairings)?$/);
     if (!match) return route.fallback();
     const id = match[1];
     if (!match[2]) return route.fulfill({ json: profile(id) });

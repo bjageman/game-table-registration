@@ -160,8 +160,8 @@ def register(context: ApplicationContext) -> None:
                 db.commit()
             return profile_data(db, request, player_id, profile)
 
-    @router.put("/api/players/{player_id}/preferences")
-    def save_preferences(
+    @router.put("/api/players/{player_id}/pairings")
+    def save_pairings(
         player_id: str, body: PlayerPreferencesInput, request: Request
     ) -> dict[str, Any]:
         context.authenticated(request, True)

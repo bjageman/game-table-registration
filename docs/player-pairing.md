@@ -6,7 +6,7 @@ Preferences, profiles, weights, guarantees, display names, and test identities b
 
 Player Information has a searchable, unordered multi-player **Paired Player Preferences** field, replacing Linked Player. Adding Alice → Bob also adds Bob → Alice. Adding Alice → Carol does not add Bob → Carol. Removing a preference removes the same edge from both players, preserving all their other preferences. Multiple organizers' changes are serialized within the profile scope.
 
-PUT `/api/players/{id}/preferences` accepts `{ "player_ids": ["other-id", ...] }` and replaces that player's direct preferences. An empty list removes them all. IDs must refer to known players in the same organization/workspace and server; self-preferences are rejected and duplicates are ignored. Moderator access and CSRF protection are required. Read-only members can view preferences.
+PUT `/api/players/{id}/pairings` accepts `{ "player_ids": ["other-id", ...] }` and replaces that player's direct preferences. An empty list removes them all. IDs must refer to known players in the same organization/workspace and server; self-preferences are rejected and duplicates are ignored. Moderator access and CSRF protection are required. Read-only members can view preferences.
 
 ## Draws
 

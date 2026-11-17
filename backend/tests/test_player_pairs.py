@@ -30,7 +30,7 @@ def save_profiles(client, headers, ids=("1", "2", "3", "4")):
 
 def link(client, headers, source, *targets):
     return client.put(
-        f"/api/players/{source}/preferences",
+        f"/api/players/{source}/pairings",
         headers=headers,
         json={"player_ids": list(targets)},
     )
