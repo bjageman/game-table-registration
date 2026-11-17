@@ -11,6 +11,7 @@ export default function GeneralSettings({ csrf, restricted = false, onAccessErro
   csrf: string; restricted?: boolean; onAccessError: (error: unknown) => boolean; onSaved?: () => Promise<void>;
 }) {
   const [settings, setSettings] = useState<GeneralSettingsValues>(GENERAL_SETTINGS_DEFAULTS);
+  const [retentionHours, setRetentionHours] = useState(String(GENERAL_SETTINGS_DEFAULTS.waitlist_guarantee_retention_hours));
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -24,6 +25,7 @@ export default function GeneralSettings({ csrf, restricted = false, onAccessErro
     api<Partial<GeneralSettingsValues>>("/settings/assignment", { signal: controller.signal }).then((value) => {
       if (!controller.signal.aborted) {
         setSettings({ ...GENERAL_SETTINGS_DEFAULTS, ...value });
+        setRetentionHours(String(value.waitlist_guarantee_retention_hours ?? GENERAL_SETTINGS_DEFAULTS.waitlist_guarantee_retention_hours));
         setLoaded(true);
         setError("");
       }
@@ -50,6 +52,7 @@ export default function GeneralSettings({ csrf, restricted = false, onAccessErro
       setSaved(true);
     } catch (failure) {
       setSettings(previous);
+      setRetentionHours(String(previous.waitlist_guarantee_retention_hours));
       if (!onAccessError(failure)) setError(errorMessage(failure));
     } finally {
       inFlight.current = false;
@@ -57,8 +60,19 @@ export default function GeneralSettings({ csrf, restricted = false, onAccessErro
     }
   }
 
-  function toggle(field: keyof Omit<GeneralSettingsValues, "timezone">, value: boolean) {
+  function toggle(field: keyof Omit<GeneralSettingsValues, "timezone" | "waitlist_guarantee_retention_hours">, value: boolean) {
     void updateSettings({ [field]: value });
+  }
+
+  function saveRetentionHours() {
+    const hours = Number(retentionHours);
+    if (!retentionHours.trim() || !Number.isInteger(hours) || hours < 1 || hours > 768) {
+      setError("Choose whole hours from 1 to 768.");
+      return;
+    }
+    if (hours !== settings.waitlist_guarantee_retention_hours) {
+      void updateSettings({ waitlist_guarantee_retention_hours: hours });
+    }
   }
 
   return <section id="assignment-settings" className="assignment-settings" aria-label="General settings">
@@ -81,6 +95,19 @@ export default function GeneralSettings({ csrf, restricted = false, onAccessErro
         onChange={(event) => toggle("dm_waitlist_promotions", event.target.checked)} />} /></div>
       <div className="general-setting-option"><FormControlLabel label="Send private messages for table assignments" control={<Checkbox id="general-dm-assignments" checked={settings.dm_assignments} disabled={busy || restricted}
         onChange={(event) => toggle("dm_assignments", event.target.checked)} />} /></div>
+      <div className="general-setting-option">
+        <FormControlLabel label="Waitlisted players will be guaranteed a seat for the next event" control={<Checkbox id="general-guarantee-waitlisted" checked={settings.guarantee_waitlisted_players} disabled={busy || restricted}
+          onChange={(event) => toggle("guarantee_waitlisted_players", event.target.checked)} />} />
+        {settings.guarantee_waitlisted_players && <div className="short-notice-setting">
+          <FormControlLabel label="Player keeps the guarantee if placed on short notice" control={<Checkbox id="general-keep-short-notice-guarantee" checked={settings.keep_waitlist_guarantee_on_short_notice} disabled={busy || restricted}
+            onChange={(event) => toggle("keep_waitlist_guarantee_on_short_notice", event.target.checked)} />} />
+          <FormField id="general-guarantee-retention-hours" label="Hours before event" type="number" value={retentionHours} className="short-notice-hours" fullWidth={false}
+            disabled={busy || restricted || !settings.keep_waitlist_guarantee_on_short_notice}
+            slotProps={{ htmlInput: { min: 1, max: 768, step: 1 } }}
+            onChange={(event) => setRetentionHours(event.target.value)} onBlur={saveRetentionHours}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveRetentionHours(); } }} />
+        </div>}
+      </div>
       <div className="general-setting-option general-timezone-setting">
         <FormField id="general-timezone" select label="Timezone" value={settings.timezone ?? ""} disabled={busy || restricted}
           slotProps={{ select: { native: true } }}

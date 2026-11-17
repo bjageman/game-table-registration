@@ -1,0 +1,11 @@
+{
+  "exceptions": [
+    {
+      "package": "picomatch",
+      "advisory": "GHSA-fc5q-39xc-vjpf",
+      "versions": ["4.0.7"],
+      "expires": "2026-12-01",
+      "reason": "No patched release is available. This dependency is limited to development/build tooling (Vite, Vitest and their glob tooling); glob patterns are maintained in the repository, not supplied by app users. Remove the exception when a patched release is adopted."
+    }
+  ]
+}

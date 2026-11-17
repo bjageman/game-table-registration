@@ -3,12 +3,12 @@
 from sqlalchemy.orm import Session
 
 from app.models import AssignmentPreference, Event
-from app.settings.general_settings import BOOLEAN_DEFAULTS
+from app.settings.general_settings import GeneralSettingsValues
 
 
 def for_scope(db: Session, key: str) -> AssignmentPreference:
     return db.get(AssignmentPreference, key) or AssignmentPreference(
-        scope_key=key, **BOOLEAN_DEFAULTS
+        scope_key=key, **GeneralSettingsValues().model_dump()
     )
 
 

@@ -82,7 +82,7 @@ export default function PlayerLookup({ session, onAccessError }: {
         </button>)}</div>
         <ul className="player-lookup-list">{sorted.map((player) => <li key={player.discord_id}>
         <button id={`player-open-${player.discord_id}`} type="button" className="player-lookup-item" onClick={() => setSelected(player)}>
-          <span className="player-lookup-star">{player.guaranteed_seat && <Star size={18} fill="currentColor" aria-label="Always guaranteed" />}</span>
+          <span className="player-lookup-star">{player.guaranteed_seat && <Star size={18} fill="currentColor" aria-label="Guaranteed seat" />}</span>
           <span className="player-lookup-username">{player.discord_name}</span>
           <span className="player-lookup-display-name">{player.real_name || "—"}</span>
           <span className="player-lookup-partner">{player.partner?.name || "—"}</span>

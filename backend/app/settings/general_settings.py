@@ -16,6 +16,9 @@ class GeneralSettingsValues(BaseModel):
     show_open_signup_players: bool = True
     dm_waitlist_promotions: bool = True
     dm_assignments: bool = True
+    guarantee_waitlisted_players: bool = False
+    waitlist_guarantee_retention_hours: int = Field(default=5, ge=1, le=768)
+    keep_waitlist_guarantee_on_short_notice: bool = True
 
     @field_validator("timezone")
     @classmethod

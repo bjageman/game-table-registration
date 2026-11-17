@@ -1,3 +1,7 @@
+# User preferences
+
+- Ask clarifying questions when requirements or expected behavior are unclear, especially before making assumptions that affect behavior, scope, or defaults.
+
 # Repository workflow
 
 - Work on feature branches and commit completed changes.
