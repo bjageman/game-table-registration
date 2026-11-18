@@ -21,8 +21,8 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
     waiting = {"id": "3", "name": "Waiting", "choices": ["First"], "weight": 1.0}
     result = {
         "tables": [
-            {"name": "First", "players": [one]},
-            {"name": "Second", "players": [two]},
+            {"name": "First", "players": [one], "waitlist": [waiting]},
+            {"name": "Second", "players": [two], "waitlist": [waiting]},
         ],
         "waitlist": ["3"],
     }
@@ -38,10 +38,36 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
     assert [(field["name"], field["inline"]) for field in fields] == [
         ("First (1)", True),
         ("Second (1)", True),
-        ("Waitlist (1)", False),
     ]
-    assert fields[2]["value"] == "1. <@3>"
+    assert fields[0]["value"] == f"<@1>\n\n⌛ Waitlist\n1. <@3>{TABLE_FIELD_SPACER}"
+    assert fields[1]["value"] == f"<@2>\n\n⌛ Waitlist\n1. <@3>{TABLE_FIELD_SPACER}"
     assert all(field["value"].endswith(TABLE_FIELD_SPACER) for field in fields[:2])
+
+
+def test_table_waitlist_preserves_order_without_notifying_waiting_players():
+    event = Event(id="event", guild_id="guild", title="Games", message_id="poll")
+    seated = {"id": "1", "name": "Seated"}
+    first = {"id": "3", "name": "First waiting"}
+    second = {"id": "2", "name": "Second waiting"}
+    message = build_assignment_messages(
+        event,
+        "channel",
+        {
+            "tables": [
+                {"name": "A", "players": [seated]},
+                {"name": "B", "players": [], "waitlist": [first, second]},
+            ],
+            "waitlist": ["2", "3"],
+        },
+        {"players": [seated]},
+    )[0]
+    fields = message["embeds"][0]["fields"]
+    assert fields[0]["value"] == f"<@1>{TABLE_FIELD_SPACER}"
+    assert fields[1]["value"] == (
+        "No players assigned.\n\n⌛ Waitlist\n1. <@3>\n2. <@2>" + TABLE_FIELD_SPACER
+    )
+    assert message["content"] == "<@1>"
+    assert message["allowed_mentions"] == {"parse": [], "users": ["1"]}
 
 
 def test_assignment_embed_shares_signup_title_and_event_layout():
@@ -88,7 +114,7 @@ def test_large_announcements_are_complete_bounded_and_private():
     ]
     snapshot = {"players": players}
     result = {
-        "tables": [{"name": "A", "players": players[:300]}],
+        "tables": [{"name": "A", "players": players[:300], "waitlist": players[300:]}],
         "waitlist": [p["id"] for p in players[300:]],
     }
     chunks = build_assignment_messages(event, "channel", result, snapshot)
