@@ -71,12 +71,27 @@ def test_public_assignment_link_is_opt_in_scoped_and_live(client):
             "tables",
         }
         assert all(
-            set(player) == {"name"}
+            set(player) == {"id", "name"}
             for table in data["tables"]
             for key in ("players", "waitlist")
             for player in table[key]
         )
         rows = client.get(path + "/signups").json()
+        public_ids = {
+            p["id"]
+            for table in data["tables"]
+            for key in ("players", "waitlist")
+            for p in table[key]
+        }
+        private_ids = {
+            str(p["id"])
+            for table in rows
+            for key in ("players", "waitlist")
+            for p in table[key]
+        }
+        assert len(public_ids) == len(private_ids)
+        assert public_ids.isdisjoint(private_ids)
+        assert public.get(f"/api/public/events/{token}").json() == data
         removed = rows[0]["players"][0]["id"]
         assert (
             client.delete(

@@ -685,3 +685,9 @@ dd {
 .short-notice-setting { display: flex; align-items: center; gap: 12px; margin: 12px 0 0 32px; }
 .short-notice-setting > label { flex: 1; min-width: 0; margin-right: 0; }
 .short-notice-hours { width: 8rem; flex-shrink: 0; }
+
+.public-checklist-player { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.public-checklist-name { display: flex; align-items: center; gap: 8px; flex: 1 1 100px; min-width: 0; }
+.public-checklist-name input { flex-shrink: 0; }
+.public-player-arrived { text-decoration: line-through; }
+.public-player-notes { min-width: 0; width: 120px; flex: 1 1 120px; padding: 6px; }
