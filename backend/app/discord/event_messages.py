@@ -161,18 +161,14 @@ def build_assignment_messages(
             )
             for p in table["players"]
         ]
-        sections.append(
-            (header, table_entries or [("No players assigned.", None)], True)
-        )
-    by_id = {p["id"]: p for p in snapshot["players"]}
-    for table in result["tables"]:
-        for player in table.get("waitlist", []):
-            by_id.setdefault(player["id"], player)
-    waiting: list[tuple[str, str | None]] = []
-    for i, pid in enumerate(result["waitlist"], 1):
-        waiting.append((f"{i}. {player_reference(by_id[pid])}", None))
-    if waiting:
-        sections.append((f"Waitlist ({len(waiting)})", waiting, False))
+        if not table_entries:
+            table_entries.append(("No players assigned.", None))
+        for index, player in enumerate(table.get("waitlist", []), 1):
+            line = f"{index}. {player_reference(player)}"
+            if index == 1:
+                line = f"\n⌛ Waitlist\n{line}"
+            table_entries.append((line, None))
+        sections.append((header, table_entries, True))
     poll_url = (
         f"https://discord.com/channels/{event.guild_id}/{channel_id}/{event.message_id}"
     )
