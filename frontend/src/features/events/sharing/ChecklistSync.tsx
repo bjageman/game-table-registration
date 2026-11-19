@@ -22,7 +22,7 @@ function SyncConflict({ checklist }: { checklist: Checklist }) {
 }
 
 export default function ChecklistSync({ checklist }: { checklist: Checklist }) {
-  return <>
+  return (
     <div className="public-checklist-sync-controls">
     <label className="public-checklist-sync" htmlFor="public-checklist-sync">
       <input id="public-checklist-sync" type="checkbox" checked={checklist.syncing} aria-disabled={checklist.busy}
@@ -31,6 +31,11 @@ export default function ChecklistSync({ checklist }: { checklist: Checklist }) {
     </label>
     {checklist.busy && checklist.disabled && <span role="status">Syncing…</span>}
     </div>
+  );
+}
+
+export function ChecklistSyncFeedback({ checklist }: { checklist: Checklist }) {
+  return <>
     {checklist.syncError && !checklist.conflict && <p role="alert" className="error">{checklist.syncError}</p>}
     {checklist.conflict && <SyncConflict checklist={checklist} />}
   </>;

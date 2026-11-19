@@ -712,3 +712,13 @@ dd {
 
 .checklist-sync-actions { flex-wrap: nowrap; gap: 8px; }
 .checklist-sync-actions > button { flex: 1; min-width: 0; padding: 10px 8px; }
+
+@media (min-width: 1024px) {
+  .public-event-overview { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title sync" "location location" "details details" "description description"; column-gap: 24px; margin-bottom: 16px; }
+  .public-event-overview > header { grid-area: title; min-width: 0; }
+  .public-event-overview h1 { overflow-wrap: anywhere; }
+  .public-event-location { grid-area: location; }
+  .public-event-overview > .event-details { grid-area: details; }
+  .public-event-description { grid-area: description; }
+  .public-event-overview > .public-checklist-sync-controls { grid-area: sync; margin-bottom: 0; }
+}

@@ -11,7 +11,7 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
     return route.fulfill({ json: { entries, revision } });
   });
   await page.route("**/api/public/events/checklist", route => route.fulfill({ json: {
-    title: "Game night", description: "", location: "", starts_at: 2000000000, archived: false,
+    title: "Game night", description: "Bring your games", location: "Game Store", starts_at: 2000000000, archived: false,
     tables: [{ name: "Table One", capacity: 2,
       players: [{ id: "alice", name: "Alice with a very long display name" }],
       waitlist: [{ id: "bob", name: "Bob" }] },
@@ -40,6 +40,15 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
     }
   }
   await expect(page.getByRole("textbox")).toHaveCount(0);
+  const titleBox = await page.getByRole("heading", { name: "Game night", exact: true }).boundingBox();
+  const syncBox = await page.locator(".public-checklist-sync-controls").boundingBox();
+  if (page.viewportSize()!.width >= 1024) {
+    expect(syncBox!.x).toBeGreaterThan(titleBox!.x + titleBox!.width);
+    expect(syncBox!.y + syncBox!.height / 2).toBeCloseTo(titleBox!.y + titleBox!.height / 2, 0);
+  } else {
+    const descriptionBox = await page.getByText("Bring your games", { exact: true }).boundingBox();
+    expect(syncBox!.y).toBeGreaterThanOrEqual(descriptionBox!.y + descriptionBox!.height);
+  }
   const arrived = page.getByRole("checkbox", { name: "Mark Alice with a very long display name as arrived" });
   for (const row of await page.locator(".public-checklist-player").all()) {
     const checkbox = await row.getByRole("checkbox").boundingBox();
