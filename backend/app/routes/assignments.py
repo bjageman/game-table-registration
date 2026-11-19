@@ -1,7 +1,5 @@
 """Assignments API routes."""
 
-import hashlib
-import hmac
 import logging
 import secrets
 import time
@@ -27,6 +25,7 @@ from app.models import (
     Event,
     LotteryRun,
 )
+from app.public_checklist import public_player_id
 from app.schemas import (
     RetryAnnouncementInput,
 )
@@ -211,11 +210,7 @@ def register(context: ApplicationContext) -> None:
                         **{
                             key: [
                                 {
-                                    "id": hmac.new(
-                                        token.encode(),
-                                        str(player["id"]).encode(),
-                                        hashlib.sha256,
-                                    ).hexdigest(),
+                                    "id": public_player_id(token, str(player["id"])),
                                     "name": player.get("display_name")
                                     or player["name"],
                                 }

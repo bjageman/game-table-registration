@@ -704,3 +704,21 @@ dd {
 .organization-member-name { max-width: min(30vw, 24rem); }
 
 .table-assigned-player:has(> .truncate-name:only-child), .table-waitlist li:has(> .truncate-name:only-child) { grid-template-columns: minmax(0, 1fr); }
+
+.public-checklist-sync-controls { display: flex; align-items: center; gap: 16px; min-height: 24px; margin-bottom: 16px; }
+.public-checklist-sync { display: flex; align-items: center; gap: 8px; }
+.public-checklist-sync input { width: 22px; height: 22px; margin: 0; }
+.public-checklist-name:has(input:disabled) { cursor: wait; }
+
+.checklist-sync-actions { flex-wrap: nowrap; gap: 8px; }
+.checklist-sync-actions > button { flex: 1; min-width: 0; padding: 10px 8px; }
+
+@media (min-width: 1024px) {
+  .public-event-overview { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title sync" "location location" "details details" "description description"; column-gap: 24px; margin-bottom: 16px; }
+  .public-event-overview > header { grid-area: title; min-width: 0; }
+  .public-event-overview h1 { overflow-wrap: anywhere; }
+  .public-event-location { grid-area: location; }
+  .public-event-overview > .event-details { grid-area: details; }
+  .public-event-description { grid-area: description; }
+  .public-event-overview > .public-checklist-sync-controls { grid-area: sync; margin-bottom: 0; }
+}

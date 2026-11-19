@@ -65,6 +65,12 @@ class Event(SignupWarningSettings, Base):
     public_share_token: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True
     )
+    public_checklist: Mapped[dict[str, bool]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
+    public_checklist_revision: Mapped[int] = mapped_column(
+        default=0, server_default="0"
+    )
     guild_id: Mapped[str] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(300), default="")

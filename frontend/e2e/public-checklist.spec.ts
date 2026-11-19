@@ -1,8 +1,17 @@
 import { test, expect } from "./fixtures";
 
 test("public attendance survives reload on desktop and mobile", async ({ page }) => {
+  let entries: Record<string, boolean> = { alice: false, bob: false, Two: false, Three: false, Four: false };
+  let revision = 0;
+  await page.route("**/api/public/events/checklist/checklist", route => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON();
+      entries = { ...entries, [body.player_id]: body.arrived }; revision++;
+    }
+    return route.fulfill({ json: { entries, revision } });
+  });
   await page.route("**/api/public/events/checklist", route => route.fulfill({ json: {
-    title: "Game night", description: "", location: "", starts_at: 2000000000, archived: false,
+    title: "Game night", description: "Bring your games", location: "Game Store", starts_at: 2000000000, archived: false,
     tables: [{ name: "Table One", capacity: 2,
       players: [{ id: "alice", name: "Alice with a very long display name" }],
       waitlist: [{ id: "bob", name: "Bob" }] },
@@ -31,6 +40,17 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
     }
   }
   await expect(page.getByRole("textbox")).toHaveCount(0);
+  const titleBox = await page.getByRole("heading", { name: "Game night", exact: true }).boundingBox();
+  const syncBox = await page.locator(".public-checklist-sync-controls").boundingBox();
+  if (page.viewportSize()!.width >= 1024) {
+    expect(syncBox!.x).toBeGreaterThan(titleBox!.x + titleBox!.width);
+    expect(syncBox!.y + syncBox!.height / 2).toBeCloseTo(titleBox!.y + titleBox!.height / 2, 0);
+  } else {
+    const descriptionBox = await page.getByText("Bring your games", { exact: true }).boundingBox();
+    expect(syncBox!.y).toBeGreaterThanOrEqual(descriptionBox!.y + descriptionBox!.height);
+  }
+  const count = page.locator("#public-event-table-1 .table-player-count");
+  await expect(count).toHaveText("0/1");
   const arrived = page.getByRole("checkbox", { name: "Mark Alice with a very long display name as arrived" });
   for (const row of await page.locator(".public-checklist-player").all()) {
     const checkbox = await row.getByRole("checkbox").boundingBox();
@@ -51,17 +71,23 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
   // Press the empty space at the right edge, away from the checkbox and name.
   await playerBox.click({ position: { x: playerBounds!.width - 8, y: playerBounds!.height / 2 } });
   await expect(arrived).toBeChecked();
+  await expect(count).toHaveText("1/1");
   await expect(playerBox).toHaveCSS("outline-style", "none");
   await page.getByRole("checkbox", { name: "Mark Bob as arrived" }).check();
+  await expect(count).toHaveText("1/1");
   await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "none");
   await page.reload();
   await expect(arrived).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Mark Bob as arrived" })).toBeChecked();
   await playerBox.click({ position: { x: playerBounds!.width - 8, y: playerBounds!.height / 2 } });
   await expect(arrived).not.toBeChecked();
+  await expect(count).toHaveText("0/1");
+  await expect(arrived).toBeEnabled();
   await arrived.focus();
   await page.keyboard.press("Space");
   await expect(arrived).toBeChecked();
+  await expect(arrived).toBeEnabled();
+  await arrived.focus();
   await page.keyboard.press("Space");
   await expect(arrived).not.toBeChecked();
   await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "none");
