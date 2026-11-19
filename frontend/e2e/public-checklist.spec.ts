@@ -14,14 +14,32 @@ test("public attendance and notes survive reload on desktop and mobile", async (
   await expect(page.getByText("Test Player 051", { exact: true })).toHaveCount(2);
   for (const name of await page.getByText("Test Player 051", { exact: true }).all()) {
     await expect(name).toBeVisible();
+    expect(await name.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     expect(await name.evaluate(element => {
       const range = document.createRange();
       range.selectNodeContents(element);
       return range.getClientRects().length;
     })).toBe(1);
   }
+  if (page.viewportSize()!.width >= 1024) {
+    const cards = await page.locator("#public-event-tables > li").all();
+    const boxes = await Promise.all(cards.map(card => card.boundingBox()));
+    expect(boxes[0]!.y).toBe(boxes[1]!.y);
+    expect(boxes[1]!.y).toBe(boxes[2]!.y);
+    expect(boxes[0]!.x).toBeLessThan(boxes[1]!.x);
+    expect(boxes[1]!.x).toBeLessThan(boxes[2]!.x);
+  }
   const arrived = page.getByRole("checkbox", { name: "Mark Alice with a very long display name as arrived" });
   const notes = page.getByRole("textbox", { name: "Notes for Alice with a very long display name" });
+  for (const row of await page.locator(".public-checklist-player").all()) {
+    const checkbox = await row.getByRole("checkbox").boundingBox();
+    const name = await row.locator(".public-checklist-name > span:last-child").boundingBox();
+    const notes = await row.getByRole("textbox").boundingBox();
+    expect(checkbox!.x + checkbox!.width).toBeLessThanOrEqual(name!.x);
+    expect(name!.x + name!.width).toBeLessThanOrEqual(notes!.x);
+    expect(checkbox!.y + checkbox!.height / 2).toBeCloseTo(notes!.y + notes!.height / 2, 0);
+    expect(name!.y + name!.height / 2).toBeCloseTo(notes!.y + notes!.height / 2, 0);
+  }
   const checkboxBox = await arrived.boundingBox();
   const targetBox = await arrived.locator("..").boundingBox();
   expect(checkboxBox).not.toBeNull();
