@@ -39,7 +39,7 @@ export default function SwapPlayers({ eventId, csrf, source, rows, onClose, onSa
   function close() { if (!saving) onClose(); }
   return <dialog ref={dialog} className="event-modal" aria-labelledby="swap-player-heading"
     onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (isBackdropClick(event)) close(); }}>
-    <ModalHeader><h2 id="swap-player-heading">Swap {source.player.display_name || source.player.name}</h2></ModalHeader>
+    <ModalHeader><h2 id="swap-player-heading" className="truncate-name" title={`Swap ${source.player.display_name || source.player.name}`}>Swap {source.player.display_name || source.player.name}</h2></ModalHeader>
     <p>Select a player to exchange placements. Other waitlisted players will stay in place.</p>
     {error && <p role="alert" className="error">{error}</p>}
     <div className="add-player-search">
@@ -48,7 +48,7 @@ export default function SwapPlayers({ eventId, csrf, source, rows, onClose, onSa
       <ul className="add-player-results" aria-label="Swap candidates">
         {candidates.map((target) => <li key={`${target.table}:${target.waitlist}:${target.player.id}`}>
           <button type="button" disabled={saving} onClick={() => void swap(target)}>
-            <strong>{target.player.display_name || target.player.name}</strong><span>{target.table}{target.waitlist ? " · Waitlist" : " · Seated"}</span>
+            <strong className="truncate-name" title={target.player.display_name || target.player.name}>{target.player.display_name || target.player.name}</strong><span>{target.table}{target.waitlist ? " · Waitlist" : " · Seated"}</span>
           </button>
         </li>)}
       </ul>

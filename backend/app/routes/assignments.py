@@ -1,5 +1,7 @@
 """Assignments API routes."""
 
+import hashlib
+import hmac
 import logging
 import secrets
 import time
@@ -208,7 +210,15 @@ def register(context: ApplicationContext) -> None:
                         ),
                         **{
                             key: [
-                                {"name": player.get("display_name") or player["name"]}
+                                {
+                                    "id": hmac.new(
+                                        token.encode(),
+                                        str(player["id"]).encode(),
+                                        hashlib.sha256,
+                                    ).hexdigest(),
+                                    "name": player.get("display_name")
+                                    or player["name"],
+                                }
                                 for player in row.get(key, [])
                             ]
                             for key in ("players", "waitlist")

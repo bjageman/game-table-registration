@@ -528,7 +528,6 @@ dd {
 .add-player-results button:hover, .add-player-results button:focus-visible { background: #e8f2ea; }
 .add-player-results button span { font-size: 0.85rem; color: #52665a; }
 .table-assigned-player { margin: 3px 0; }
-.table-player-row .player-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-guarantee, .player-weight { border: 0; background: transparent; padding: 1px 3px; flex-shrink: 0; }
 .player-guarantee { color: #54401b; font-size: 1.1rem; }
 .player-weight { justify-self: end; font-variant-numeric: tabular-nums; color: #222; }
@@ -567,10 +566,16 @@ dd {
 }
 .share-link-label { display: grid; gap: 8px; }
 .share-link-label input { width: 100%; padding: 10px; }
-.public-event-page { max-width: 1100px; margin: 0 auto; padding: 24px; }
-.public-event-page .event-tables { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.public-event-page { width: 100%; padding: 24px; }
+.public-event-page .event-tables { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+@media (min-width: 1024px) {
+  .public-event-page .event-tables { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1280px) {
+  .public-event-page .event-tables { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .public-event-page .table-heading h2 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
-.public-event-page ol { padding-left: 24px; }
+.public-event-page ol { padding-left: 0; list-style: none; }
 .public-event-page li { overflow-wrap: anywhere; }
 .public-event-page .event-table ol li { margin-bottom: 6px; }
 .public-event-description { white-space: pre-wrap; }
@@ -685,3 +690,17 @@ dd {
 .short-notice-setting { display: flex; align-items: center; gap: 12px; margin: 12px 0 0 32px; }
 .short-notice-setting > label { flex: 1; min-width: 0; margin-right: 0; }
 .short-notice-hours { width: 8rem; flex-shrink: 0; }
+
+.public-checklist-player { display: flex; align-items: center; gap: 8px; }
+.public-checklist-name { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; padding: 4px 8px; border: 1px solid #bdc9c0; border-radius: 6px; background: #fff; cursor: pointer; }
+.public-checklist-name:hover { background: #edf4ee; }
+.public-checklist-name:has(input:checked) { background: #e2efe5; border-color: #387d64; }
+.public-checklist-checkbox { display: flex; align-items: center; justify-content: center; flex: 0 0 44px; height: 44px; }
+.public-checklist-checkbox input { width: 22px; height: 22px; margin: 0; cursor: pointer; }
+
+/* Keep full names in the DOM and title; shorten only their visual display. */
+.truncate-name { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.add-player-results button > .truncate-name { width: 100%; }
+.organization-member-name { max-width: min(30vw, 24rem); }
+
+.table-assigned-player:has(> .truncate-name:only-child), .table-waitlist li:has(> .truncate-name:only-child) { grid-template-columns: minmax(0, 1fr); }

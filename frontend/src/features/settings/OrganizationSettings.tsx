@@ -185,7 +185,7 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
       <div className="organization-member-table-wrap"><table className="organization-member-table">
         <thead><tr><th scope="col">Username</th><th scope="col">Permission</th><th scope="col">Delete</th></tr></thead>
         <tbody>{members.map((member) => <tr id={`organization-member-${member.user_id}`} key={member.user_id}>
-          <td>{member.username}</td>
+          <td><span className="truncate-name organization-member-name" title={member.username}>{member.username}</span></td>
           <td><select id={`organization-member-role-${member.user_id}`} aria-label={`Permission for ${member.username}`} value={member.role}
             disabled={busy || selected.role !== "admin" || member.user_id === selected.created_by}
             onChange={(event) => void changeRole(member, event.target.value as Organization["role"])}>
@@ -211,9 +211,9 @@ export default function OrganizationSettings({ csrf, userId, onSaved, onAccessEr
         <label htmlFor="organization-user-search">Search users</label>
         <input id="organization-user-search" type="search" value={query} placeholder="Search known users" onChange={(event) => { setQuery(event.target.value); setNewUser(undefined); }} />
         {query.trim().length >= 2 && !newUser && <ul className="add-player-results" role="listbox" aria-label="Suggested users">
-          {results.map((user) => <li key={user.id} role="option" aria-selected="false"><button id={`organization-user-select-${user.id}`} type="button" onClick={() => { setNewUser(user); setQuery(user.username); }}>{user.username} ({user.id})</button></li>)}
+          {results.map((user) => <li key={user.id} role="option" aria-selected="false"><button id={`organization-user-select-${user.id}`} type="button" onClick={() => { setNewUser(user); setQuery(user.username); }}><span className="truncate-name" title={`${user.username} (${user.id})`}>{user.username} ({user.id})</span></button></li>)}
         </ul>}
-        {newUser && <p>Selected: {newUser.username}</p>}
+        {newUser && <p className="truncate-name" title={`Selected: ${newUser.username}`}>Selected: {newUser.username}</p>}
         <label htmlFor="organization-role">Permission</label>
         <select id="organization-role" value={role} onChange={(event) => setRole(event.target.value as Organization["role"])}>
           <option value="user">User (read only)</option><option value="editor">Editor (full edit)</option><option value="admin">Admin (edit and add users)</option>

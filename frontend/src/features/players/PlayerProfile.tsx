@@ -177,7 +177,7 @@ export default function PlayerProfile({ player, csrf, readOnly = false, onClose,
     {pairError && <p role="alert" className="player-profile-feedback">{pairError}</p>}
     {notice && <p role="status" className="player-profile-feedback">{notice}</p>}
     {!profile && error && <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button>}
-    <dl className="player-discord-name"><dt>Discord Name</dt><dd>{profile?.discord_name ?? player.name}</dd></dl>
+    <dl className="player-discord-name"><dt>Discord Name</dt><dd className="truncate-name" title={profile?.discord_name ?? player.name}>{profile?.discord_name ?? player.name}</dd></dl>
     {!profile && !error && <p><LoadingIndicator label="Loading player information…" /></p>}
     {profile && <div aria-label="Player information">
       <FormFields>
