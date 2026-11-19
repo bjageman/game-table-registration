@@ -44,7 +44,7 @@ export default function PublicEvent({ token }: { token: string }) {
       <ChecklistSyncFeedback checklist={checklist} />
       {checklist.saveError && <p role="alert" className="error">{checklist.saveError}</p>}
       <ul id="public-event-tables" className="event-tables" aria-label="Table assignments">{event.tables.map((table, index) => <li id={`public-event-table-${index + 1}`} className="event-table" key={table.name}>
-        <div className="table-heading"><h2>{table.name}</h2><span className="table-player-count">{table.players.length}/{table.capacity}</span></div>
+        <div className="table-heading"><h2>{table.name}</h2><span className="table-player-count">{table.players.filter(player => checklist.entries[player.id]?.arrived).length}/{table.players.length}</span></div>
         {table.players.length ? <ol>{table.players.map((player) => <ChecklistPlayer key={player.id} player={player}
           controlId={`public-table-${index + 1}-seated-${player.id}`} entry={checklist.entries[player.id]} disabled={checklist.disabled}
           onChange={(change) => checklist.update(player.id, change)} />)}</ol> : <p>No seated players.</p>}

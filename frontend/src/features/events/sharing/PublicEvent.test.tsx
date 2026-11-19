@@ -19,7 +19,7 @@ it("shows public seats and waitlists without player editing controls", async () 
   expect(await screen.findByRole("heading", { name: "Monday games" })).toBeVisible();
   expect(screen.getByText("Mary")).toBeVisible();
   expect(screen.getByText("Dan")).toBeVisible();
-  expect(screen.getByText("1/1")).toBeVisible();
+  expect(screen.getByText("0/1")).toBeVisible();
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
   expect(fetch).toHaveBeenCalledWith("/api/public/events/shared-token", expect.objectContaining({ cache: "no-store" }));
@@ -38,13 +38,17 @@ it("persists independent checkmarks by player and public link", async () => {
   mockRoster();
   const view = render(<PublicEvent token="one" />);
   const checks = await screen.findAllByRole("checkbox", { name: "Mark Alex as arrived" });
+  expect(screen.getByText("0/2")).toBeVisible();
   fireEvent.click(checks[0]);
+  expect(screen.getByText("1/2")).toBeVisible();
   expect(checks[0]).toBeChecked();
   expect(checks[1]).not.toBeChecked();
   fireEvent.click(checks[0]);
+  expect(screen.getByText("0/2")).toBeVisible();
   expect(checks[0]).not.toBeChecked();
   fireEvent.click(checks[0]);
   fireEvent.click(screen.getByRole("checkbox", { name: "Mark Chris as arrived" }));
+  expect(screen.getByText("1/2")).toBeVisible();
   view.unmount();
   const restored = render(<PublicEvent token="one" />);
   expect((await screen.findAllByRole("checkbox", { name: "Mark Alex as arrived" }))[0]).toBeChecked();
@@ -62,6 +66,7 @@ it("retains entries when polling renames, reorders, or promotes players", async 
   roster.tables[0].waitlist = [];
   fireEvent(document, new Event("visibilitychange"));
   expect(await screen.findByRole("checkbox", { name: "Mark New name as arrived" })).toBeChecked();
+  expect(screen.getByText("1/2")).toBeVisible();
   expect(screen.getByRole("checkbox", { name: "Mark Alex as arrived" })).not.toBeChecked();
 });
 
