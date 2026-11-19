@@ -45,13 +45,23 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
   expect(checkboxBox!.height).toBeGreaterThanOrEqual(22);
   expect(checkboxBox!.x + checkboxBox!.width / 2).toBeCloseTo(targetBox!.x + targetBox!.width / 2, 0);
   expect(checkboxBox!.y + checkboxBox!.height / 2).toBeCloseTo(targetBox!.y + targetBox!.height / 2, 0);
-  await arrived.check();
+  const playerBox = arrived.locator("xpath=ancestor::label");
+  const playerBounds = await playerBox.boundingBox();
+  // Press the empty space at the right edge, away from the checkbox and name.
+  await playerBox.click({ position: { x: playerBounds!.width - 8, y: playerBounds!.height / 2 } });
+  await expect(arrived).toBeChecked();
   await page.getByRole("checkbox", { name: "Mark Bob as arrived" }).check();
   await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "line-through");
   await page.reload();
   await expect(arrived).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Mark Bob as arrived" })).toBeChecked();
-  await arrived.uncheck();
+  await playerBox.click({ position: { x: playerBounds!.width - 8, y: playerBounds!.height / 2 } });
+  await expect(arrived).not.toBeChecked();
+  await arrived.focus();
+  await page.keyboard.press("Space");
+  await expect(arrived).toBeChecked();
+  await page.keyboard.press("Space");
+  await expect(arrived).not.toBeChecked();
   await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "none");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
