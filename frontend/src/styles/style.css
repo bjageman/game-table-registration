@@ -696,4 +696,3 @@ dd {
 .public-checklist-checkbox { display: flex; align-items: center; justify-content: center; flex: 0 0 44px; height: 44px; }
 .public-checklist-checkbox input { width: 22px; height: 22px; margin: 0; cursor: pointer; }
 .public-checklist-name > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.public-player-arrived { text-decoration: line-through; }

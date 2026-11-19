@@ -37,7 +37,6 @@ it("persists independent checkmarks by player and public link", async () => {
   fireEvent.click(checks[0]);
   expect(checks[0]).toBeChecked();
   expect(checks[1]).not.toBeChecked();
-  expect(screen.getAllByText("Alex")[0]).toHaveClass("public-player-arrived");
   fireEvent.click(checks[0]);
   expect(checks[0]).not.toBeChecked();
   fireEvent.click(checks[0]);

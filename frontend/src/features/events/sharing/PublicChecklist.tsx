@@ -45,7 +45,7 @@ export function ChecklistPlayer({ player, entry, onChange, controlId }: {
           <input id={`${controlId}-arrived`} type="checkbox" checked={entry?.arrived ?? false}
             aria-label={`Mark ${player.name} as arrived`} onChange={(event) => onChange({ arrived: event.target.checked })} />
         </span>
-        <span title={player.name} className={entry?.arrived ? "public-player-arrived" : undefined}>{player.name}</span>
+        <span title={player.name}>{player.name}</span>
       </label>
     </div>
   </li>;

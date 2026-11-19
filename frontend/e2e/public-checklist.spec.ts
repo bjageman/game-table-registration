@@ -52,7 +52,7 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
   await expect(arrived).toBeChecked();
   await expect(playerBox).toHaveCSS("outline-style", "none");
   await page.getByRole("checkbox", { name: "Mark Bob as arrived" }).check();
-  await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "line-through");
+  await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "none");
   await page.reload();
   await expect(arrived).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Mark Bob as arrived" })).toBeChecked();
