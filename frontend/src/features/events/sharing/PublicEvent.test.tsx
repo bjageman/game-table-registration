@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import PublicEvent from "./PublicEvent";
+
+beforeEach(() => {
+  for (const token of ["one", "two", "shared-token"]) localStorage.setItem(`public-event-checklist-sync:${token}`, "false");
+});
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 

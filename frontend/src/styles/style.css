@@ -704,3 +704,8 @@ dd {
 .organization-member-name { max-width: min(30vw, 24rem); }
 
 .table-assigned-player:has(> .truncate-name:only-child), .table-waitlist li:has(> .truncate-name:only-child) { grid-template-columns: minmax(0, 1fr); }
+
+.public-checklist-sync-controls { display: flex; align-items: center; gap: 16px; min-height: 24px; margin-bottom: 16px; }
+.public-checklist-sync { display: flex; align-items: center; gap: 8px; }
+.public-checklist-sync input { width: 22px; height: 22px; margin: 0; }
+.public-checklist-name:has(input:disabled) { cursor: wait; opacity: 0.7; }

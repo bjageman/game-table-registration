@@ -1,6 +1,15 @@
 import { test, expect } from "./fixtures";
 
 test("public attendance survives reload on desktop and mobile", async ({ page }) => {
+  let entries: Record<string, boolean> = { alice: false, bob: false, Two: false, Three: false, Four: false };
+  let revision = 0;
+  await page.route("**/api/public/events/checklist/checklist", route => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON();
+      entries = { ...entries, [body.player_id]: body.arrived }; revision++;
+    }
+    return route.fulfill({ json: { entries, revision } });
+  });
   await page.route("**/api/public/events/checklist", route => route.fulfill({ json: {
     title: "Game night", description: "", location: "", starts_at: 2000000000, archived: false,
     tables: [{ name: "Table One", capacity: 2,
@@ -59,9 +68,12 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
   await expect(page.getByRole("checkbox", { name: "Mark Bob as arrived" })).toBeChecked();
   await playerBox.click({ position: { x: playerBounds!.width - 8, y: playerBounds!.height / 2 } });
   await expect(arrived).not.toBeChecked();
+  await expect(arrived).toBeEnabled();
   await arrived.focus();
   await page.keyboard.press("Space");
   await expect(arrived).toBeChecked();
+  await expect(arrived).toBeEnabled();
+  await arrived.focus();
   await page.keyboard.press("Space");
   await expect(arrived).not.toBeChecked();
   await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "none");

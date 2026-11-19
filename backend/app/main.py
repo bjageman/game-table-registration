@@ -18,6 +18,7 @@ from app.routes import (
     organizations,
     players,
     preferences,
+    public_checklist,
     signups,
 )
 from app.settings.connection_settings import register_settings
@@ -65,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         events,
         signups,
         assignments,
+        public_checklist,
         cleanup,
     ):
         feature.register(context)
