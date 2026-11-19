@@ -11,21 +11,17 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.closing import close_and_assign
-from app.assignments.withdrawals import current_result
+from app.assignments.roster import build_current_roster
+from app.assignments.swaps import swap_players
 from app.context import ApplicationContext
-from app.discord.announcements import (
-    deliver_event,
-)
+from app.discord.announcements import deliver_event
 from app.discord.message_cleanup import (
     remove_signup_message as remove_signup_message_service,
 )
 from app.events.player_edits import edit_player
 from app.events.publication import mark_signup_closed
 from app.events.signup_exports import event_csv, event_pdf, summary_csv
-from app.events.signups import apply_manager_signups, table_rows
-from app.events.test_signups import (
-    add_to_rows,
-)
+from app.events.signups import signup_rows
 from app.events.test_signups import (
     allowed as test_users_allowed,
 )
@@ -37,7 +33,6 @@ from app.models import (
     EventPlayerSetting,
     LotteryRun,
     PlayerProfile,
-    TableSignup,
 )
 from app.players.player_profiles import for_event as player_scope_for_event
 from app.players.player_profiles import remember_poll_players
@@ -45,6 +40,7 @@ from app.schemas import (
     AssignedAddInput,
     EventPlayerSettingInput,
     ManagerSignupInput,
+    SwapPlayersInput,
     TestPopulationInput,
 )
 
@@ -73,15 +69,12 @@ def register(context: ApplicationContext) -> None:
                 run = db.get(LotteryRun, event_id)
                 if run is None:
                     raise HTTPException(503, "Saved placements are unavailable")
-                rows: list[dict[str, Any]] = current_result(db, run)["tables"]
+                rows: list[dict[str, Any]] = build_current_roster(db, run)["tables"]
                 return list_names(rows, event_id, include_settings=False)
             message_id = event.message_id
             tables = event.tables
-            population = event.test_signups
             if event.signup_mode in ("custom", "reactions"):
-                custom_result = apply_manager_signups(
-                    db, event, add_to_rows(table_rows(db, event), population)
-                )
+                custom_result = signup_rows(db, event)
                 db.rollback()
         if custom_result is not None:
             return list_names(custom_result, event_id)
@@ -92,7 +85,7 @@ def register(context: ApplicationContext) -> None:
         )
         with DBSession(engine) as db:
             event = context.scoped_event(db, event_id, request)
-            rows = apply_manager_signups(db, event, add_to_rows(rows, population))
+            rows = signup_rows(db, event, rows)
             remember_poll_players(db, event, rows)
             db.commit()
         return list_names(rows, event_id)
@@ -191,6 +184,22 @@ def register(context: ApplicationContext) -> None:
         )
         return {"ok": True}
 
+    @router.post("/api/events/{event_id}/swap-players")
+    def swap_event_players(
+        event_id: str, body: SwapPlayersInput, request: Request
+    ) -> dict[str, Any]:
+        authenticated(request, True)
+        valid_player_id(body.player_id)
+        valid_player_id(body.other_player_id)
+        with DBSession(engine) as db:
+            event = context.scoped_event(db, event_id, request)
+            guild_id = event.guild_id
+        if not swap_players(engine, guild_id, event_id, body):
+            raise HTTPException(
+                409, "Placements changed or cannot be swapped; refresh and try again"
+            )
+        return {"ok": True}
+
     @router.put("/api/events/{event_id}/manager-players/{player_id}")
     def add_manager_player(
         event_id: str, player_id: str, body: ManagerSignupInput, request: Request
@@ -269,21 +278,23 @@ def register(context: ApplicationContext) -> None:
                     table["name"] for table in event.tables
                 }:
                     raise HTTPException(422, "Unknown table")
-                signed_up = any(
-                    p["id"] == player_id and body.guaranteed_table in p["choices"]
-                    for p in (event.test_signups or {}).get("players", [])
-                )
-                if event.signup_mode in ("custom", "reactions"):
-                    signup = db.get(TableSignup, (event_id, player_id))
-                    signed_up = signed_up or bool(
-                        signup and body.guaranteed_table in signup.choices
-                    )
-                elif event.message_id and not signed_up:
-                    signed_up = any(
+
+                def includes_player(rows: list[dict[str, Any]]) -> bool:
+                    return any(
                         row["name"] == body.guaranteed_table
                         and any(p["id"] == player_id for p in row["players"])
-                        for row in scoped_discord(request).table_signups(
-                            event.message_id, event.tables
+                        for row in rows
+                    )
+
+                signed_up = includes_player(signup_rows(db, event))
+                if event.signup_mode == "poll" and event.message_id and not signed_up:
+                    signed_up = includes_player(
+                        signup_rows(
+                            db,
+                            event,
+                            scoped_discord(request).table_signups(
+                                event.message_id, event.tables
+                            ),
                         )
                     )
                 if not signed_up:

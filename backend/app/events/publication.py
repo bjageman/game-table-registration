@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.context import ApplicationContext
 from app.discord.discord_api import DiscordAPI
+from app.discord.event_messages import EMOJIS, build_signup_message
 from app.discord.open_signup_rosters import with_initial_roster
 from app.discord.reactions import publication as reaction_publication
-from app.discord.signup_messages import EMOJIS, signup_body
 from app.models import (
     DiscordScheduledEvent,
     Event,
@@ -88,15 +88,12 @@ def publish_event(
                 else None
             )
             assignment_preferences = preferences_for_event(db, event)
-            include_roster = bool(
-                assignment_preferences
-                and assignment_preferences.show_open_signup_players
-            )
+            include_roster = assignment_preferences.show_open_signup_players
             payload = (
                 reaction_publication(event, closes_at, include_roster)
                 if event.signup_mode == "reactions"
                 else {
-                    **signup_body(event, "poll", closes_at, include_roster),
+                    **build_signup_message(event, "poll", closes_at, include_roster),
                     "allowed_mentions": {"parse": []},
                     "poll": {
                         "question": {"text": "Which tables would you attend?"},

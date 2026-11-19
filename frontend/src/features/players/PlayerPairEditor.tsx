@@ -74,7 +74,7 @@ export default function PlayerPairEditor({ playerId, partner, csrf, readOnly = f
       onChange={(_, value) => { if (value?.id !== partner?.id) void link(value?.id ?? null); }}
       renderOption={(props, option) => {
         const { key, ...attributes } = props;
-        return <li key={key} {...attributes}>{option.name} ({option.id})</li>;
+        return <li key={key} {...attributes}><span className="truncate-name" title={`${option.name} (${option.id})`}>{option.name} ({option.id})</span></li>;
       }}
       renderInput={(params) => <FormField {...params} label="Linked Player"
         slotProps={{ ...params.slotProps, inputLabel: { ...params.slotProps.inputLabel, shrink: true } }} />} />

@@ -438,6 +438,10 @@ def test_organization_connection_is_independent_of_personal_and_other_orgs(clien
         "show_open_signup_players": False,
         "review_assignments_before_discord": True,
         "dm_waitlist_promotions": False,
+        "dm_assignments": True,
+        "guarantee_waitlisted_players": False,
+        "waitlist_guarantee_retention_hours": 5,
+        "keep_waitlist_guarantee_on_short_notice": True,
         "timezone": None,
         "automatic_weight_adjustment": False,
         "announce_table_changes": True,
@@ -526,3 +530,32 @@ def test_server_list_skips_inaccessible_servers_but_reports_discord_outages(
         assert response.json()["guilds"] == [{"id": "100", "name": "Available"}]
     else:
         assert response.status_code == 502
+
+
+@pytest.mark.parametrize("saved_destination", [False, True])
+def test_permission_checks_release_database_connections(client, saved_destination):
+    from app.models import UserSettings
+
+    login(client)
+    engine = client.app.state.engine
+    if saved_destination:
+        with DBSession(engine) as db:
+            db.add(
+                UserSettings(
+                    user_id="owner",
+                    guild_id="guild",
+                    channel_id="channel",
+                    guild_name="Server",
+                    channel_name="Signups",
+                )
+            )
+            db.commit()
+
+    def check_permission(_user_id):
+        assert engine.pool.checkedout() == 0
+
+    api = client.app.state.discord
+    checker = api.authorize_destination if saved_destination else api.authorize
+    checker.side_effect = check_permission
+    assert client.get("/api/events").status_code == 200
+    checker.assert_called_with("owner")

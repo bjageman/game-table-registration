@@ -82,10 +82,10 @@ export default function PlayerLookup({ session, onAccessError }: {
         </button>)}</div>
         <ul className="player-lookup-list">{sorted.map((player) => <li key={player.discord_id}>
         <button id={`player-open-${player.discord_id}`} type="button" className="player-lookup-item" onClick={() => setSelected(player)}>
-          <span className="player-lookup-star">{player.guaranteed_seat && <Star size={18} fill="currentColor" aria-label="Always guaranteed" />}</span>
-          <span className="player-lookup-username">{player.discord_name}</span>
-          <span className="player-lookup-display-name">{player.real_name || "—"}</span>
-          <span className="player-lookup-partner">{player.partner?.name || "—"}</span>
+          <span className="player-lookup-star">{player.guaranteed_seat && <Star size={18} fill="currentColor" aria-label="Guaranteed seat" />}</span>
+          <span className="player-lookup-username truncate-name" title={player.discord_name}>{player.discord_name}</span>
+          <span className="player-lookup-display-name truncate-name" title={player.real_name || "—"}>{player.real_name || "—"}</span>
+          <span className="player-lookup-partner truncate-name" title={player.partner?.name || "—"}>{player.partner?.name || "—"}</span>
           <span className="player-lookup-weight" aria-label={`${player.weighting.toFixed(1)} weighting`}>{player.weighting.toFixed(1)}</span>
           <span className="player-lookup-test">{player.is_test && <span className="badge">Test User</span>}</span>
         </button>

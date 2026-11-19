@@ -10,15 +10,15 @@ from threading import Event as StopEvent
 from threading import Thread
 from typing import Any
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.closing import close_and_assign
 from app.context import ApplicationContext
-from app.discord.announcements import (
-    dispatch_due,
-)
+from app.discord.announcements import dispatch_due
+from app.discord.discord_api import DiscordAPI
 from app.discord.event_threads import synchronize_due as synchronize_threads
 from app.discord.gateway import SignupGateway
 from app.discord.open_signup_rosters import synchronize_due as synchronize_open_rosters
@@ -61,6 +61,14 @@ def application_lifespan(
             if config.discord_gateway_enabled and config.configured
             else None
         )
+        discord_api = application.state.discord
+        shared_http = (
+            httpx.Client(timeout=15)
+            if isinstance(discord_api, DiscordAPI) and discord_api.http_client is None
+            else None
+        )
+        if shared_http:
+            discord_api.http_client = shared_http
         application.state.gateway = gateway
         gateway_task = asyncio.create_task(gateway.run_listener()) if gateway else None
 
@@ -209,5 +217,8 @@ def application_lifespan(
                 await asyncio.gather(gateway_task, return_exceptions=True)
             if worker.is_alive():
                 await asyncio.to_thread(worker.join, 20)
+            if shared_http:
+                shared_http.close()
+                discord_api.http_client = None
 
     return lifespan

@@ -11,15 +11,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.assignments.assignment_finalization import approve
-from app.assignments.withdrawals import current_result
+from app.assignments.roster import build_current_roster
 from app.context import ApplicationContext
-from app.discord.announcements import (
-    deliver_event,
-    enqueue,
-    enqueue_instructions,
-)
-from app.discord.announcements import (
-    status as announcement_status,
+from app.discord.announcements import deliver_event
+from app.discord.announcements import status as announcement_status
+from app.discord.event_messages import (
+    enqueue_assignment_messages,
+    enqueue_withdrawal_instructions,
 )
 from app.discord.message_cleanup import remove_signup_message
 from app.models import (
@@ -27,6 +25,7 @@ from app.models import (
     Event,
     LotteryRun,
 )
+from app.public_checklist import public_player_id
 from app.schemas import (
     RetryAnnouncementInput,
 )
@@ -96,15 +95,15 @@ def register(context: ApplicationContext) -> None:
                 event.channel_id or destination(request).discord_channel_id
             )
             if creating:
-                enqueue(
+                enqueue_assignment_messages(
                     db,
                     event,
                     announcement_channel,
-                    current_result(db, run),
+                    build_current_roster(db, run),
                     run.snapshot,
                 )
             else:
-                enqueue_instructions(db, event, announcement_channel)
+                enqueue_withdrawal_instructions(db, event, announcement_channel)
             rows = list(
                 db.scalars(
                     select(Announcement).where(
@@ -188,12 +187,14 @@ def register(context: ApplicationContext) -> None:
             if run is None:
                 raise HTTPException(404, "Shared event not found")
             rows = list_names(
-                current_result(db, run)["tables"], event.id, include_settings=False
+                build_current_roster(db, run)["tables"],
+                event.id,
+                include_settings=False,
             )
             preferences = preferences_for_event(db, event)
             return {
                 "title": event.title,
-                "timezone": preferences.timezone if preferences else None,
+                "timezone": preferences.timezone,
                 "description": event.description,
                 "location": event.location,
                 "starts_at": event.starts_at,
@@ -208,7 +209,11 @@ def register(context: ApplicationContext) -> None:
                         ),
                         **{
                             key: [
-                                {"name": player.get("display_name") or player["name"]}
+                                {
+                                    "id": public_player_id(token, str(player["id"])),
+                                    "name": player.get("display_name")
+                                    or player["name"],
+                                }
                                 for player in row.get(key, [])
                             ]
                             for key in ("players", "waitlist")
@@ -231,7 +236,7 @@ def register(context: ApplicationContext) -> None:
                 "seed": run.seed,
                 "snapshot": run.snapshot,
                 "result": run.result,
-                "current_result": current_result(db, run),
+                "current_result": build_current_roster(db, run),
                 "created_at": run.created_at,
             }
 

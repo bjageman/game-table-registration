@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app.assignments.withdrawals import current_result
+from app.assignments.roster import build_current_roster
 from app.events.player_edits import edit_player
 from app.events.signups import apply_manager_players, apply_manager_signups
 from app.events.test_signups import add_to_rows
@@ -89,12 +89,12 @@ def test_waitlist_removal_is_scoped_and_can_be_restored(promotion_db, status):
         db.commit()
     edit_player(engine, "guild", "event", "2", "Table A", adding=False, waitlist=True)
     with Session(engine) as db:
-        result = current_result(db, db.get(LotteryRun, "event"))
+        result = build_current_roster(db, db.get(LotteryRun, "event"))
         assert [p["id"] for p in result["tables"][0]["waitlist"]] == ["3"]
         assert [p["id"] for p in result["tables"][1]["waitlist"]] == ["2"]
     edit_player(engine, "guild", "event", "2", "Table A", adding=True, waitlist=True)
     with Session(engine) as db:
-        result = current_result(db, db.get(LotteryRun, "event"))
+        result = build_current_roster(db, db.get(LotteryRun, "event"))
         assert [p["id"] for p in result["tables"][0]["waitlist"]] == ["3", "2"]
         assert "2" in {p["id"] for p in result["tables"][1]["waitlist"]}
 

@@ -3,8 +3,12 @@ from copy import deepcopy
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.assignments.waitlists import add_player
-from app.assignments.withdrawals import current_result, manager_add, manager_remove
+from app.assignments.player_changes import (
+    add_player_to_waitlist,
+    assign_player_to_table,
+    remove_player_from_roster,
+)
+from app.assignments.roster import build_current_roster
 from app.models import (
     Announcement,
     AssignmentPreference,
@@ -48,10 +52,10 @@ def test_pair_waits_for_two_seats_and_single_behind_them_gets_one(promotion_db):
             )
         )
         db.commit()
-    assert add_player(engine, "guild", "event", "4", "Table A")
-    assert manager_remove(engine, "guild", "event", "1")
+    assert add_player_to_waitlist(engine, "guild", "event", "4", "Table A")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"4": "Table A"}
         assert current["waitlist"] == ["2", "3"]
 
@@ -59,9 +63,9 @@ def test_pair_waits_for_two_seats_and_single_behind_them_gets_one(promotion_db):
 def test_pair_promotes_together_when_two_seats_are_available(promotion_db):
     engine = promotion_db
     pair_waitlist(engine, capacity=2)
-    assert manager_remove(engine, "guild", "event", "1")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"2": "Table A", "3": "Table A"}
         assert current["waitlist"] == []
         assert set(db.scalars(select(PromotionDM.discord_id))) == {"2", "3"}
@@ -73,9 +77,9 @@ def test_pair_can_promote_to_separate_eligible_tables_if_both_get_a_seat(promoti
     with Session(engine) as db:
         db.get(AssignmentPreference, "user:owner").announce_table_changes = True
         db.commit()
-    assert manager_remove(engine, "guild", "event", "1")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"2": "Table A", "3": "Table B"}
         assert current["waitlist"] == []
         notices = list(db.scalars(select(PromotionDM)))
@@ -97,9 +101,9 @@ def test_pair_can_promote_to_separate_eligible_tables_if_both_get_a_seat(promoti
 def test_manual_addition_does_not_automatically_move_the_partner(promotion_db):
     engine = promotion_db
     pair_waitlist(engine)
-    assert manager_add(engine, "guild", "event", "2", "Table A")
+    assert assign_player_to_table(engine, "guild", "event", "2", "Table A")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"]["2"] == "Table A"
         assert "3" in current["waitlist"]
         assert "3" not in current["assignments"]
@@ -108,8 +112,8 @@ def test_manual_addition_does_not_automatically_move_the_partner(promotion_db):
 def test_one_partner_withdrawing_does_not_remove_the_other(promotion_db):
     engine = promotion_db
     pair_waitlist(engine, capacity=2)
-    assert manager_add(engine, "guild", "event", "2", "Table A")
-    assert manager_remove(engine, "guild", "event", "1")
+    assert assign_player_to_table(engine, "guild", "event", "2", "Table A")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"]["2"] == "Table A"

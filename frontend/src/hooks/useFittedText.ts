@@ -49,6 +49,7 @@ export default function useFittedText(ref: RefObject<HTMLElement | null>, conten
     if (!container || !target) return;
     function fit() {
       if (!container || !target) return;
+      if (target.classList.contains("truncate-name")) { target.style.removeProperty("font-size"); return; }
       if (selector === ".event-date-line") fitDateRows(container);
       else if (selector === "h2" && container.querySelector(":scope > .badge, :scope > .event-badges .badge")) {
         fitModalTitle(container, target);

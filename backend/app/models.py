@@ -11,7 +11,9 @@ from sqlalchemy import (
     false,
     true,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, mapped_column
+
+from app.settings.general_settings import BOOLEAN_DEFAULTS
 
 
 class Base(DeclarativeBase):
@@ -49,6 +51,9 @@ class SignupWarningSettings:
 
 
 class Event(SignupWarningSettings, Base):
+    auto_promote_waitlist: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
     __tablename__ = "events"
     __table_args__ = (
         UniqueConstraint("series_id", "starts_at"),
@@ -59,6 +64,12 @@ class Event(SignupWarningSettings, Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     public_share_token: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True
+    )
+    public_checklist: Mapped[dict[str, bool]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
+    public_checklist_revision: Mapped[int] = mapped_column(
+        default=0, server_default="0"
     )
     guild_id: Mapped[str] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(100))
@@ -201,6 +212,9 @@ class SignupInteraction(Base):
 
 
 class PlayerProfile(Base):
+    seat_notifications: Mapped[bool] = mapped_column(
+        default=True, server_default=true()
+    )
     __tablename__ = "player_profiles"
     scope_key: Mapped[str] = mapped_column(String(100), primary_key=True)
     guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
@@ -263,6 +277,12 @@ class LotteryRun(Base):
     seed: Mapped[str] = mapped_column(String(64))
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    seat_order: Mapped[dict[str, list[str]]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
+    waitlist_order: Mapped[dict[str, list[str]]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[float] = mapped_column(Float)
 
@@ -327,35 +347,46 @@ class Announcement(Base):
 
 
 class GuildSettings(Base):
+    """Legacy compatibility table retained for historical backfills and downgrades."""
+
     __tablename__ = "guild_settings"
     guild_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     automatic_weight_adjustment: Mapped[bool] = mapped_column(default=True)
 
 
+def _general_setting(name: str) -> MappedColumn[bool]:
+    default = BOOLEAN_DEFAULTS[name]
+    return mapped_column(default=default, server_default=true() if default else false())
+
+
 class AssignmentPreference(Base):
-    create_discord_event: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
-    )
+    create_discord_event: Mapped[bool] = _general_setting("create_discord_event")
     __tablename__ = "assignment_preferences"
     scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    automatic_weight_adjustment: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    automatic_weight_adjustment: Mapped[bool] = _general_setting(
+        "automatic_weight_adjustment"
     )
-    announce_table_changes: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    announce_table_changes: Mapped[bool] = _general_setting("announce_table_changes")
+    post_discord_updates_to_thread: Mapped[bool] = _general_setting(
+        "post_discord_updates_to_thread"
     )
-    post_discord_updates_to_thread: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
-    )
-    review_assignments_before_discord: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    review_assignments_before_discord: Mapped[bool] = _general_setting(
+        "review_assignments_before_discord"
     )
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    show_open_signup_players: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    show_open_signup_players: Mapped[bool] = _general_setting(
+        "show_open_signup_players"
     )
-    dm_waitlist_promotions: Mapped[bool] = mapped_column(
-        default=True, server_default=true()
+    dm_waitlist_promotions: Mapped[bool] = _general_setting("dm_waitlist_promotions")
+    dm_assignments: Mapped[bool] = _general_setting("dm_assignments")
+    keep_waitlist_guarantee_on_short_notice: Mapped[bool] = _general_setting(
+        "keep_waitlist_guarantee_on_short_notice"
+    )
+    guarantee_waitlisted_players: Mapped[bool] = _general_setting(
+        "guarantee_waitlisted_players"
+    )
+    waitlist_guarantee_retention_hours: Mapped[int] = mapped_column(
+        default=5, server_default="5"
     )
 
 
@@ -369,6 +400,9 @@ class EventThreadMember(Base):
 
 
 class PromotionDM(Base):
+    kind: Mapped[str] = mapped_column(
+        String(16), default="promotion", server_default="promotion"
+    )
     __tablename__ = "promotion_dms"
     __table_args__ = (
         UniqueConstraint("event_id", "discord_id"),

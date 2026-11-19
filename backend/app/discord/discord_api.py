@@ -18,15 +18,23 @@ class DiscordRequestError(HTTPException):
 
 
 class DiscordAPI:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self, settings: Settings, http_client: httpx.Client | None = None
+    ) -> None:
         self.settings = settings
+        self.http_client = http_client
 
     def request_json(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
-            with httpx.Client(timeout=15) as client:
-                response = client.request(
+            if self.http_client is not None:
+                response = self.http_client.request(
                     method, f"https://discord.com/api/v10{path}", **kwargs
                 )
+            else:
+                with httpx.Client(timeout=15) as client:
+                    response = client.request(
+                        method, f"https://discord.com/api/v10{path}", **kwargs
+                    )
             # A retried deletion may find a poll that was already deleted.
             if method == "DELETE" and response.status_code == 404:
                 return {}
@@ -70,7 +78,8 @@ class DiscordAPI:
         return DiscordAPI(
             self.settings.model_copy(
                 update={"discord_guild_id": guild_id, "discord_channel_id": channel_id}
-            )
+            ),
+            http_client=self.http_client,
         )
 
     def bot(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
@@ -293,7 +302,7 @@ class DiscordAPI:
     def reaction_players(
         self, message_id: str, tables: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        from app.discord.signup_messages import EMOJIS
+        from app.discord.event_messages import EMOJIS
 
         players: dict[str, dict[str, Any]] = {}
         for index, table in enumerate(tables):

@@ -9,13 +9,13 @@ import discord
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app.assignments import withdrawals
+from app.assignments import player_changes
 from app.config import Settings
-from app.discord import promotion_dms, reactions
+from app.discord import promotion_dms, reactions, seat_notifications
 from app.discord.announcements import deliver_event
 from app.discord.discord_api import DiscordAPI
+from app.discord.event_messages import EMOJIS
 from app.discord.event_threads import queue_member
-from app.discord.signup_messages import EMOJIS
 from app.events.signups import handle
 from app.models import Event
 
@@ -121,8 +121,11 @@ class SignupGateway(discord.Client):
         await self.sync_reactions()
 
     async def on_disconnect(self) -> None:
-        async with self.reaction_lock:
-            await asyncio.to_thread(reactions.mark_gap, self.engine)
+        # Register before waiting for reaction writes so closing observes a
+        # disconnect that occurred while it was draining the pending backlog.
+        with reactions.reaction_queue(self.engine).connection_change():
+            async with self.reaction_lock:
+                await asyncio.to_thread(reactions.mark_gap, self.engine)
 
     async def sync_reactions(self) -> None:
         async with self.reaction_lock:
@@ -168,6 +171,28 @@ class SignupGateway(discord.Client):
         self, event: discord.RawReactionActionEvent, added: bool
     ) -> None:
         observed = time.time()
+        if event.guild_id is None or event.emoji.name not in EMOJIS:
+            await self._reaction_change(event, added, observed)
+            return
+        key = (str(event.guild_id), str(event.channel_id), str(event.message_id))
+        # Register before waiting for the async lock or doing any database work.
+        queue = reactions.reaction_queue(self.engine)
+        while True:
+            with queue.track(key) as accepted:
+                if accepted:
+                    try:
+                        await self._reaction_change(event, added, observed)
+                    except Exception:
+                        await asyncio.to_thread(reactions.mark_gap, self.engine)
+                        logger.exception("Could not read a table reaction")
+                    return
+            # Defer post-cutoff arrivals without blocking the event loop. If
+            # closing fails they still apply; after success the DB rejects them.
+            await queue.wait_until_open(key)
+
+    async def _reaction_change(
+        self, event: discord.RawReactionActionEvent, added: bool, observed: float
+    ) -> None:
         if event.guild_id is None or event.emoji.id is not None:
             return
         if self.user and event.user_id == self.user.id:
@@ -182,7 +207,7 @@ class SignupGateway(discord.Client):
                 return
             async with self.reaction_lock:
                 event_id = await asyncio.to_thread(
-                    withdrawals.announcement_event,
+                    player_changes.event_for_withdrawal_message,
                     self.engine,
                     str(event.guild_id),
                     str(event.channel_id),
@@ -192,7 +217,7 @@ class SignupGateway(discord.Client):
                     return
                 try:
                     changed = await asyncio.to_thread(
-                        withdrawals.withdraw,
+                        player_changes.withdraw_from_announcement,
                         self.engine,
                         str(event.guild_id),
                         str(event.channel_id),
@@ -282,6 +307,29 @@ class SignupGateway(discord.Client):
         self, guild: int | None, channel: int, message: int, emoji: str | None
     ) -> None:
         observed = time.time()
+        key = (str(guild), str(channel), str(message))
+        queue = reactions.reaction_queue(self.engine)
+        while True:
+            with queue.track(key) as accepted:
+                if accepted:
+                    try:
+                        await self._clear_reactions(
+                            guild, channel, message, emoji, observed
+                        )
+                    except Exception:
+                        await asyncio.to_thread(reactions.mark_gap, self.engine)
+                        logger.exception("Could not clear table reactions")
+                    return
+            await queue.wait_until_open(key)
+
+    async def _clear_reactions(
+        self,
+        guild: int | None,
+        channel: int,
+        message: int,
+        emoji: str | None,
+        observed: float,
+    ) -> None:
         async with self.reaction_lock:
             event_id = await asyncio.to_thread(
                 reactions.event_for, self.engine, str(guild), str(channel), str(message)
@@ -326,9 +374,11 @@ class SignupGateway(discord.Client):
         if (
             interaction.type == discord.InteractionType.component
             and isinstance(custom_id, str)
-            and custom_id.startswith(promotion_dms.BUTTON_PREFIX)
+            and custom_id.startswith(
+                (promotion_dms.BUTTON_PREFIX, promotion_dms.STOP_PREFIX)
+            )
         ):
-            await self.promotion_withdrawal(interaction, custom_id)
+            await self.private_notice_action(interaction, custom_id)
             return
 
         if (
@@ -373,36 +423,92 @@ class SignupGateway(discord.Client):
                 "Could not display signup confirmation; saved choices remain available"
             )
 
-    async def promotion_withdrawal(
+    async def private_notice_action(
         self, interaction: discord.Interaction[discord.Client], custom_id: str
     ) -> None:
         message = interaction.message
-        if (
-            interaction.guild_id is not None
-            or str(interaction.application_id) != self.config.discord_client_id
-            or interaction.user.bot
-            or message is None
-            or str(message.author.id) != self.config.discord_client_id
-        ):
+        stopping = custom_id.startswith(promotion_dms.STOP_PREFIX)
+        prefix = promotion_dms.STOP_PREFIX if stopping else promotion_dms.BUTTON_PREFIX
+        notice_id = custom_id.removeprefix(prefix)
+        context = (
+            notice_id,
+            interaction.id,
+            interaction.user.id,
+            interaction.channel_id,
+            message.id if message else None,
+        )
+        reasons = [
+            reason
+            for reason, failed in (
+                ("not_private", interaction.guild_id is not None),
+                (
+                    "wrong_application",
+                    str(interaction.application_id) != self.config.discord_client_id,
+                ),
+                ("bot_user", interaction.user.bot),
+                ("missing_message", message is None),
+                (
+                    "wrong_message_author",
+                    message is not None
+                    and str(message.author.id) != self.config.discord_client_id,
+                ),
+            )
+            if failed
+        ]
+        if reasons:
+            logger.warning(
+                "Private seat notice interaction ignored reason=%s "
+                "notice_id=%s interaction_id=%s user_id=%s channel_id=%s message_id=%s "
+                "application_id=%s configured_application_id=%s "
+                "author_id=%s guild_id=%s",
+                ",".join(reasons),
+                *context,
+                interaction.application_id,
+                self.config.discord_client_id,
+                message.author.id if message else None,
+                interaction.guild_id,
+            )
             return
+        assert message is not None
+        logger.info(
+            "Private seat notice action received notice_id=%s interaction_id=%s "
+            "user_id=%s channel_id=%s message_id=%s",
+            *context,
+        )
         try:
             await interaction.response.defer(ephemeral=True, thinking=True)
-        except discord.HTTPException:
-            logger.warning("Discord could not acknowledge a private withdrawal")
+        except discord.HTTPException as failure:
+            logger.warning(
+                "Private seat notice action acknowledgement failed notice_id=%s "
+                "interaction_id=%s user_id=%s channel_id=%s message_id=%s "
+                "http_status=%s discord_code=%s",
+                *context,
+                failure.status,
+                failure.code,
+            )
             return
         try:
             content = await asyncio.to_thread(
-                promotion_dms.withdraw,
+                seat_notifications.stop_notifications
+                if stopping
+                else player_changes.withdraw_from_promotion_dm,
                 self.engine,
-                custom_id.removeprefix(promotion_dms.BUTTON_PREFIX),
+                notice_id,
                 str(interaction.user.id),
                 str(interaction.channel_id),
                 str(message.id),
             )
         except Exception:
-            logger.exception("Could not process a private promotion withdrawal")
+            logger.exception(
+                "Private seat notice action processing failed "
+                "notice_id=%s interaction_id=%s "
+                "user_id=%s channel_id=%s message_id=%s",
+                *context,
+            )
             content = (
-                "Could not process your withdrawal. "
+                "Could not save your notification preference. Please try again."
+                if stopping
+                else "Could not process your withdrawal. "
                 "Please try again to check your seat."
             )
         try:
@@ -410,8 +516,15 @@ class SignupGateway(discord.Client):
                 content=content,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-        except discord.HTTPException:
-            logger.warning("Could not display the private withdrawal result")
+        except discord.HTTPException as failure:
+            logger.warning(
+                "Private seat notice action response failed "
+                "notice_id=%s interaction_id=%s "
+                "user_id=%s channel_id=%s message_id=%s http_status=%s discord_code=%s",
+                *context,
+                failure.status,
+                failure.code,
+            )
 
     async def run_listener(self) -> None:
         try:

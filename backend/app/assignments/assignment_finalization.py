@@ -7,17 +7,19 @@ from fastapi import HTTPException
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
-from app.discord.announcements import enqueue
+from app.assignments.roster import build_current_roster
+from app.assignments.waitlist_guarantees import finalize_guarantees
+from app.discord.event_messages import enqueue_assignment_messages
+from app.discord.promotion_dms import enqueue_assignments
 from app.models import Announcement, Event, LotteryRun, PlayerProfile
 from app.players.player_profiles import for_event as player_scope_for_event
 
 
 def adjust_weights(db: Session, event: Event, run: LotteryRun) -> None:
     """Apply the completed draw once, under the event transition lock."""
-    from app.assignments.withdrawals import current_result
 
     snapshot: dict[str, Any] = run.snapshot
-    result: dict[str, Any] = current_result(db, run)
+    result: dict[str, Any] = build_current_roster(db, run)
     if snapshot.get("automatic_weight_adjustment", True):
         profiles = {
             p.discord_id: p
@@ -51,12 +53,17 @@ def adjust_weights(db: Session, event: Event, run: LotteryRun) -> None:
 
 def finalize(db: Session, event: Event, run: LotteryRun, channel_id: str = "") -> None:
     """Immediate publication when organizer review is disabled."""
-    from app.assignments.withdrawals import current_result
 
+    finalize_guarantees(db, event, run)
     adjust_weights(db, event, run)
     event.status = "assigned"
-    enqueue(
-        db, event, event.channel_id or channel_id, current_result(db, run), run.snapshot
+    enqueue_assignments(db, event, run)
+    enqueue_assignment_messages(
+        db,
+        event,
+        event.channel_id or channel_id,
+        build_current_roster(db, run),
+        run.snapshot,
     )
 
 
@@ -82,7 +89,9 @@ def complete_review_delivery(db: Session, event_id: str) -> None:
         event = db.get(Event, event_id)
         run = db.get(LotteryRun, event_id)
         if event and run:
+            finalize_guarantees(db, event, run)
             adjust_weights(db, event, run)
+            enqueue_assignments(db, event, run)
 
 
 def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
@@ -104,8 +113,6 @@ def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
         if event is None or run is None:
             raise HTTPException(503, "Saved placements are unavailable")
         if event.status == "review":
-            from app.assignments.withdrawals import current_result
-
             existing = db.scalar(
                 select(Announcement.id)
                 .where(
@@ -114,11 +121,11 @@ def approve(engine: Engine, event_id: str, channel_id: str = "") -> None:
                 .limit(1)
             )
             if existing is None:
-                enqueue(
+                enqueue_assignment_messages(
                     db,
                     event,
                     event.channel_id or channel_id,
-                    current_result(db, run),
+                    build_current_roster(db, run),
                     run.snapshot,
                 )
             else:

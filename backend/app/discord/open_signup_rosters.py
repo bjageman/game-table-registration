@@ -14,12 +14,12 @@ from app.discord.discord_api import DiscordAPI, DiscordRequestError
 from app.discord.discord_format import (
     clean,
     paginate_fields,
+    player_reference,
     split_field_lines,
     table_field,
 )
-from app.discord.signup_messages import signup_body
-from app.events.signups import apply_manager_signups, table_rows
-from app.events.test_signups import add_to_rows
+from app.discord.event_messages import build_signup_message
+from app.events.signups import signup_rows
 from app.models import AssignmentPreference, Event
 from app.settings.assignment_preferences import for_event
 
@@ -36,12 +36,18 @@ def digest(value: Any) -> str:
 
 def base_embed(event: Event) -> dict[str, Any]:
     return dict(
-        signup_body(event, event.signup_mode, event.closes_at, True)["embeds"][0]
+        build_signup_message(event, event.signup_mode, event.closes_at, True)["embeds"][
+            0
+        ]
     )
 
 
 def base_content(event: Event) -> str:
-    return str(signup_body(event, event.signup_mode, event.closes_at, False)["content"])
+    return str(
+        build_signup_message(event, event.signup_mode, event.closes_at, False)[
+            "content"
+        ]
+    )
 
 
 def roster_pages(
@@ -68,10 +74,7 @@ def roster_pages(
         players = by_table.get(table["name"], {})
         label = labels[index] if labels else clean(table["name"])
         heading = f"{label} ({len(players)}/{table['capacity']})"
-        lines = [
-            clean(players[pid]["name"]) if pid.startswith("test-") else f"<@{pid}>"
-            for pid in sorted(players)
-        ]
+        lines = [player_reference(players[pid]) for pid in sorted(players)]
         chunks = split_field_lines(lines or ["No players signed up yet."])
         fields.extend(
             table_field(heading if part == 0 else f"{heading} (continued)", value)
@@ -97,13 +100,11 @@ def with_initial_roster(
     db: Session, event: Event, payload: dict[str, Any]
 ) -> dict[str, Any]:
     saved = for_event(db, event)
-    if not saved or not saved.show_open_signup_players:
+    if not saved.show_open_signup_players:
         return payload
     event.signup_roster_hash = "pending"
     event.signup_roster_checked_at = None
-    rows = apply_manager_signups(
-        db, event, add_to_rows(table_rows(db, event), event.test_signups)
-    )
+    rows = signup_rows(db, event)
     return {**payload, "embeds": [roster_pages(event, payload["embeds"][0], rows)[0]]}
 
 
@@ -122,7 +123,7 @@ def _refresh(engine: Engine, discord: DiscordAPI, event_id: str) -> None:
         if event is None:
             return
         saved = for_event(db, event)
-        enabled = bool(saved and saved.show_open_signup_players)
+        enabled = saved.show_open_signup_players
         active = event.status == "open" and (
             event.closes_at is None or event.closes_at > time.time()
         )
@@ -155,7 +156,7 @@ def _refresh(engine: Engine, discord: DiscordAPI, event_id: str) -> None:
             and event.signup_deleted_at is None
             and (event.closes_at is None or event.closes_at > time.time())
         )
-        enabled = bool(saved and saved.show_open_signup_players and active)
+        enabled = saved.show_open_signup_players and active
         cache = list(event.signup_roster_messages or [])
         try:
             if not active:
@@ -169,14 +170,7 @@ def _refresh(engine: Engine, discord: DiscordAPI, event_id: str) -> None:
                 return
             base = base_embed(event)
             if enabled:
-                rows = apply_manager_signups(
-                    db,
-                    event,
-                    add_to_rows(
-                        raw if raw is not None else table_rows(db, event),
-                        event.test_signups,
-                    ),
-                )
+                rows = signup_rows(db, event, raw)
                 parts: list[dict[str, Any]] = [
                     {"embeds": [page]} for page in roster_pages(event, base, rows)
                 ]
