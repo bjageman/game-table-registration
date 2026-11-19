@@ -1,6 +1,6 @@
 import useDialog from "../../../hooks/useDialog";
 import ModalHeader from "../../../components/ModalHeader";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Share2, X } from "lucide-react";
 import { api, errorMessage, mutationOptions } from "../../../lib/api";
 import { isBackdropClick } from "../../../lib/dialogBackdrop";
@@ -12,10 +12,25 @@ export default function ShareEvent({ eventId, csrf, onAccessError }: {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const linkInput = useRef<HTMLInputElement>(null);
   const dialog = useDialog(open);
   async function copyLink() {
-    try { await navigator.clipboard.writeText(url); setCopied(true); }
-    catch { setError("Could not copy. Select and copy the link above."); }
+    setError(""); setCopied(false);
+    if (navigator.clipboard?.writeText) {
+      try { await navigator.clipboard.writeText(url); setCopied(true); return; }
+      catch { /* Try copying the selected field when clipboard access is blocked. */ }
+    }
+    const previousFocus = document.activeElement;
+    linkInput.current?.focus();
+    linkInput.current?.select();
+    try {
+      if (linkInput.current && document.execCommand?.("copy")) {
+        setCopied(true);
+        if (previousFocus instanceof HTMLElement) previousFocus.focus();
+        return;
+      }
+    } catch { /* Leave the link selected for manual copying. */ }
+    setError("Could not copy. Select and copy the link above.");
   }
   useEffect(() => {
     if (!open) return;
@@ -37,7 +52,7 @@ export default function ShareEvent({ eventId, csrf, onAccessError }: {
       {error && <p role="alert" className="error">{error}</p>}
       {!url && !error && <p role="status">Preparing link…</p>}
       {url && <>
-        <label className="share-link-label">Public link<input id={`event-share-link-${eventId}`} aria-label="Public link" readOnly value={url} onFocus={(event) => event.target.select()} /></label>
+        <label className="share-link-label">Public link<input ref={linkInput} id={`event-share-link-${eventId}`} aria-label="Public link" readOnly value={url} onFocus={(event) => event.target.select()} /></label>
         <div className="form-actions">
           <button id={`event-share-copy-${eventId}`} type="button" onClick={() => void copyLink()}>{copied ? "Copied" : "Copy link"}</button>
           <a id={`event-share-open-${eventId}`} className="button" href={url} target="_blank" rel="noopener noreferrer">Open public view</a>
