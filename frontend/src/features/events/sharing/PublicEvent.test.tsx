@@ -16,6 +16,7 @@ it("shows public seats and waitlists without player editing controls", async () 
   expect(screen.getByText("Mary")).toBeVisible();
   expect(screen.getByText("Dan")).toBeVisible();
   expect(screen.getByText("1/1")).toBeVisible();
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
   expect(fetch).toHaveBeenCalledWith("/api/public/events/shared-token", expect.objectContaining({ cache: "no-store" }));
 });
@@ -29,12 +30,11 @@ function mockRoster() {
   return roster;
 }
 
-it("persists independent checkmarks and notes by player and public link", async () => {
+it("persists independent checkmarks by player and public link", async () => {
   mockRoster();
   const view = render(<PublicEvent token="one" />);
   const checks = await screen.findAllByRole("checkbox", { name: "Mark Alex as arrived" });
   fireEvent.click(checks[0]);
-  fireEvent.change(screen.getAllByRole("textbox", { name: "Notes for Alex" })[0], { target: { value: "Arriving late" } });
   expect(checks[0]).toBeChecked();
   expect(checks[1]).not.toBeChecked();
   expect(screen.getAllByText("Alex")[0]).toHaveClass("public-player-arrived");
@@ -45,24 +45,20 @@ it("persists independent checkmarks and notes by player and public link", async 
   view.unmount();
   const restored = render(<PublicEvent token="one" />);
   expect((await screen.findAllByRole("checkbox", { name: "Mark Alex as arrived" }))[0]).toBeChecked();
-  expect(screen.getAllByRole("textbox", { name: "Notes for Alex" })[0]).toHaveValue("Arriving late");
   expect(screen.getByRole("checkbox", { name: "Mark Chris as arrived" })).toBeChecked();
   restored.unmount();
   render(<PublicEvent token="two" />);
   expect((await screen.findAllByRole("checkbox", { name: "Mark Alex as arrived" }))[0]).not.toBeChecked();
-  expect(screen.getAllByRole("textbox", { name: "Notes for Alex" })[0]).toHaveValue("");
 });
 
 it("retains entries when polling renames, reorders, or promotes players", async () => {
   const roster = mockRoster();
   render(<PublicEvent token="one" />);
   fireEvent.click(await screen.findByRole("checkbox", { name: "Mark Chris as arrived" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Notes for Chris" }), { target: { value: "Here" } });
   roster.tables[0].players = [{ id: "c", name: "New name" }, { id: "b", name: "Alex" }];
   roster.tables[0].waitlist = [];
   fireEvent(document, new Event("visibilitychange"));
   expect(await screen.findByRole("checkbox", { name: "Mark New name as arrived" })).toBeChecked();
-  expect(screen.getByRole("textbox", { name: "Notes for New name" })).toHaveValue("Here");
   expect(screen.getByRole("checkbox", { name: "Mark Alex as arrived" })).not.toBeChecked();
 });
 
@@ -77,6 +73,6 @@ it("handles corrupt storage and reports failed saves while keeping edits usable"
   expect(checks[0]).toBeChecked();
   expect(await screen.findByRole("alert")).toHaveTextContent("could not be saved");
   vi.restoreAllMocks();
-  fireEvent.change(screen.getAllByRole("textbox", { name: "Notes for Alex" })[0], { target: { value: "Saved now" } });
+  fireEvent.click(checks[0]);
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
 });

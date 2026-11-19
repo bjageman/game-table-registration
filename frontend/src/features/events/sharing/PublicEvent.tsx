@@ -35,7 +35,7 @@ export default function PublicEvent({ token }: { token: string }) {
         <div><dt>Event starts</dt><dd><time dateTime={new Date(event.starts_at * 1000).toISOString()}>{formatTimestamp(event.starts_at, event.timezone ?? undefined)}</time></dd></div>
       </dl>
       {event.description && <p className="public-event-description">{event.description}</p>}
-      <p>Check off players as they arrive. Checkmarks and notes are saved only in this browser.</p>
+      <p>Check off players as they arrive. Checkmarks are saved only in this browser.</p>
       {checklist.saveError && <p role="alert" className="error">{checklist.saveError}</p>}
       <ul id="public-event-tables" className="event-tables" aria-label="Table assignments">{event.tables.map((table, index) => <li id={`public-event-table-${index + 1}`} className="event-table" key={table.name}>
         <div className="table-heading"><h2>{table.name}</h2><span className="table-player-count">{table.players.length}/{table.capacity}</span></div>

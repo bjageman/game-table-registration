@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 
-test("public attendance and notes survive reload on desktop and mobile", async ({ page }) => {
+test("public attendance survives reload on desktop and mobile", async ({ page }) => {
   await page.route("**/api/public/events/checklist", route => route.fulfill({ json: {
     title: "Game night", description: "", location: "", starts_at: 2000000000, archived: false,
     tables: [{ name: "Table One", capacity: 2,
@@ -29,16 +29,13 @@ test("public attendance and notes survive reload on desktop and mobile", async (
     expect(boxes[0]!.x).toBeLessThan(boxes[1]!.x);
     expect(boxes[1]!.x).toBeLessThan(boxes[2]!.x);
   }
+  await expect(page.getByRole("textbox")).toHaveCount(0);
   const arrived = page.getByRole("checkbox", { name: "Mark Alice with a very long display name as arrived" });
-  const notes = page.getByRole("textbox", { name: "Notes for Alice with a very long display name" });
   for (const row of await page.locator(".public-checklist-player").all()) {
     const checkbox = await row.getByRole("checkbox").boundingBox();
     const name = await row.locator(".public-checklist-name > span:last-child").boundingBox();
-    const notes = await row.getByRole("textbox").boundingBox();
     expect(checkbox!.x + checkbox!.width).toBeLessThanOrEqual(name!.x);
-    expect(name!.x + name!.width).toBeLessThanOrEqual(notes!.x);
-    expect(checkbox!.y + checkbox!.height / 2).toBeCloseTo(notes!.y + notes!.height / 2, 0);
-    expect(name!.y + name!.height / 2).toBeCloseTo(notes!.y + notes!.height / 2, 0);
+    expect(checkbox!.y + checkbox!.height / 2).toBeCloseTo(name!.y + name!.height / 2, 0);
   }
   const checkboxBox = await arrived.boundingBox();
   const targetBox = await arrived.locator("..").boundingBox();
@@ -49,12 +46,10 @@ test("public attendance and notes survive reload on desktop and mobile", async (
   expect(checkboxBox!.x + checkboxBox!.width / 2).toBeCloseTo(targetBox!.x + targetBox!.width / 2, 0);
   expect(checkboxBox!.y + checkboxBox!.height / 2).toBeCloseTo(targetBox!.y + targetBox!.height / 2, 0);
   await arrived.check();
-  await notes.fill("Bringing snacks");
   await page.getByRole("checkbox", { name: "Mark Bob as arrived" }).check();
   await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "line-through");
   await page.reload();
   await expect(arrived).toBeChecked();
-  await expect(notes).toHaveValue("Bringing snacks");
   await expect(page.getByRole("checkbox", { name: "Mark Bob as arrived" })).toBeChecked();
   await arrived.uncheck();
   await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "none");

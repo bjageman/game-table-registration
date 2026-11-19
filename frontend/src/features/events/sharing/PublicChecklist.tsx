@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-interface Entry { arrived: boolean; notes: string }
+interface Entry { arrived: boolean }
 type Entries = Record<string, Entry>;
 
 function loadEntries(key: string): Entries {
@@ -8,7 +8,7 @@ function loadEntries(key: string): Entries {
     const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "{}");
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
     return Object.fromEntries(Object.entries(saved).filter(([, entry]) =>
-      entry && typeof entry === "object" && typeof entry.arrived === "boolean" && typeof entry.notes === "string",
+      entry && typeof entry === "object" && typeof entry.arrived === "boolean",
     ));
   } catch { return {}; }
 }
@@ -19,7 +19,7 @@ export function usePublicChecklist(token: string) {
   const [saveError, setSaveError] = useState("");
 
   function update(id: string, change: Partial<Entry>) {
-    const next = { ...entries, [id]: { ...(entries[id] ?? { arrived: false, notes: "" }), ...change } };
+    const next = { ...entries, [id]: { ...(entries[id] ?? { arrived: false }), ...change } };
     setEntries(next);
     try {
       localStorage.setItem(key, JSON.stringify(next));
@@ -47,9 +47,6 @@ export function ChecklistPlayer({ player, entry, onChange, controlId }: {
         </span>
         <span title={player.name} className={entry?.arrived ? "public-player-arrived" : undefined}>{player.name}</span>
       </label>
-      <input id={`${controlId}-notes`} className="public-player-notes" type="text" placeholder="Notes"
-        aria-label={`Notes for ${player.name}`} value={entry?.notes ?? ""}
-        onChange={(event) => onChange({ notes: event.target.value })} />
     </div>
   </li>;
 }
