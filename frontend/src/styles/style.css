@@ -572,6 +572,9 @@ dd {
 @media (min-width: 1024px) {
   .public-event-page .event-tables { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+@media (min-width: 1280px) {
+  .public-event-page .event-tables { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .public-event-page .table-heading h2 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
 .public-event-page ol { padding-left: 0; list-style: none; }
 .public-event-page li { overflow-wrap: anywhere; }

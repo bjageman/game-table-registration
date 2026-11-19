@@ -6,12 +6,12 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
     tables: [{ name: "Table One", capacity: 2,
       players: [{ id: "alice", name: "Alice with a very long display name" }],
       waitlist: [{ id: "bob", name: "Bob" }] },
-      ...["Two", "Three"].map(name => ({ name: `Table ${name}`, capacity: 1,
+      ...["Two", "Three", "Four"].map(name => ({ name: `Table ${name}`, capacity: 1,
         players: [{ id: name, name: "Test Player 051" }], waitlist: [] })),
     ],
   } }));
   await page.goto("/#/shared/checklist");
-  await expect(page.getByText("Test Player 051", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Test Player 051", { exact: true })).toHaveCount(3);
   for (const name of await page.getByText("Test Player 051", { exact: true }).all()) {
     await expect(name).toBeVisible();
     expect(await name.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
@@ -24,10 +24,11 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
   if (page.viewportSize()!.width >= 1024) {
     const cards = await page.locator("#public-event-tables > li").all();
     const boxes = await Promise.all(cards.map(card => card.boundingBox()));
-    expect(boxes[0]!.y).toBe(boxes[1]!.y);
-    expect(boxes[1]!.y).toBe(boxes[2]!.y);
-    expect(boxes[0]!.x).toBeLessThan(boxes[1]!.x);
-    expect(boxes[1]!.x).toBeLessThan(boxes[2]!.x);
+    const columns = page.viewportSize()!.width >= 1280 ? 4 : 3;
+    for (let index = 1; index < columns; index++) {
+      expect(boxes[index]!.y).toBe(boxes[0]!.y);
+      expect(boxes[index - 1]!.x).toBeLessThan(boxes[index]!.x);
+    }
   }
   await expect(page.getByRole("textbox")).toHaveCount(0);
   const arrived = page.getByRole("checkbox", { name: "Mark Alice with a very long display name as arrived" });
