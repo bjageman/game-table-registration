@@ -13,6 +13,7 @@ export function usePublicChecklist(token: string) {
   const modeRef = useRef(mode);
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
+  const pending = useRef<{ player_id: string; arrived: boolean }[]>([]);
   const [conflict, setConflict] = useState<ServerChecklist>();
   const [saveError, setSaveError] = useState("");
   const [syncError, setSyncError] = useState("");
@@ -89,18 +90,28 @@ export function usePublicChecklist(token: string) {
   }
 
   async function update(id: string, change: Partial<Entry>) {
-    if (saving.current || !["local", "synced"].includes(modeRef.current)) return;
+    if (!["local", "synced"].includes(modeRef.current)) return;
     const next = { ...current.current, [id]: { ...(current.current[id] ?? { arrived: false }), ...change } };
     remember(next);
     if (modeRef.current === "local") return;
+    pending.current.push({ player_id: id, arrived: next[id].arrived });
+    if (saving.current) return;
     const started = ++generation.current;
     saving.current = true; setBusy(true); setSyncError("");
     try {
-      const server = await api<ServerChecklist>(path, { method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ player_id: id, arrived: next[id].arrived }) });
-      if (started === generation.current) accept(server);
+      while (pending.current.length) {
+        const server = await api<ServerChecklist>(path, { method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pending.current[0]) });
+        if (started !== generation.current) return;
+        pending.current.shift();
+        // Keep newer selections visible while earlier check-ins finish saving.
+        const merged = fromServer(server);
+        for (const edit of pending.current) merged[edit.player_id] = { arrived: edit.arrived };
+        remember(merged);
+      }
     } catch (failure) {
       if (started === generation.current) {
+        pending.current = [];
         transition("local");
         setSyncError(`Sync was turned off because this change could not be confirmed on the server. Your browser version was kept. ${errorMessage(failure)}`);
       }
@@ -134,5 +145,5 @@ export function usePublicChecklist(token: string) {
   }
 
   return { entries, update, saveError, syncError, busy, conflict, resolve, setSync,
-    syncing: mode !== "local", disabled: busy || mode === "connecting" || mode === "conflict" };
+    syncing: mode !== "local", disabled: mode === "connecting" || mode === "conflict" };
 }

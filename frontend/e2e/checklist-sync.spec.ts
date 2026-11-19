@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "./fixtures";
 
-interface Server { revision: number; entries: Record<string, boolean>; failWrite: boolean; failRead: boolean; conflictNext: boolean; writes: number }
+interface Server { revision: number; entries: Record<string, boolean>; failWrite: boolean; failRead: boolean; conflictNext: boolean; writes: number; delayWrite?: Promise<void> }
 async function mockChecklist(page: Page, server: Server) {
-  await page.route(/\/api\/public\/events\/sync(?:\/checklist)?$/, route => {
+  await page.route(/\/api\/public\/events\/sync(?:\/checklist)?$/, async route => {
     if (!new URL(route.request().url()).pathname.endsWith("/checklist")) return route.fulfill({ json: {
       title: "Shared game", description: "", location: "", starts_at: 2000000000, archived: false,
       tables: [{ name: "One", capacity: 2, players: [{ id: "alice", name: "Alice" }, { id: "bob", name: "Bob" }], waitlist: [] }],
@@ -11,6 +11,7 @@ async function mockChecklist(page: Page, server: Server) {
     if (method === "GET" && server.failRead) return route.fulfill({ status: 503, json: { detail: "Storage unavailable" } });
     if (method !== "GET") {
       server.writes++;
+      await server.delayWrite;
       if (server.failWrite) return route.fulfill({ status: 503, json: { detail: "Storage unavailable" } });
       const body = route.request().postDataJSON();
       if (method === "PUT" && (server.conflictNext || body.revision !== server.revision)) {
@@ -74,7 +75,13 @@ for (const side of ["browser", "server"]) {
     await syncToggle(page).check();
     const dialog = page.getByRole("dialog", { name: "Choose checklist version" });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: `Use ${side} version` }).click();
+    await expect(dialog.getByText("Use the browser version to replace", { exact: false })).toHaveCount(0);
+    const buttons = await dialog.getByRole("button").all();
+    const boxes = await Promise.all(buttons.map(button => button.boundingBox()));
+    expect(boxes[0]!.y).toBe(boxes[1]!.y);
+    expect(boxes[1]!.y).toBe(boxes[2]!.y);
+    expect(boxes[2]!.x + boxes[2]!.width).toBeLessThanOrEqual((await dialog.boundingBox())!.x + (await dialog.boundingBox())!.width);
+    await dialog.getByRole("button", { name: side === "browser" ? "Browser" : "Server", exact: true }).click();
     await expect(dialog).not.toBeVisible();
     await expect(syncToggle(page)).toBeChecked();
     await expect(alice(page)).toBeChecked({ checked: side === "browser" });
@@ -93,7 +100,7 @@ test("identical versions reconnect without a modal and cancelling differences ke
   await syncToggle(page).uncheck();
   await alice(page).check();
   await syncToggle(page).check();
-  await page.getByRole("button", { name: "Keep sync off" }).click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(syncToggle(page)).not.toBeChecked();
   await expect(alice(page)).toBeChecked();
   expect(server.entries.alice).toBe(false);
@@ -107,10 +114,10 @@ test("a newer server edit blocks stale replacement and asks again", async ({ pag
   await syncToggle(page).check();
   server.conflictNext = true;
   const dialog = page.getByRole("dialog", { name: "Choose checklist version" });
-  await dialog.getByRole("button", { name: "Use browser version" }).click();
+  await dialog.getByRole("button", { name: "Browser", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("server checklist changed");
   expect(server.entries).toEqual({ alice: false, bob: true });
-  await dialog.getByRole("button", { name: "Use server version" }).click();
+  await dialog.getByRole("button", { name: "Server", exact: true }).click();
   await expect(alice(page)).not.toBeChecked();
   await expect(bob(page)).toBeChecked();
 });
@@ -126,7 +133,7 @@ test("failed writes keep browser changes and turn sync off until reconciled", as
   expect(server.entries.alice).toBe(false);
   server.failWrite = false;
   await syncToggle(page).check();
-  await page.getByRole("button", { name: "Use browser version" }).click();
+  await page.getByRole("button", { name: "Browser", exact: true }).click();
   await expect(alice(page)).toBeEnabled();
   expect(server.entries.alice).toBe(true);
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -154,11 +161,35 @@ test("a failed browser replacement keeps the modal and can be retried explicitly
   await syncToggle(page).check();
   server.failWrite = true;
   const dialog = page.getByRole("dialog", { name: "Choose checklist version" });
-  await dialog.getByRole("button", { name: "Use browser version" }).click();
+  await dialog.getByRole("button", { name: "Browser", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("Storage unavailable");
   expect(server.entries.alice).toBe(false);
   server.failWrite = false;
-  await dialog.getByRole("button", { name: "Use browser version" }).click();
+  await dialog.getByRole("button", { name: "Browser", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   expect(server.entries.alice).toBe(true);
+});
+
+test("rapid selections stay steady and all save in order while the server is slow", async ({ page }) => {
+  const server = freshServer();
+  let release!: () => void;
+  server.delayWrite = new Promise<void>(resolve => { release = resolve; });
+  await open(page, server);
+  const row = alice(page).locator("xpath=ancestor::label");
+  const before = await row.boundingBox();
+  await alice(page).check();
+  await expect(alice(page)).toBeEnabled();
+  await expect(row).toHaveCSS("opacity", "1");
+  await bob(page).check();
+  await alice(page).uncheck();
+  await expect(bob(page)).toBeChecked();
+  await expect(alice(page)).not.toBeChecked();
+  await expect(page.getByText("Syncing…", { exact: true })).toHaveCount(0);
+  expect(await row.boundingBox()).toEqual(before);
+  release();
+  await expect.poll(() => server.writes).toBe(3);
+  await expect.poll(() => server.entries).toEqual({ alice: false, bob: true });
+  await expect(syncToggle(page)).toBeEnabled();
+  await expect(alice(page)).not.toBeChecked();
+  await expect(bob(page)).toBeChecked();
 });
