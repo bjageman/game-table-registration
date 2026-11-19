@@ -50,6 +50,7 @@ test("public attendance survives reload on desktop and mobile", async ({ page })
   // Press the empty space at the right edge, away from the checkbox and name.
   await playerBox.click({ position: { x: playerBounds!.width - 8, y: playerBounds!.height / 2 } });
   await expect(arrived).toBeChecked();
+  await expect(playerBox).toHaveCSS("outline-style", "none");
   await page.getByRole("checkbox", { name: "Mark Bob as arrived" }).check();
   await expect(page.getByText("Alice with a very long display name", { exact: true })).toHaveCSS("text-decoration-line", "line-through");
   await page.reload();
