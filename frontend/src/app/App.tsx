@@ -150,7 +150,7 @@ export default function App() {
               onClick={(event) => setAccountAnchor(event.currentTarget)}
             >
               <MenuIcon className="profile-icon" size={22} aria-hidden="true" />
-              <span><strong>{auth.session.username}</strong></span>
+              <span className="truncate-name" title={auth.session.username}><strong>{auth.session.username}</strong></span>
               <ChevronDown className="profile-chevron" size={16} aria-hidden="true" />
             </button>
             <Menu

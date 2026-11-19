@@ -191,8 +191,8 @@ export default function EventTables({ event, csrf, readOnly = false, onAccessErr
           <ul id="add-player-suggestions" className="add-player-results" role="listbox" aria-label="Suggested players">
             {suggestions.map((player) => <li key={player.discord_id} role="option" aria-selected="false">
               <button id={`event-add-player-select-${player.discord_id}`} type="button" disabled={saving} onClick={() => void addPlayer(player)}>
-                <strong>{player.real_name || player.discord_name}</strong>
-                <span>{player.real_name ? `@${player.discord_name} · ` : ""}{player.discord_id}</span>
+                <strong className="truncate-name" title={player.real_name || player.discord_name}>{player.real_name || player.discord_name}</strong>
+                <span className="truncate-name" title={`${player.discord_name} · ${player.discord_id}`}>{player.real_name ? `@${player.discord_name} · ` : ""}{player.discord_id}</span>
               </button>
             </li>)}
           </ul> : <p className="help">No known players match “{playerQuery}”.</p>
@@ -305,9 +305,9 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
                 aria-label={`${player.guaranteed_table === table.name ? "Remove" : "Guarantee"} ${player.display_name || player.name} at ${table.name}`}
                 title={player.guaranteed_table === table.name ? "Remove table guarantee" : player.guaranteed_seat && !player.guaranteed_table ? "Profile guarantees a seat at one selected table; click to guarantee this table" : "Guarantee this table"}
                 onClick={() => onToggleGuarantee?.(player, table.name)}>{isGuaranteedAtTable(player, table.name) ? "⭐" : "⚪"}</button>}
-              {onSelect ? <button id={`${tableId}-player-profile-${player.id}`} type="button" className="player-name" aria-haspopup="dialog"
+              {onSelect ? <button id={`${tableId}-player-profile-${player.id}`} type="button" className="player-name truncate-name" aria-haspopup="dialog"
                 title={player.display_name || player.name} aria-label={player.display_name || player.name}
-                onClick={() => onSelect(player)}>{event.status === "open" ? <>{(player.display_name || player.name).slice(0, 26)}{(player.display_name || player.name).length > 26 ? "…" : ""}</> : player.display_name || player.name}</button> : event.status === "open" ? (player.display_name || player.name).slice(0, 26) : player.display_name || player.name}
+                onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : <span className="truncate-name" title={player.display_name || player.name}>{player.display_name || player.name}</span>}
               {event.status === "open" && (readOnly ? <span className="player-weight">{(player.weighting ?? 5).toFixed(1)}</span> : editingWeight === `${player.id}:${table.name}` ? <form className="player-weight-editor" onSubmit={(submit) => { submit.preventDefault(); onSaveWeight?.(player); }}>
                 <input id={`${tableId}-player-weight-input-${player.id}`} type="text" inputMode="decimal" aria-label={`Weight for ${player.display_name || player.name}`} value={weight} onChange={(change) => onWeightChange?.(change.target.value)}
                   onBlur={() => onSaveWeight?.(player)} onKeyDown={(key) => { if (key.key === "Escape") { key.preventDefault(); onCancelWeight?.(); } }} disabled={saving} autoFocus />
@@ -325,7 +325,7 @@ export function TableColumns({ event, rows, error = "", onSelect, editingWeight,
               {onAssignWaitlisted && <button id={`${tableId}-waitlist-add-${player.id}`} type="button" className="add-waitlisted-player" disabled={saving}
                 aria-label={`Add ${player.display_name || player.name} to ${table.name}`} title="Add to table"
                 onClick={() => onAssignWaitlisted(player, table.name)}><Plus size={16} aria-hidden="true" /></button>}
-              {onSelect ? <button id={`${tableId}-waitlist-profile-${player.id}`} type="button" className="player-name" aria-haspopup="dialog" onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : player.display_name || player.name}
+              {onSelect ? <button id={`${tableId}-waitlist-profile-${player.id}`} type="button" className="player-name truncate-name" aria-haspopup="dialog" title={player.display_name || player.name} onClick={() => onSelect(player)}>{player.display_name || player.name}</button> : <span className="truncate-name" title={player.display_name || player.name}>{player.display_name || player.name}</span>}
               {onSwap && <button type="button" className="swap-player" disabled={saving} aria-label={`Swap ${player.display_name || player.name} on ${table.name} waitlist`} title="Swap placement" onClick={() => onSwap({ player, table: table.name, waitlist: true })}><ArrowLeftRight size={16} aria-hidden="true" /></button>}
               {canRemoveSignups && <button id={`${tableId}-waitlist-remove-${player.id}`} type="button" className="remove-signup-player" disabled={saving}
                 aria-label={`Remove ${player.display_name || player.name} from waitlist`} title="Remove from waitlist"
