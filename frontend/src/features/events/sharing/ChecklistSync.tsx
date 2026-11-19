@@ -25,7 +25,8 @@ export default function ChecklistSync({ checklist }: { checklist: Checklist }) {
   return <>
     <div className="public-checklist-sync-controls">
     <label className="public-checklist-sync" htmlFor="public-checklist-sync">
-      <input id="public-checklist-sync" type="checkbox" checked={checklist.syncing} disabled={checklist.busy}
+      <input id="public-checklist-sync" type="checkbox" checked={checklist.syncing} aria-disabled={checklist.busy}
+        disabled={checklist.busy && checklist.disabled}
         onChange={(event) => void checklist.setSync(event.target.checked)} /> Sync with Server
     </label>
     {checklist.busy && checklist.disabled && <span role="status">Syncing…</span>}

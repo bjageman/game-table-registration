@@ -179,6 +179,9 @@ test("rapid selections stay steady and all save in order while the server is slo
   const before = await row.boundingBox();
   await alice(page).check();
   await expect(alice(page)).toBeEnabled();
+  await expect(syncToggle(page)).toBeChecked();
+  await expect(syncToggle(page)).not.toHaveAttribute("disabled");
+  await expect(syncToggle(page)).toHaveAttribute("aria-disabled", "true");
   await expect(row).toHaveCSS("opacity", "1");
   await bob(page).check();
   await alice(page).uncheck();
