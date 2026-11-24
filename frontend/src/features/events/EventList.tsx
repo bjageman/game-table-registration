@@ -138,9 +138,9 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
         </button>
       </ModalHeader>
             <EventDateDetails>
+              {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               <EventDateLine label="Event starts" timestamp={event.starts_at} />
               {event.ends_at != null && <EventDateLine label="Event ends" timestamp={event.ends_at} />}
-              {event.location && <div><dt>Location</dt><dd>{event.location}</dd></div>}
               {signupOpensAt != null && <EventDateLine label="Signup Open" timestamp={signupOpensAt} />}
               <EventDateLine label="Signup Close" timestamp={signupClosesAt} />
               {event.post_warning_message && signupClosesAt != null && <EventDateLine label="Warning Message"
@@ -150,7 +150,7 @@ export function EventDetails({ event, canPopulateTestUsers, readOnly, onClose, o
             {event.status === "review" && <p role="status" className="notice">{event.assignment_publication_pending ? "Waiting for Discord to confirm the assignment posts. The roster is locked while delivery is pending." : "Review these assignments. Add or remove players as needed, then send the results to Discord."}</p>}
             {!readOnly && event.discord_event_error && <p role="alert" className="notice">{event.discord_event_error}</p>}
             {!readOnly && event.pairing_warnings?.map((warning) => <p key={warning} role="alert" className="notice">{warning}</p>)}
-            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly || Boolean(event.assignment_publication_pending)} onAccessError={actions.onAccessError} />
+            <EventTables key={`${event.id}:${event.discord_url}:${event.status}:${event.test_generation ?? ""}`} event={event} csrf={actions.csrf} readOnly={readOnly || Boolean(event.archived_at) || Boolean(event.assignment_publication_pending)} onUpdated={actions.onUpdated} onAccessError={actions.onAccessError} />
             {event.status === "closing" && <p role="status" className="notice">
               {event.close_error ?? "Signups are closing. Placements are waiting for Discord's final vote totals."}
             </p>}

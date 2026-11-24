@@ -1,0 +1,112 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import GeneralSettings from "./GeneralSettings";
+
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+it("shows assignment options on separate rows and restricts organization editors", async () => {
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+    automatic_weight_adjustment: true, announce_table_changes: false,
+  })));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<GeneralSettings csrf="csrf" restricted onAccessError={() => false} />);
+  const weights = await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
+  const announcements = screen.getByRole("checkbox", { name: "Announce table changes" });
+  expect(screen.getByRole("checkbox", { name: "Review assignments before sending" })).toBeDisabled();
+  expect(weights).toBeDisabled();
+  expect(announcements).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "Show players in open signups" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "Send private messages for waitlist promotions" })).toBeDisabled();
+  expect(screen.getByRole("combobox", { name: "Timezone" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "Post updates to a new thread" })).toBeDisabled();
+  expect(screen.queryByRole("heading", { name: "Assignments" })).not.toBeInTheDocument();
+  expect(weights.closest("label")?.parentElement).not.toBe(announcements.closest("label")?.parentElement);
+  expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it("saves assignment options for an admin", async () => {
+  const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => new Response(JSON.stringify(
+    options?.method === "PUT"
+      ? { review_assignments_before_discord: false, automatic_weight_adjustment: true, announce_table_changes: true, post_discord_updates_to_thread: true, timezone: "America/New_York", show_open_signup_players: true, dm_waitlist_promotions: true }
+      : { automatic_weight_adjustment: true, announce_table_changes: false, post_discord_updates_to_thread: false, show_open_signup_players: false, dm_waitlist_promotions: false },
+  )));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
+  const announcements = await screen.findByRole("checkbox", { name: "Announce table changes" });
+  const privateMessages = screen.getByRole("checkbox", { name: "Send private messages for waitlist promotions" });
+  expect(privateMessages).not.toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Review assignments before sending" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({
+    method: "PUT",
+    body: JSON.stringify({
+      create_discord_event: true, review_assignments_before_discord: false, automatic_weight_adjustment: true, announce_table_changes: false,
+      post_discord_updates_to_thread: false, timezone: null, show_open_signup_players: false, dm_waitlist_promotions: false, dm_assignments: true, guarantee_waitlisted_players: false, waitlist_guarantee_retention_hours: 5, keep_waitlist_guarantee_on_short_notice: true,
+    }),
+  }));
+  await waitFor(() => expect(screen.getByRole("checkbox", { name: "Review assignments before sending" })).not.toBeChecked());
+  fireEvent.click(privateMessages);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  expect(fetchMock.mock.calls[2][1]).toEqual(expect.objectContaining({ method: "PUT" }));
+  fireEvent.click(announcements);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Post updates to a new thread" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Show players in open signups" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+  fireEvent.change(screen.getByRole("combobox", { name: "Timezone" }), { target: { value: "America/New_York" } });
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(7));
+  expect(fetchMock.mock.calls[6][1]).toEqual(expect.objectContaining({
+    method: "PUT",
+    body: expect.stringContaining('"timezone":"America/New_York"'),
+  }));
+  expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Post updates to a new thread" })).toBeChecked();
+});
+
+it("defaults waitlist guarantees off and other General toggles on", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    automatic_weight_adjustment: true, announce_table_changes: true,
+  }))));
+  render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
+  await screen.findByRole("checkbox", { name: "Automatically Adjust Player Weights" });
+  const toggles = screen.getAllByRole("checkbox");
+  expect(toggles).toHaveLength(9);
+  toggles.forEach((toggle) => {
+    if (toggle.closest("label")?.textContent?.includes("Waitlisted players")) expect(toggle).not.toBeChecked();
+    else expect(toggle).toBeChecked();
+  });
+});
+
+it("saves private assignment notifications independently of promotion notifications", async () => {
+  const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => new Response(
+    options?.method === "PUT" ? String(options.body) : JSON.stringify({ dm_assignments: true, dm_waitlist_promotions: false }),
+  ));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
+  const assignments = await screen.findByRole("checkbox", { name: "Send private messages for table assignments" });
+  fireEvent.click(assignments);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual(expect.objectContaining({ dm_assignments: false, dm_waitlist_promotions: false }));
+});
+
+it("enables next-event guarantees with five hours and saves a changed cutoff", async () => {
+  const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => new Response(
+    options?.method === "PUT" ? String(options.body) : "{}",
+  ));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<GeneralSettings csrf="csrf" onAccessError={() => false} />);
+  const option = await screen.findByRole("checkbox", { name: "Waitlisted players will be guaranteed a seat for the next event" });
+  expect(option).not.toBeChecked();
+  fireEvent.click(option);
+  const hours = await screen.findByRole("spinbutton", { name: "Hours before event" });
+  await waitFor(() => expect(hours).toBeEnabled());
+  expect(hours).toHaveValue(5);
+  fireEvent.change(hours, { target: { value: "3" } });
+  fireEvent.blur(hours);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  expect(JSON.parse(fetchMock.mock.calls[2][1]!.body as string)).toEqual(expect.objectContaining({
+    guarantee_waitlisted_players: true, waitlist_guarantee_retention_hours: 3,
+  }));
+});

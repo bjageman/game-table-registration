@@ -3,9 +3,9 @@ import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+from thread_helpers import thread_setup as thread_setup
 
 from app.config import Settings
 from app.discord.announcements import deliver_event
@@ -16,51 +16,14 @@ from app.discord.reactions import change
 from app.models import (
     Announcement,
     AssignmentPreference,
-    Base,
     Event,
     EventThreadMember,
     TableSignup,
 )
 
 
-@pytest.fixture
-def setup(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path}/threads.db")
-    Base.metadata.create_all(engine)
-    with Session(engine) as db:
-        db.add(
-            Event(
-                id="event",
-                title="Monday Games",
-                guild_id="guild",
-                channel_id="100",
-                message_id="200",
-                starts_at=time.time() + 86400,
-                closes_at=time.time() + 3600,
-                duration_hours=1,
-                signup_mode="reactions",
-                status="open",
-                tables=[{"name": "One", "capacity": 1}],
-                created_by="owner",
-            )
-        )
-        db.add(
-            AssignmentPreference(
-                scope_key="user:owner",
-                announce_table_changes=True,
-                post_discord_updates_to_thread=True,
-            )
-        )
-        db.commit()
-    discord = Mock(spec=DiscordAPI)
-    discord.event_thread.return_value = "200"
-    discord.send_announcement.return_value = {"id": "300"}
-    yield engine, discord
-    engine.dispose()
-
-
-def test_reaction_rsvp_creates_one_named_thread_and_adds_member_once(setup):
-    engine, discord = setup
+def test_reaction_rsvp_creates_one_named_thread_and_adds_member_once(thread_setup):
+    engine, discord = thread_setup
     change(engine, "event", "1️⃣", "123", "Dave", True, time.time())
     synchronize_event(engine, discord, "event")
     synchronize_event(engine, discord, "event")
@@ -75,8 +38,8 @@ def test_reaction_rsvp_creates_one_named_thread_and_adds_member_once(setup):
         assert db.get(EventThreadMember, ("event", "123")).added_at is not None
 
 
-def test_thread_membership_retries_and_ignores_simulated_players(setup):
-    engine, discord = setup
+def test_thread_membership_retries_and_ignores_simulated_players(thread_setup):
+    engine, discord = thread_setup
     with Session(engine) as db:
         event = db.get(Event, "event")
         queue_member(db, event, "123")
@@ -94,8 +57,8 @@ def test_thread_membership_retries_and_ignores_simulated_players(setup):
         assert db.get(EventThreadMember, ("event", "123")).added_at is not None
 
 
-def test_poll_votes_are_backfilled_without_repeated_discord_reads(setup):
-    engine, discord = setup
+def test_poll_votes_are_backfilled_without_repeated_discord_reads(thread_setup):
+    engine, discord = thread_setup
     with Session(engine) as db:
         event = db.get(Event, "event")
         event.signup_mode = "poll"
@@ -108,8 +71,8 @@ def test_poll_votes_are_backfilled_without_repeated_discord_reads(setup):
     discord.add_thread_member.assert_called_once_with("200", "123")
 
 
-def test_gateway_poll_vote_queues_thread_membership(setup):
-    engine, _ = setup
+def test_gateway_poll_vote_queues_thread_membership(thread_setup):
+    engine, _ = thread_setup
     with Session(engine) as db:
         db.get(Event, "event").signup_mode = "poll"
         db.commit()
@@ -145,8 +108,8 @@ def add_notice(engine, kind, part):
         db.commit()
 
 
-def test_assignments_stay_in_channel_and_table_change_notices_use_thread(setup):
-    engine, discord = setup
+def test_assignments_stay_in_channel_and_table_change_notices_use_thread(thread_setup):
+    engine, discord = thread_setup
     add_notice(engine, "assignment", 0)
     add_notice(engine, "promotion", 1)
     deliver_event(engine, discord, "event", limit=5)
@@ -161,8 +124,10 @@ def test_assignments_stay_in_channel_and_table_change_notices_use_thread(setup):
         assert all(notice.state == "sent" for notice in notices)
 
 
-def test_thread_creation_failure_retries_without_posting_update_in_main_channel(setup):
-    engine, discord = setup
+def test_thread_creation_failure_retries_without_posting_update_in_main_channel(
+    thread_setup,
+):
+    engine, discord = thread_setup
     add_notice(engine, "promotion", 0)
     discord.event_thread.side_effect = DiscordRequestError(403)
     deliver_event(engine, discord, "event")
@@ -180,8 +145,8 @@ def test_thread_creation_failure_retries_without_posting_update_in_main_channel(
     discord.send_announcement.assert_called_with("200", {"content": "promotion"})
 
 
-def test_disabled_setting_leaves_existing_channel_behavior(setup):
-    engine, discord = setup
+def test_disabled_setting_leaves_existing_channel_behavior(thread_setup):
+    engine, discord = thread_setup
     with Session(engine) as db:
         db.get(
             AssignmentPreference, "user:owner"
@@ -215,8 +180,8 @@ def test_start_thread_recovers_an_ambiguous_response_without_a_second_thread():
     ]
 
 
-def test_ambiguous_update_delivery_recovers_in_the_same_thread(setup):
-    engine, discord = setup
+def test_ambiguous_update_delivery_recovers_in_the_same_thread(thread_setup):
+    engine, discord = thread_setup
     synchronize_event(engine, discord, "event")
     discord.reset_mock()
     add_notice(engine, "promotion", 0)

@@ -3,21 +3,12 @@
 from sqlalchemy.orm import Session
 
 from app.models import AssignmentPreference, Event
-
-DEFAULTS = {
-    "create_discord_event": True,
-    "review_assignments_before_discord": True,
-    "automatic_weight_adjustment": True,
-    "announce_table_changes": True,
-    "post_discord_updates_to_thread": True,
-    "show_open_signup_players": True,
-    "dm_waitlist_promotions": True,
-}
+from app.settings.general_settings import GeneralSettingsValues
 
 
 def for_scope(db: Session, key: str) -> AssignmentPreference:
     return db.get(AssignmentPreference, key) or AssignmentPreference(
-        scope_key=key, **DEFAULTS
+        scope_key=key, **GeneralSettingsValues().model_dump()
     )
 
 

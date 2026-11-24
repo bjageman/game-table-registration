@@ -5,7 +5,7 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import MenuItem from "@mui/material/MenuItem";
 import DisconnectDiscord from "./DisconnectDiscord";
-import AssignmentSettings from "./AssignmentSettings";
+import GeneralSettings from "./GeneralSettings";
 import { api, errorMessage, mutationOptions } from "../../lib/api";
 import LoadingIndicator from "../../components/LoadingIndicator";
 import OrganizationSettings from "./OrganizationSettings";
@@ -22,7 +22,7 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
   onAccessError: (error: unknown) => boolean;
 }) {
   const tabId = "settings";
-  const [tab, setTab] = useState("discord");
+  const [tab, setTab] = useState("preferences");
   const [setup, setSetup] = useState<Setup>();
   const [guilds, setGuilds] = useState<Choice[]>([]);
   const [refreshingServers, setRefreshingServers] = useState(false);
@@ -90,20 +90,24 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
   }
   const connectUrl = setup?.connect_url ?? "/api/auth/connect";
   const restricted = Boolean(setup?.organization_role && setup.organization_role !== "admin");
-  return <section id="settings-panel" className="panel settings-panel" aria-label="Settings">
-    <Tabs id="settings-tabs" className="settings-tabs" value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
-      <Tab label="Discord" value="discord" id={`${tabId}-discord-tab`} aria-controls={`${tabId}-discord-panel`} />
-      <Tab label="General" value="assignments" id={`${tabId}-assignments-tab`} aria-controls={`${tabId}-assignments-panel`} />
+  return <>
+    <Tabs id="settings-tabs" className="settings-tabs" variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile value={tab} onChange={(_event, value: string) => setTab(value)} aria-label="Settings">
+      <Tab label="Preferences" value="preferences" id={`${tabId}-preferences-tab`} aria-controls={`${tabId}-preferences-panel`} />
+      <Tab label="Connection" value="connection" id={`${tabId}-connection-tab`} aria-controls={`${tabId}-connection-panel`} />
       <Tab label="Organization" value="organization" id={`${tabId}-organization-tab`} aria-controls={`${tabId}-organization-panel`} />
     </Tabs>
-    <div role="tabpanel" id={`${tabId}-discord-panel`} aria-labelledby={`${tabId}-discord-tab`} hidden={tab !== "discord"}>
-    {!setup && !error && <p><LoadingIndicator label="Loading settings…" /></p>}
     {error && <p role="alert" className="error">{error}{!setup && <button type="button" onClick={() => setAttempt((n) => n + 1)}>Retry settings</button>}</p>}
+    <div role="tabpanel" id={`${tabId}-preferences-panel`} aria-labelledby={`${tabId}-preferences-tab`} hidden={tab !== "preferences"}>
+      {setup ? <GeneralSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} onSaved={onSaved} />
+        : !error && <p><LoadingIndicator label="Loading settings…" /></p>}
+    </div>
+    <div role="tabpanel" className="connection-settings" id={`${tabId}-connection-panel`} aria-labelledby={`${tabId}-connection-tab`} hidden={tab !== "connection"}>
+    {!setup && !error && <p><LoadingIndicator label="Loading settings…" /></p>}
     {setup && <>
       <div className="form-actions settings-connections">
         {!setup.selection && <a id="discord-connect-button" className="button" href={connectUrl}>Connect</a>}
       </div>
-      {setup.selection && <form id="discord-settings-form" onSubmit={(event) => void save(event)} aria-label="Discord settings">
+      {setup.selection && <form id="discord-settings-form" onSubmit={(event) => void save(event)} aria-label="Connection settings">
         <div className="form-grid">
           <div className="signup-channel-field">
           <FormField id="discord-server-select" select label="Discord Server" value={guildId} fullWidth
@@ -147,12 +151,8 @@ export default function ConnectionSettings({ csrf, userId = "", organizationId, 
       </form>}
     </>}
     </div>
-    <div role="tabpanel" id={`${tabId}-assignments-panel`} aria-labelledby={`${tabId}-assignments-tab`} hidden={tab !== "assignments"}>
-      {setup ? <AssignmentSettings key={organizationId ?? `personal:${userId}`} csrf={csrf} restricted={restricted} onAccessError={onAccessError} onSaved={onSaved} />
-        : <p><LoadingIndicator label="Loading settings…" /></p>}
-    </div>
     <div role="tabpanel" id={`${tabId}-organization-panel`} aria-labelledby={`${tabId}-organization-tab`} hidden={tab !== "organization"}>
       {tab === "organization" && <OrganizationSettings csrf={csrf} userId={userId} onSaved={onSaved} onAccessError={onAccessError} />}
     </div>
-  </section>;
+  </>;
 }

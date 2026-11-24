@@ -26,6 +26,7 @@ it("requires confirmation to delete the organization and allows cancellation and
   });
   vi.stubGlobal("fetch", fetchMock);
   render(<OrganizationSettings csrf="csrf" userId="owner" onSaved={onSaved} onAccessError={() => false} />);
+  expect(await screen.findByRole("combobox", { name: "Active Organization:" })).toHaveValue("org");
   const deleteButton = await screen.findByRole("button", { name: "Delete" });
   fireEvent.click(deleteButton);
   let dialog = screen.getByRole("dialog", { name: "Delete organization?" });

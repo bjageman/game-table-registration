@@ -8,14 +8,14 @@ from flow_helpers import closing_event, closing_message
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.assignments.waitlists import add_player
-from app.assignments.withdrawals import (
-    current_result,
-    manager_add,
-    manager_remove,
-    withdraw,
+from app.assignments.player_changes import (
+    add_player_to_waitlist,
+    assign_player_to_table,
+    remove_player_from_roster,
+    withdraw_from_announcement,
 )
-from app.discord.announcements import payloads
+from app.assignments.roster import build_current_roster
+from app.discord.event_messages import build_assignment_messages
 from app.models import (
     Announcement,
     AssignmentPreference,
@@ -50,11 +50,11 @@ def test_append_order_draw_preservation_and_promotion(promotion_db, method, play
         original = (deepcopy(run.snapshot), deepcopy(run.result))
         db.get(AssignmentPreference, "user:owner").announce_table_changes = True
         db.commit()
-    assert add_player(engine, "guild", "event", player_id, "Table A")
-    assert not add_player(engine, "guild", "event", player_id, "Table A")
+    assert add_player_to_waitlist(engine, "guild", "event", player_id, "Table A")
+    assert not add_player_to_waitlist(engine, "guild", "event", player_id, "Table A")
     with Session(engine) as db:
         run = db.get(LotteryRun, "event")
-        current = current_result(db, run)
+        current = build_current_roster(db, run)
         assert [p["id"] for p in current["tables"][0]["waitlist"]] == [
             "2",
             "3",
@@ -64,23 +64,27 @@ def test_append_order_draw_preservation_and_promotion(promotion_db, method, play
         assert current["waitlist"] == ["2", "3", player_id]
         assert (run.snapshot, run.result) == original
         assert not list(db.scalars(select(PromotionDM)))
-        posts = payloads(db.get(Event, "event"), "channel", current, run.snapshot)
+        posts = build_assignment_messages(
+            db.get(Event, "event"), "channel", current, run.snapshot
+        )
         assert (
             "Late Player" in str(posts)
             if player_id.startswith("test-")
             else f"<@{player_id}>" in str(posts)
         )
         assert db.scalar(select(Announcement).where(Announcement.kind == "refresh"))
-    assert manager_remove(engine, "guild", "event", "1")
-    assert manager_remove(engine, "guild", "event", "2")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
+    assert remove_player_from_roster(engine, "guild", "event", "2")
     if method == "manager":
-        assert manager_remove(engine, "guild", "event", "3")
+        assert remove_player_from_roster(engine, "guild", "event", "3")
     elif method == "discord":
-        assert withdraw(engine, "guild", "channel", "assignment-message", "3")
+        assert withdraw_from_announcement(
+            engine, "guild", "channel", "assignment-message", "3"
+        )
     else:
-        assert manager_add(engine, "guild", "event", player_id, "Table A")
+        assert assign_player_to_table(engine, "guild", "event", player_id, "Table A")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"][player_id] == "Table A"
         assert current["tables"][0]["waitlist"] == []
         notices = list(
@@ -104,14 +108,14 @@ def test_same_player_can_wait_for_multiple_tables(promotion_db):
             ],
         }
         db.commit()
-    assert add_player(engine, "guild", "event", "4", "Table A")
-    assert add_player(engine, "guild", "event", "4", "Table B")
+    assert add_player_to_waitlist(engine, "guild", "event", "4", "Table A")
+    assert add_player_to_waitlist(engine, "guild", "event", "4", "Table B")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["waitlist"].count("4") == 1
-    assert manager_add(engine, "guild", "event", "4", "Table B")
+    assert assign_player_to_table(engine, "guild", "event", "4", "Table B")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert all(
             not any(p["id"] == "4" for p in table["waitlist"])
             for table in current["tables"]
@@ -195,20 +199,22 @@ def test_withdrawn_player_rejoins_at_end_and_can_leave_again(promotion_db, remov
 
     def leave(player_id):
         if remove == "manager":
-            return manager_remove(engine, "guild", "event", player_id)
-        return withdraw(engine, "guild", "channel", "assignment-message", player_id)
+            return remove_player_from_roster(engine, "guild", "event", player_id)
+        return withdraw_from_announcement(
+            engine, "guild", "channel", "assignment-message", player_id
+        )
 
     def roster():
         with Session(engine) as db:
-            return current_result(db, db.get(LotteryRun, "event"))
+            return build_current_roster(db, db.get(LotteryRun, "event"))
 
     assert leave("1")
     # Lottery participants remain known even without a saved profile.
-    assert add_player(engine, "guild", "event", "1", "Table A")
+    assert add_player_to_waitlist(engine, "guild", "event", "1", "Table A")
     assert roster()["assignments"] == {"2": "Table A"}
     assert roster()["waitlist"] == ["3", "1"]
     assert [p["id"] for p in roster()["tables"][0]["waitlist"]] == ["3", "1"]
-    assert not add_player(engine, "guild", "event", "1", "Table A")
+    assert not add_player_to_waitlist(engine, "guild", "event", "1", "Table A")
     assert leave("2")
     assert leave("3")
     assert roster()["assignments"] == {"1": "Table A"}
@@ -216,47 +222,47 @@ def test_withdrawn_player_rejoins_at_end_and_can_leave_again(promotion_db, remov
     assert roster()["assignments"] == {}
     assert roster()["waitlist"] == []
     # Reuses the prior addition rather than hitting its unique constraint.
-    assert add_player(engine, "guild", "event", "1", "Table A")
+    assert add_player_to_waitlist(engine, "guild", "event", "1", "Table A")
     assert roster()["waitlist"] == ["1"]
     for _ in range(2):
-        assert manager_add(engine, "guild", "event", "1", "Table A")
+        assert assign_player_to_table(engine, "guild", "event", "1", "Table A")
         assert roster()["assignments"] == {"1": "Table A"}
         assert leave("1")
         assert roster()["assignments"] == {}
-        assert add_player(engine, "guild", "event", "1", "Table A")
+        assert add_player_to_waitlist(engine, "guild", "event", "1", "Table A")
         assert roster()["waitlist"] == ["1"]
 
 
 def test_rejoining_keeps_previous_replacement_seated(promotion_db):
     engine = promotion_db
-    assert manager_remove(engine, "guild", "event", "1")
-    assert add_player(engine, "guild", "event", "1", "Table A")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
+    assert add_player_to_waitlist(engine, "guild", "event", "1", "Table A")
     # Deliberately overfill: the first replacement must retain their seat when
     # the returning player leaves a second time.
-    assert manager_add(engine, "guild", "event", "1", "Table A")
-    assert manager_remove(engine, "guild", "event", "1")
+    assert assign_player_to_table(engine, "guild", "event", "1", "Table A")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"2": "Table A"}
         assert current["waitlist"] == ["3"]
-    assert manager_remove(engine, "guild", "event", "2")
+    assert remove_player_from_roster(engine, "guild", "event", "2")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"3": "Table A"}
 
 
 def test_original_waitlisted_player_rejoins_at_end_after_leaving(promotion_db):
     engine = promotion_db
-    assert manager_remove(engine, "guild", "event", "1")
-    assert manager_remove(engine, "guild", "event", "2")
-    assert add_player(engine, "guild", "event", "2", "Table A")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
+    assert remove_player_from_roster(engine, "guild", "event", "2")
+    assert add_player_to_waitlist(engine, "guild", "event", "2", "Table A")
     profile(engine, "4")
-    assert add_player(engine, "guild", "event", "4", "Table A")
-    assert manager_remove(engine, "guild", "event", "3")
-    assert manager_remove(engine, "guild", "event", "2")
-    assert add_player(engine, "guild", "event", "2", "Table A")
+    assert add_player_to_waitlist(engine, "guild", "event", "4", "Table A")
+    assert remove_player_from_roster(engine, "guild", "event", "3")
+    assert remove_player_from_roster(engine, "guild", "event", "2")
+    assert add_player_to_waitlist(engine, "guild", "event", "2", "Table A")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"4": "Table A"}
         assert current["waitlist"] == ["2"]
         assert [p["id"] for p in current["tables"][0]["waitlist"]] == ["2"]
@@ -298,20 +304,20 @@ def test_direct_readd_preserves_replacement_and_allows_later_removal(
         if status == "review":
             db.execute(delete(Announcement).where(Announcement.event_id == "event"))
         db.commit()
-    assert manager_remove(engine, "guild", "event", "1")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     # The plus control still requires a waitlist entry; organizer Add Player does not.
-    assert not manager_add(engine, "guild", "event", "1", "Table A")
-    assert manager_add(
+    assert not assign_player_to_table(engine, "guild", "event", "1", "Table A")
+    assert assign_player_to_table(
         engine, "guild", "event", "1", "Table A", allow_known_player=True
     )
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"1": "Table A", "2": "Table A"}
-    assert not manager_add(
+    assert not assign_player_to_table(
         engine, "guild", "event", "1", "Table A", allow_known_player=True
     )
-    assert manager_remove(engine, "guild", "event", "1")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     with Session(engine) as db:
-        current = current_result(db, db.get(LotteryRun, "event"))
+        current = build_current_roster(db, db.get(LotteryRun, "event"))
         assert current["assignments"] == {"2": "Table A"}
         assert current["waitlist"] == ["3"]

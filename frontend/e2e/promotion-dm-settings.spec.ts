@@ -18,13 +18,13 @@ test("saved private waitlist notification choices are independent and persist", 
     } });
   });
   await page.goto("/#/settings");
-  await page.getByRole("tab", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   const option = page.getByRole("checkbox", { name: "Send private messages for waitlist promotions" });
   await expect(option).not.toBeChecked();
   await option.check();
   await expect(page.getByRole("status")).toHaveText("Settings saved.");
   await page.reload();
-  await page.getByRole("tab", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
   await expect(option).toBeChecked();
   await option.uncheck();
   await expect(page.getByRole("status")).toHaveText("Settings saved.");

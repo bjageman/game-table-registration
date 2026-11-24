@@ -105,6 +105,7 @@ def test_player_profile_survives_event_and_poll_deletion(client):
         "discord_name": "Mary",
         "is_test": False,
         "guaranteed_seat": False,
+        "seat_notifications": True,
         "real_name": "",
         "weighting": 5.0,
         "partner": None,

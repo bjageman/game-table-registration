@@ -294,7 +294,7 @@ def test_signup_endpoint_is_authorized_and_scoped_to_guild(client):
 
 
 def test_reaction_promotion_notice_has_no_table_update_heading(client):
-    from app.assignments.withdrawals import withdraw
+    from app.assignments.player_changes import withdraw_from_announcement
     from app.models import Announcement
 
     headers, event, path, _ = closing_event(client)
@@ -314,7 +314,9 @@ def test_reaction_promotion_notice_has_no_table_update_heading(client):
     assert client.post(path + "/close", headers=headers).status_code == 200
     table = next(row for row in client.get(path + "/signups").json() if row["waitlist"])
     seated = table["players"][0]["id"]
-    assert withdraw(client.app.state.engine, "guild", "channel", "announcement", seated)
+    assert withdraw_from_announcement(
+        client.app.state.engine, "guild", "channel", "announcement", seated
+    )
     with DBSession(client.app.state.engine) as db:
         notice = (
             db.query(Announcement)

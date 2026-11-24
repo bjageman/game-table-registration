@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.discord.discord_format import clean
+from app.discord.event_messages import build_signup_message
 from app.discord.event_threads import queue_member
-from app.discord.signup_messages import signup_body
 from app.events.table_membership import filter_rows, removals
+from app.events.test_signups import add_to_rows
 from app.models import Event, EventManagerSignup, SignupInteraction, TableSignup
 
 
@@ -19,7 +20,7 @@ def publication(
     event: Event, closes_at: float, include_roster: bool = True
 ) -> dict[str, Any]:
     return {
-        **signup_body(event, "custom", closes_at, include_roster),
+        **build_signup_message(event, "custom", closes_at, include_roster),
         "allowed_mentions": {"parse": []},
         "components": [
             {
@@ -72,6 +73,19 @@ def table_rows(db: Session, event: Event) -> list[dict[str, Any]]:
         }
         for table in event.tables
     ]
+
+
+def signup_rows(
+    db: Session, event: Event, raw_rows: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
+    """The effective roster, including generated players and organizer edits."""
+    return apply_manager_signups(
+        db,
+        event,
+        add_to_rows(
+            table_rows(db, event) if raw_rows is None else raw_rows, event.test_signups
+        ),
+    )
 
 
 def apply_manager_signups(

@@ -161,3 +161,16 @@ it("shows linked-player lookup errors above Discord Name", async () => {
   expect(feedback).toHaveTextContent("Could not load linked players.");
   expectFeedbackAboveDiscordName(feedback);
 });
+
+it("always shows private seat preferences and saves an opt-out without loading organization settings", async () => {
+  const { fetchMock } = mockProfile();
+  render(<PlayerProfile player={player} csrf="csrf" onClose={vi.fn()} onAccessError={() => false} />);
+  const notifications = await screen.findByRole("checkbox", { name: "Private Notifications" });
+  expect(notifications).toBeChecked();
+  fireEvent.click(notifications);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/players/123", expect.objectContaining({
+    method: "PUT", body: JSON.stringify({ seat_notifications: false }),
+  })));
+  await waitFor(() => expect(notifications).not.toBeChecked());
+  expect(fetchMock.mock.calls.every(([url]) => !url.includes("/settings/"))).toBe(true);
+});

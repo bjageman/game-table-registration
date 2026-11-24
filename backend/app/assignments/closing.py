@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.assignments.assignment_finalization import finalize
 from app.assignments.lottery import VERSION, GuaranteeConflict, assign
 from app.discord.discord_api import DiscordAPI
+from app.discord.reactions import reaction_queue
 from app.events.signups import apply_manager_players
 from app.events.signups import players as signup_players
 from app.models import (
@@ -116,6 +117,24 @@ def reconcile(
 def close_and_assign(
     engine: Engine, discord: DiscordAPI, event_id: str, moderator: str, channel_id: str
 ) -> bool:
+    with Session(engine) as db:
+        event = db.get(Event, event_id)
+        key = (
+            (event.guild_id, event.channel_id or channel_id, event.message_id)
+            if event and event.signup_mode == "reactions" and event.message_id
+            else None
+        )
+    if key is not None:
+        # Wait without holding a DB connection. Freeze incoming work until the
+        # saved snapshot/transition completes; failed closing reopens the gate.
+        with reaction_queue(engine).freeze(key):
+            return _close_and_assign(engine, discord, event_id, moderator, channel_id)
+    return _close_and_assign(engine, discord, event_id, moderator, channel_id)
+
+
+def _close_and_assign(
+    engine: Engine, discord: DiscordAPI, event_id: str, moderator: str, channel_id: str
+) -> bool:
     token = secrets.token_hex(16)
     now = time.time()
     with Session(engine) as db:
@@ -186,7 +205,7 @@ def close_and_assign(
         adjust_weights = event.close_adjust_weights
         if adjust_weights is None:
             settings = assignment_preferences_for_event(db, event)
-            adjust_weights = settings.automatic_weight_adjustment if settings else True
+            adjust_weights = settings.automatic_weight_adjustment
         review_required = event.close_review_assignments
         if review_required is None:
             review_required = assignment_preferences_for_event(

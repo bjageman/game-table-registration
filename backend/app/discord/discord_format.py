@@ -42,6 +42,15 @@ def clean(text: str) -> str:
     return re.sub(r"([\\`*_{}\[\]()#+.!|>~\-])", r"\\\1", " ".join(text.split()))
 
 
+def player_reference(player: dict[str, Any]) -> str:
+    """Render a roster entry; callers independently control allowed mentions."""
+    return (
+        clean(player["name"])
+        if player["id"].startswith("test-")
+        else f"<@{player['id']}>"
+    )
+
+
 def event_embed(
     event: Event,
     introduction: str,

@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, Mock
 
 import discord
 import pytest
+from signup_helpers import custom_client as custom_client
+from signup_helpers import publish
 from sqlalchemy.orm import Session
-from test_signups import custom_client as custom_client
-from test_signups import publish
 
 from app.discord.gateway import SignupGateway
 from app.main import create_app

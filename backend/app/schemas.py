@@ -128,28 +128,6 @@ class EventTemplateInput(EventDetailsInput):
     duration_hours: int = Field(ge=1, le=768)
 
 
-class AssignmentSettingsInput(BaseModel):
-    create_discord_event: bool = True
-    review_assignments_before_discord: bool = True
-    model_config = {"extra": "forbid"}
-    automatic_weight_adjustment: bool
-    announce_table_changes: bool
-    post_discord_updates_to_thread: bool = True
-    timezone: str | None = Field(default=None, max_length=64)
-    show_open_signup_players: bool = True
-    dm_waitlist_promotions: bool = True
-
-    @field_validator("timezone")
-    @classmethod
-    def valid_timezone(cls, value: str | None) -> str | None:
-        if value is not None:
-            try:
-                ZoneInfo(value)
-            except (ZoneInfoNotFoundError, ValueError) as error:
-                raise ValueError("Choose a valid timezone") from error
-        return value
-
-
 class PlayerPairInput(BaseModel):
     model_config = {"extra": "forbid"}
     partner_id: str | None
@@ -157,6 +135,7 @@ class PlayerPairInput(BaseModel):
 
 
 class PlayerProfileInput(BaseModel):
+    seat_notifications: bool | None = None
     model_config = {"extra": "forbid"}
     real_name: str | None = Field(default=None, max_length=100)
     guaranteed_seat: bool | None = None
@@ -204,3 +183,24 @@ class TestPopulationInput(BaseModel):
 
 class RetryAnnouncementInput(BaseModel):
     confirm_repost: bool = False
+
+
+class SwapPlayersInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    player_id: str
+    table: str = Field(min_length=1, max_length=35)
+    waitlist: bool = False
+    other_player_id: str
+    other_table: str = Field(min_length=1, max_length=35)
+    other_waitlist: bool = False
+
+
+class EventSettingsInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    auto_promote_waitlist: bool = True
+
+    @model_validator(mode="after")
+    def require_settings(self) -> "EventSettingsInput":
+        if not self.model_fields_set:
+            raise ValueError("Specify at least one event setting")
+        return self

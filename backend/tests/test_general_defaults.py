@@ -1,23 +1,24 @@
-"""New scopes enable every General option before their first settings save."""
+"""New scopes receive the declared General Settings defaults before saving."""
 
 from flow_helpers import login
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.assignments.withdrawals import manager_remove
+from app.assignments.player_changes import remove_player_from_roster
 from app.discord.event_threads import enabled as threads_enabled
 from app.models import AssignmentPreference, Event, PromotionDM
-from app.settings.assignment_preferences import DEFAULTS, for_event
+from app.settings.assignment_preferences import for_event
+from app.settings.general_settings import BOOLEAN_DEFAULTS as DEFAULTS
 
 
 def test_new_user_and_organization_defaults_and_explicit_opt_outs(client):
     headers = login(client)
-    expected = {**DEFAULTS, "timezone": None}
+    expected = {**DEFAULTS, "timezone": None, "waitlist_guarantee_retention_hours": 5}
     assert client.get("/api/settings/assignment").json() == expected
     disabled = {key: False for key in DEFAULTS}
     assert client.put(
         "/api/settings/assignment", headers=headers, json=disabled
-    ).json() == {**disabled, "timezone": None}
+    ).json() == {**disabled, "timezone": None, "waitlist_guarantee_retention_hours": 5}
     # Older clients must preserve all omitted saved choices.
     client.put(
         "/api/settings/assignment",
@@ -27,6 +28,7 @@ def test_new_user_and_organization_defaults_and_explicit_opt_outs(client):
     assert client.get("/api/settings/assignment").json() == {
         **disabled,
         "timezone": None,
+        "waitlist_guarantee_retention_hours": 5,
     }
     org = client.post(
         "/api/organizations", headers=headers, json={"name": "Fresh defaults"}
@@ -50,6 +52,7 @@ def test_new_user_and_organization_defaults_and_explicit_opt_outs(client):
     assert client.get("/api/settings/assignment").json() == {
         **disabled,
         "timezone": None,
+        "waitlist_guarantee_retention_hours": 5,
     }
 
 
@@ -60,16 +63,18 @@ def test_background_behavior_uses_defaults_without_a_saved_row(promotion_db):
         db.commit()
         event = db.get(Event, "event")
         preferences = for_event(db, event)
-        assert all(getattr(preferences, key) is True for key in DEFAULTS)
+        assert all(
+            getattr(preferences, key) is value for key, value in DEFAULTS.items()
+        )
         assert threads_enabled(db, event)
         assert db.get(AssignmentPreference, "user:owner") is None
-    assert manager_remove(engine, "guild", "event", "1")
+    assert remove_player_from_roster(engine, "guild", "event", "1")
     with Session(engine) as db:
         assert db.scalar(select(PromotionDM.discord_id)) == "2"
         preference = AssignmentPreference(scope_key="user:new")
         db.add(preference)
         db.flush()
-        assert all(getattr(preference, key) is True for key in DEFAULTS)
+        assert all(getattr(preference, key) is value for key, value in DEFAULTS.items())
 
 
 def test_defaults_migration_preserves_saved_false_and_sets_sql_defaults(tmp_path):
@@ -85,7 +90,14 @@ def test_defaults_migration_preserves_saved_false_and_sets_sql_defaults(tmp_path
     columns = ", ".join(
         key
         for key in DEFAULTS
-        if key not in {"review_assignments_before_discord", "create_discord_event"}
+        if key
+        not in {
+            "review_assignments_before_discord",
+            "create_discord_event",
+            "dm_assignments",
+            "guarantee_waitlisted_players",
+            "keep_waitlist_guarantee_on_short_notice",
+        }
     )
     with engine.begin() as connection:
         connection.execute(

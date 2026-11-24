@@ -2,16 +2,20 @@ import { pollWhileVisible } from "../../../lib/visiblePolling";
 import { formatTimestamp } from "../../../lib/timezone";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../lib/api";
+import ChecklistSync, { ChecklistSyncFeedback } from "./ChecklistSync";
+import { ChecklistPlayer } from "./PublicChecklist";
+import { usePublicChecklist } from "./usePublicChecklist";
 
 interface SharedEvent {
   timezone?: string | null;
   title: string; description: string; location: string; starts_at: number; archived: boolean;
-  tables: { name: string; capacity: number; players: { name: string }[]; waitlist: { name: string }[] }[];
+  tables: { name: string; capacity: number; players: { id: string; name: string }[]; waitlist: { id: string; name: string }[] }[];
 }
 
 export default function PublicEvent({ token }: { token: string }) {
   const [event, setEvent] = useState<SharedEvent | null>(null);
   const [error, setError] = useState("");
+  const checklist = usePublicChecklist(token);
   useEffect(() => {
     const controller = new AbortController();
     async function refresh() {
@@ -28,15 +32,25 @@ export default function PublicEvent({ token }: { token: string }) {
     {error && <p role="alert" className="error">{error}</p>}
     {!event && !error && <p role="status">Loading table assignments…</p>}
     {event && <>
-      <header id="public-event-header"><h1 id="public-event-title">{event.title}</h1>{event.location && <p>{event.location}</p>}</header>
+      <div className="public-event-overview">
+      <header id="public-event-header"><h1 id="public-event-title">{event.title}</h1></header>
+      {event.location && <p className="public-event-location">{event.location}</p>}
       <dl className="event-details">
         <div><dt>Event starts</dt><dd><time dateTime={new Date(event.starts_at * 1000).toISOString()}>{formatTimestamp(event.starts_at, event.timezone ?? undefined)}</time></dd></div>
       </dl>
       {event.description && <p className="public-event-description">{event.description}</p>}
+      <ChecklistSync checklist={checklist} />
+      </div>
+      <ChecklistSyncFeedback checklist={checklist} />
+      {checklist.saveError && <p role="alert" className="error">{checklist.saveError}</p>}
       <ul id="public-event-tables" className="event-tables" aria-label="Table assignments">{event.tables.map((table, index) => <li id={`public-event-table-${index + 1}`} className="event-table" key={table.name}>
-        <div className="table-heading"><h2>{table.name}</h2><span className="table-player-count">{table.players.length}/{table.capacity}</span></div>
-        {table.players.length ? <ol>{table.players.map((player, index) => <li key={index}>{player.name}</li>)}</ol> : <p>No seated players.</p>}
-        {table.waitlist.length > 0 && <><h3>Waitlisted ({table.waitlist.length})</h3><ol>{table.waitlist.map((player, index) => <li key={index}>{player.name}</li>)}</ol></>}
+        <div className="table-heading"><h2>{table.name}</h2><span className="table-player-count">{table.players.filter(player => checklist.entries[player.id]?.arrived).length}/{table.players.length}</span></div>
+        {table.players.length ? <ol>{table.players.map((player) => <ChecklistPlayer key={player.id} player={player}
+          controlId={`public-table-${index + 1}-seated-${player.id}`} entry={checklist.entries[player.id]} disabled={checklist.disabled}
+          onChange={(change) => checklist.update(player.id, change)} />)}</ol> : <p>No seated players.</p>}
+        {table.waitlist.length > 0 && <><h3>Waitlisted ({table.waitlist.length})</h3><ol>{table.waitlist.map((player) => <ChecklistPlayer key={player.id} player={player}
+          controlId={`public-table-${index + 1}-waitlist-${player.id}`} entry={checklist.entries[player.id]} disabled={checklist.disabled}
+          onChange={(change) => checklist.update(player.id, change)} />)}</ol></>}
       </li>)}</ul>
     </>}
   </main>;

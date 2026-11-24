@@ -9,8 +9,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.assignments.closing import close_and_assign
-from app.assignments.withdrawals import current_result
-from app.discord.announcements import dispatch_due, payloads
+from app.assignments.roster import build_current_roster
+from app.discord.announcements import dispatch_due
+from app.discord.event_messages import build_assignment_messages
 from app.models import (
     Announcement,
     AssignmentPreference,
@@ -142,8 +143,10 @@ def test_approval_posts_edited_assignments_and_waitlists(client):
     )
     with Session(engine) as db:
         run = db.get(LotteryRun, event["id"])
-        edited = deepcopy(current_result(db, run))
-        expected = payloads(db.get(Event, event["id"]), "channel", edited, run.snapshot)
+        edited = deepcopy(build_current_roster(db, run))
+        expected = build_assignment_messages(
+            db.get(Event, event["id"]), "channel", edited, run.snapshot
+        )
         assert edited != original
     assert (
         client.post(path + "/assignments/approve", headers=headers).status_code == 200
@@ -162,7 +165,7 @@ def test_approval_posts_edited_assignments_and_waitlists(client):
         assert [post.payload for post in posts] == expected
         run = db.get(LotteryRun, event["id"])
         assert run.result == original
-        assert current_result(db, run) == edited
+        assert build_current_roster(db, run) == edited
         # Legacy events without announcement records must also use edited rosters.
         db.execute(delete(Announcement).where(Announcement.event_id == event["id"]))
         db.commit()
@@ -346,7 +349,7 @@ def test_partial_publication_does_not_advance_or_repeat_delivered_parts(client):
     discord = client.app.state.discord
     discord.send_announcement.side_effect = [{"id": "first"}, DiscordRequestError(400)]
     with patch(
-        "app.discord.announcements.payloads",
+        "app.discord.event_messages.build_assignment_messages",
         return_value=[{"content": "First roster"}, {"content": "Second roster"}],
     ):
         response = client.post(path + "/assignments/approve", headers=headers)

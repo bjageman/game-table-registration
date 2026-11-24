@@ -3,9 +3,14 @@ from unittest.mock import Mock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.discord.announcements import deliver_event, enqueue, payloads
+from app.discord.announcements import deliver_event
 from app.discord.discord_format import TABLE_FIELD_SPACER
-from app.events.event_description import REACTION_DESCRIPTION, signup_embed
+from app.discord.event_messages import (
+    REACTION_DESCRIPTION,
+    build_assignment_messages,
+    enqueue_assignment_messages,
+    signup_embed,
+)
 from app.models import Announcement, Base, Event
 
 
@@ -16,12 +21,12 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
     waiting = {"id": "3", "name": "Waiting", "choices": ["First"], "weight": 1.0}
     result = {
         "tables": [
-            {"name": "First", "players": [one]},
-            {"name": "Second", "players": [two]},
+            {"name": "First", "players": [one], "waitlist": [waiting]},
+            {"name": "Second", "players": [two], "waitlist": [waiting]},
         ],
         "waitlist": ["3"],
     }
-    messages = payloads(
+    messages = build_assignment_messages(
         event, "channel", result, {"players": [one, two, waiting], "is_test": True}
     )
     assert len(messages) == 1
@@ -33,10 +38,36 @@ def test_small_assignment_fits_tables_and_waitlist_in_one_message():
     assert [(field["name"], field["inline"]) for field in fields] == [
         ("First (1)", True),
         ("Second (1)", True),
-        ("Waitlist (1)", False),
     ]
-    assert fields[2]["value"] == "1. <@3>"
+    assert fields[0]["value"] == f"<@1>\n\n⌛ Waitlist\n1. <@3>{TABLE_FIELD_SPACER}"
+    assert fields[1]["value"] == f"<@2>\n\n⌛ Waitlist\n1. <@3>{TABLE_FIELD_SPACER}"
     assert all(field["value"].endswith(TABLE_FIELD_SPACER) for field in fields[:2])
+
+
+def test_table_waitlist_preserves_order_without_notifying_waiting_players():
+    event = Event(id="event", guild_id="guild", title="Games", message_id="poll")
+    seated = {"id": "1", "name": "Seated"}
+    first = {"id": "3", "name": "First waiting"}
+    second = {"id": "2", "name": "Second waiting"}
+    message = build_assignment_messages(
+        event,
+        "channel",
+        {
+            "tables": [
+                {"name": "A", "players": [seated]},
+                {"name": "B", "players": [], "waitlist": [first, second]},
+            ],
+            "waitlist": ["2", "3"],
+        },
+        {"players": [seated]},
+    )[0]
+    fields = message["embeds"][0]["fields"]
+    assert fields[0]["value"] == f"<@1>{TABLE_FIELD_SPACER}"
+    assert fields[1]["value"] == (
+        "No players assigned.\n\n⌛ Waitlist\n1. <@3>\n2. <@2>" + TABLE_FIELD_SPACER
+    )
+    assert message["content"] == "<@1>"
+    assert message["allowed_mentions"] == {"parse": [], "users": ["1"]}
 
 
 def test_assignment_embed_shares_signup_title_and_event_layout():
@@ -50,7 +81,7 @@ def test_assignment_embed_shares_signup_title_and_event_layout():
         message_id="signup",
         tables=[{"name": "A", "capacity": 4}],
     )
-    assignment = payloads(
+    assignment = build_assignment_messages(
         event,
         "channel",
         {"tables": [{"name": "A", "players": []}], "waitlist": []},
@@ -83,10 +114,10 @@ def test_large_announcements_are_complete_bounded_and_private():
     ]
     snapshot = {"players": players}
     result = {
-        "tables": [{"name": "A", "players": players[:300]}],
+        "tables": [{"name": "A", "players": players[:300], "waitlist": players[300:]}],
         "waitlist": [p["id"] for p in players[300:]],
     }
-    chunks = payloads(event, "channel", result, snapshot)
+    chunks = build_assignment_messages(event, "channel", result, snapshot)
     assert len(chunks) > 1
     assert len({p["nonce"] for p in chunks}) == len(chunks)
     assert all(len(p["content"]) <= 2000 for p in chunks)
@@ -113,7 +144,7 @@ def test_large_announcements_are_complete_bounded_and_private():
     for player in players[300:]:
         assert f"<@{player['id']}>" not in content
         assert roster.count(f"<@{player['id']}>") == 1
-    assert chunks == payloads(event, "channel", result, snapshot)
+    assert chunks == build_assignment_messages(event, "channel", result, snapshot)
     assert all("Signup message" in p["embeds"][0]["description"] for p in chunks)
 
 
@@ -133,7 +164,7 @@ def test_expired_delivery_claim_reconciles_the_existing_message(tmp_path):
     with Session(engine) as db:
         db.add(event)
         db.flush()
-        enqueue(
+        enqueue_assignment_messages(
             db,
             event,
             "channel",
@@ -180,7 +211,7 @@ def test_multipart_retry_keeps_already_sent_parts(tmp_path):
     with Session(engine) as db:
         db.add(event)
         db.flush()
-        enqueue(
+        enqueue_assignment_messages(
             db,
             event,
             "channel",
@@ -228,7 +259,7 @@ def test_two_deliverers_cannot_post_the_same_pending_part(tmp_path):
     with Session(engine) as db:
         db.add(event)
         db.flush()
-        enqueue(
+        enqueue_assignment_messages(
             db,
             event,
             "channel",
@@ -283,7 +314,7 @@ def test_long_event_details_do_not_overflow_assignment_embeds():
         message_id="signup",
         tables=[{"name": table["name"], "capacity": 15} for table in tables],
     )
-    messages = payloads(
+    messages = build_assignment_messages(
         event,
         "channel",
         {"tables": tables, "waitlist": []},
@@ -306,7 +337,7 @@ def test_mixed_assignment_roster_only_notifies_real_discord_users():
         {"id": "123", "name": "Real Player"},
         {"id": "test-" + "a" * 24, "name": "Test Player 003"},
     ]
-    message = payloads(
+    message = build_assignment_messages(
         event,
         "channel",
         {
@@ -340,3 +371,66 @@ def test_retry_repairs_invalid_test_mentions_in_saved_messages(promotion_db):
         row = db.get(Announcement, "assignment")
         assert row.state == "sent"
         assert row.payload == sent
+
+
+def test_backed_off_thread_starter_does_not_block_assignments(promotion_db):
+    import time
+
+    from app.discord.announcements import dispatch_due, status
+
+    with Session(promotion_db) as db:
+        original = db.get(Announcement, "assignment")
+        original.state = "pending"
+        original.message_id = None
+        db.add(
+            Announcement(
+                id="starter",
+                event_id="event",
+                part=-2,
+                kind="thread_starter",
+                channel_id="channel",
+                payload={"content": "Event updates"},
+                state="pending",
+                created_at=0,
+                next_attempt=time.time() + 3600,
+                error="Thread starter failed",
+            )
+        )
+        db.commit()
+    discord = Mock()
+    discord.send_announcement.return_value = {"id": "results"}
+    dispatch_due(promotion_db, lambda *_: discord)
+    discord.send_announcement.assert_called_once()
+    with Session(promotion_db) as db:
+        assert db.get(Announcement, "assignment").state == "sent"
+        assert db.get(Announcement, "starter").state == "pending"
+    assert status(promotion_db, "event", "guild")["status"] == "sent"
+
+
+def test_targeted_thread_starter_delivery_preserves_pending_assignment(promotion_db):
+    with Session(promotion_db) as db:
+        original = db.get(Announcement, "assignment")
+        original.state = "pending"
+        db.add(
+            Announcement(
+                id="starter",
+                event_id="event",
+                part=-2,
+                kind="thread_starter",
+                channel_id="channel",
+                payload={"content": "Event updates"},
+                state="pending",
+                created_at=0,
+                next_attempt=0,
+            )
+        )
+        db.commit()
+    discord = Mock()
+    discord.send_announcement.return_value = {"id": "starter-message"}
+    deliver_event(promotion_db, discord, "event", kind="thread_starter")
+    discord.send_announcement.assert_called_once_with(
+        "channel", {"content": "Event updates"}
+    )
+    with Session(promotion_db) as db:
+        assert db.get(Announcement, "assignment").state == "pending"
+        assert db.get(Announcement, "starter").state == "sent"

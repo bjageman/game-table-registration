@@ -1,13 +1,19 @@
 """Persist numbered reaction selections and track recoverable Gateway gaps."""
 
+import asyncio
+import threading
 import time
+import weakref
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
+from app.discord.event_messages import EMOJIS, build_signup_message
 from app.discord.event_threads import queue_member
-from app.discord.signup_messages import EMOJIS, signup_body
 from app.models import Event, TableSignup
 
 GAP = (
@@ -15,11 +21,108 @@ GAP = (
 )
 
 
+MessageKey = tuple[str, str, str]
+
+
+class ReactionQueue:
+    """Coordinate received Gateway work with synchronous signup closing."""
+
+    def __init__(self) -> None:
+        self.condition = threading.Condition()
+        self.pending: dict[MessageKey, int] = {}
+        self.closing: set[MessageKey] = set()
+        self.connection_changes = 0
+        self.waiters: dict[
+            MessageKey, list[tuple[asyncio.AbstractEventLoop, asyncio.Future[None]]]
+        ] = {}
+
+    @contextmanager
+    def track(self, key: MessageKey) -> Iterator[bool]:
+        with self.condition:
+            accepted = key not in self.closing
+            if accepted:
+                self.pending[key] = self.pending.get(key, 0) + 1
+        try:
+            yield accepted
+        finally:
+            if accepted:
+                with self.condition:
+                    self.pending[key] -= 1
+                    if not self.pending[key]:
+                        del self.pending[key]
+                    self.condition.notify_all()
+
+    @contextmanager
+    def connection_change(self) -> Iterator[None]:
+        with self.condition:
+            self.connection_changes += 1
+        try:
+            yield
+        finally:
+            with self.condition:
+                self.connection_changes -= 1
+                self.condition.notify_all()
+
+    async def wait_until_open(self, key: MessageKey) -> None:
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[None] = loop.create_future()
+        with self.condition:
+            if key not in self.closing:
+                return
+            self.waiters.setdefault(key, []).append((loop, future))
+        await future
+
+    @contextmanager
+    def freeze(self, key: MessageKey, timeout: float = 60) -> Iterator[None]:
+        with self.condition:
+            if key in self.closing:
+                raise HTTPException(
+                    409, "Reaction signup closing is already in progress."
+                )
+            self.closing.add(key)
+        try:
+            with self.condition:
+                if not self.condition.wait_for(
+                    lambda: key not in self.pending and not self.connection_changes,
+                    timeout,
+                ):
+                    raise HTTPException(
+                        409,
+                        "Reactions are still processing; retry closing shortly.",
+                    )
+            yield
+        finally:
+            with self.condition:
+                self.closing.remove(key)
+                waiters = self.waiters.pop(key, [])
+            for loop, future in waiters:
+
+                def resume(target: asyncio.Future[None] = future) -> None:
+                    if not target.done():
+                        target.set_result(None)
+
+                try:
+                    loop.call_soon_threadsafe(resume)
+                except RuntimeError:
+                    pass  # The Gateway loop shut down while closing finished.
+
+
+_queues: weakref.WeakKeyDictionary[Engine, ReactionQueue] = weakref.WeakKeyDictionary()
+_queues_lock = threading.Lock()
+
+
+def reaction_queue(engine: Engine) -> ReactionQueue:
+    with _queues_lock:
+        if engine not in _queues:
+            _queues[engine] = ReactionQueue()
+        return _queues[engine]
+
+
 def publication(
     event: Event, closes_at: float | None, include_roster: bool = True
 ) -> dict[str, Any]:
     return {
-        **signup_body(event, "reactions", closes_at, include_roster),
+        **build_signup_message(event, "reactions", closes_at, include_roster),
         "allowed_mentions": {"parse": []},
     }
 

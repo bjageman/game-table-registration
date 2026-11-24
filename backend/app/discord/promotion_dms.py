@@ -1,31 +1,58 @@
-"""Durable private promotion notices, independent of public announcements."""
+"""Durable private seat notices, independent of public announcements."""
 
 import hashlib
 import logging
-import secrets
 import time
 import uuid
+from typing import Literal
 
 from sqlalchemy import Engine, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.assignments.roster import build_current_roster
+from app.discord.delivery import (
+    claim_delivery,
+    complete_delivery,
+    delivery_is_uncertain,
+    resolve_message,
+    retry_delay,
+)
 from app.discord.discord_api import DiscordAPI, DiscordRequestError
-from app.discord.discord_format import clean
-from app.models import Event, LotteryRun, PromotionDM
+from app.discord.discord_format import clean, is_discord_user_id
+from app.models import Event, LotteryRun, PlayerProfile, PromotionDM
+from app.players.player_profiles import for_event as player_scope_for_event
 from app.settings.assignment_preferences import for_event
 
 logger = logging.getLogger(__name__)
 BUTTON_PREFIX = "promotion:withdraw:"
+STOP_PREFIX = "seat-notifications:stop:"
 
 
-def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
-    """Queue in the same locked transaction that assigns the promoted player."""
+def _can_notify(player_id: str, profile: PlayerProfile | None) -> bool:
+    return is_discord_user_id(player_id) and (
+        profile is None or (profile.seat_notifications and not profile.is_test)
+    )
+
+
+def enqueue(
+    db: Session,
+    event: Event,
+    player_id: str,
+    table_name: str,
+    *,
+    kind: Literal["promotion", "assignment"] = "promotion",
+) -> None:
+    """Queue in the same locked transaction that assigns the seat."""
     preference = for_event(db, event)
+    profile = player_scope_for_event(event).get(db, player_id)
+    enabled = (
+        preference.dm_assignments
+        if kind == "assignment"
+        else preference.dm_waitlist_promotions
+    )
     if (
-        not preference
-        or not preference.dm_waitlist_promotions
-        or not player_id.isascii()
-        or not player_id.isdecimal()
+        not enabled
+        or not _can_notify(player_id, profile)
         or event.archived_at
         or event.starts_at <= time.time()
     ):
@@ -36,11 +63,29 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
         )
     ):
         return
+    _enqueue_notice(db, event, player_id, table_name, kind)
+
+
+def _enqueue_notice(
+    db: Session,
+    event: Event,
+    player_id: str,
+    table_name: str,
+    kind: Literal["promotion", "assignment"],
+) -> None:
     notice_id = str(uuid.uuid4())
+    introduction = (
+        f"Congratulations! You got assigned to **{clean(table_name)}** "
+        f"for **{clean(event.title)}**."
+        if kind == "assignment"
+        else f"Congratulations! You have been added to **{clean(table_name)}** "
+        f"from the waitlist for **{clean(event.title)}**."
+    )
+    location = clean(event.location)
+    location_line = f"Location: {location}\n" if location else ""
     content = (
-        f"Congratulations! You have been added to **{clean(table_name)}** "
-        f"from the waitlist for **{clean(event.title)}**.\n"
-        f"Event: <t:{int(event.starts_at)}:F>\n\n"
+        f"{introduction}\n\nTime: <t:{int(event.starts_at)}:F>\n"
+        f"{location_line}\n"
         "If you cannot make it, use **Give up my seat** below to withdraw "
         "and free the seat for the next waitlisted player."
     )
@@ -53,6 +98,7 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
     db.add(
         PromotionDM(
             id=notice_id,
+            kind=kind,
             event_id=event.id,
             discord_id=player_id,
             table_name=table_name,
@@ -72,7 +118,13 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
                                 "style": 4,
                                 "label": "Give up my seat",
                                 "custom_id": f"{BUTTON_PREFIX}{notice_id}",
-                            }
+                            },
+                            {
+                                "type": 2,
+                                "style": 2,
+                                "label": "Stop notifications",
+                                "custom_id": f"{STOP_PREFIX}{notice_id}",
+                            },
                         ],
                     }
                 ],
@@ -82,7 +134,6 @@ def enqueue(db: Session, event: Event, player_id: str, table_name: str) -> None:
 
 
 def _eligible(db: Session, notice: PromotionDM) -> bool:
-    from app.assignments.withdrawals import current_result
 
     event = db.get(Event, notice.event_id)
     if (
@@ -94,18 +145,23 @@ def _eligible(db: Session, notice: PromotionDM) -> bool:
         return False
     preference = for_event(db, event)
     run = db.get(LotteryRun, event.id)
+    profile = player_scope_for_event(event).get(db, notice.discord_id)
+    enabled = (
+        preference.dm_assignments
+        if notice.kind == "assignment"
+        else preference.dm_waitlist_promotions
+    )
     return bool(
-        preference
-        and preference.dm_waitlist_promotions
+        enabled
+        and _can_notify(notice.discord_id, profile)
         and run
-        and current_result(db, run)["assignments"].get(notice.discord_id)
+        and build_current_roster(db, run)["assignments"].get(notice.discord_id)
         == notice.table_name
     )
 
 
 def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
     now = time.time()
-    token = secrets.token_hex(16)
     with Session(engine) as db:
         notice = db.get(PromotionDM, notice_id)
         if (
@@ -116,23 +172,10 @@ def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
             return
         unknown = notice.unknown or notice.state == "sending"
         attempted_at = notice.attempted_at or now
-        changed = db.execute(
-            update(PromotionDM)
-            .where(
-                PromotionDM.id == notice_id,
-                PromotionDM.state.in_(["pending", "sending"]),
-                or_(PromotionDM.token.is_(None), PromotionDM.lease_until <= now),
-            )
-            .values(
-                state="sending",
-                token=token,
-                lease_until=now + 90,
-                attempts=PromotionDM.attempts + 1,
-                attempted_at=attempted_at,
-            )
-            .returning(PromotionDM.id)
-        ).scalar_one_or_none()
-        if changed is None:
+        token = claim_delivery(
+            db, PromotionDM, notice_id, now=now, attempted_at=attempted_at
+        )
+        if token is None:
             return
         db.refresh(notice)
         if not _eligible(db, notice):
@@ -165,8 +208,11 @@ def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
                 db.commit()
                 if not changed:
                     return
+        sending = not unknown
+        message_id = resolve_message(
+            discord, channel, body, attempted_at, unknown=unknown
+        )
         if unknown:
-            message_id = discord.find_announcement(channel, body, attempted_at)
             if message_id is None:
                 with Session(engine) as db:
                     db.execute(
@@ -188,35 +234,15 @@ def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
                     )
                     db.commit()
                 return
-        else:
-            sending = True
-            message_id = str(discord.send_announcement(channel, body)["id"])
         with Session(engine) as db:
-            db.execute(
-                update(PromotionDM)
-                .where(
-                    PromotionDM.id == notice_id,
-                    PromotionDM.token == token,
-                )
-                .values(
-                    state="sent",
-                    message_id=message_id,
-                    unknown=False,
-                    token=None,
-                    lease_until=None,
-                    error=None,
-                )
-            )
+            complete_delivery(db, PromotionDM, notice_id, token, message_id)
             db.commit()
     except Exception as error:
         status = (
             error.discord_status if isinstance(error, DiscordRequestError) else None
         )
-        ambiguous = unknown or (
-            sending and (not isinstance(error, DiscordRequestError) or error.ambiguous)
-        )
+        ambiguous = delivery_is_uncertain(error, unknown=unknown, sending=sending)
         terminal = status in (400, 403, 404) or attempts >= 8
-        retry_after = error.retry_after if isinstance(error, DiscordRequestError) else 0
         with Session(engine) as db:
             db.execute(
                 update(PromotionDM)
@@ -233,8 +259,7 @@ def deliver(engine: Engine, discord: DiscordAPI, notice_id: str) -> None:
                     unknown=ambiguous,
                     token=None,
                     lease_until=None,
-                    next_attempt=time.time()
-                    + max(retry_after, min(3600, 5 * 2 ** min(attempts, 10))),
+                    next_attempt=time.time() + retry_delay(error, attempts),
                     error=f"Private message delivery failed ({status or 'network'}).",
                 )
             )
@@ -268,43 +293,35 @@ def dispatch_due(engine: Engine, discord: DiscordAPI) -> None:
             logger.exception("Could not process private promotion notice %s", notice_id)
 
 
-def withdraw(
-    engine: Engine, notice_id: str, user_id: str, channel_id: str, message_id: str
-) -> str:
-    """Only the intended recipient may relinquish a current, future seat."""
-    from app.assignments.withdrawals import withdraw_seat
-
-    with Session(engine) as db:
-        notice = db.get(PromotionDM, notice_id)
-        if (
-            notice is None
-            or notice.discord_id != user_id
-            or notice.state != "sent"
-            or notice.channel_id != channel_id
-            or notice.message_id != message_id
-        ):
-            return "Something went wrong. Please contact the host for assistance."
-        claimed = db.execute(
-            update(Event)
-            .where(
-                Event.id == notice.event_id,
-                Event.status == "assigned",
-                Event.archived_at.is_(None),
-                Event.starts_at > time.time(),
+def enqueue_assignments(db: Session, event: Event, run: LotteryRun) -> None:
+    """Queue the finalized roster once, loading preferences and profiles in batches."""
+    if (
+        not for_event(db, event).dm_assignments
+        or event.archived_at
+        or event.starts_at <= time.time()
+    ):
+        return
+    assignments = build_current_roster(db, run)["assignments"]
+    if not assignments:
+        return
+    profiles = {
+        p.discord_id: p
+        for p in db.scalars(
+            select(PlayerProfile).where(
+                *player_scope_for_event(event).filters(),
+                PlayerProfile.discord_id.in_(assignments),
             )
-            .values(status=Event.status)
-            .returning(Event.id)
-        ).scalar_one_or_none()
-        if claimed is None:
-            return "This event has started or is no longer accepting withdrawals."
-        event = db.get(Event, notice.event_id)
-        run = db.get(LotteryRun, notice.event_id)
-        if event is None or run is None:
-            return "This event is no longer available."
-        if not withdraw_seat(db, event, run, user_id, event.channel_id or ""):
-            return "You no longer have a seat at this event."
-        db.commit()
-        return (
-            f"You have withdrawn from {clean(event.title)}. "
-            "Your seat is now available to the next waitlisted player."
         )
+    }
+    queued = set(
+        db.scalars(
+            select(PromotionDM.discord_id).where(
+                PromotionDM.event_id == event.id,
+            )
+        )
+    )
+    for pid, table in assignments.items():
+        profile = profiles.get(pid)
+        if pid in queued or not _can_notify(pid, profile):
+            continue
+        _enqueue_notice(db, event, pid, table, "assignment")

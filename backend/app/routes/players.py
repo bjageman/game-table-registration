@@ -124,6 +124,8 @@ def register(context: ApplicationContext) -> None:
             raise HTTPException(422, "Specify a profile setting to update")
         scope = context.player_scope(request)
         with DBSession(engine) as db:
+            # Serialize profile creation with notification opt-outs and pairing edits.
+            scope.lock(db)
             profile = scope.get(db, player_id)
             if player_id.startswith("test-") and (
                 profile is None or not profile.is_test
